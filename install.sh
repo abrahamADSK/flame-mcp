@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# =============================================================================
+# flame-mcp installer
+# =============================================================================
+# Installs the Flame MCP bridge and server on macOS.
+#
+# What this script does:
+#   1. Checks prerequisites (Python 3.11+, Claude Code)
+#   2. Creates a Python virtual environment in the project folder
+#   3. Installs Python dependencies
+#   4. Copies the Flame hook to /opt/Autodesk/shared/python/
+#   5. Registers the MCP server with Claude Code
+#
+# Usage:
+#   chmod +x install.sh
+#   ./install.sh
+# =============================================================================
+
+set -e
+
+# ── Colours ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Colour
+
+ok()   { echo -e "${GREEN}  ✓${NC} $1"; }
+warn() { echo -e "${YELLOW}  ⚠${NC} $1"; }
+err()  { echo -e "${RED}  ✗${NC} $1"; exit 1; }
+info() { echo -e "${BLUE}  →${NC} $1"; }
+
+echo ""
+echo "================================================="
+echo "  flame-mcp installer"
+echo "================================================="
+echo ""
+
+# ── Locate script directory ───────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+info "Project directory: $SCRIPT_DIR"
+
+# ── 1. Check Python 3.11+ ─────────────────────────────────────────────────────
+info "Checking Python version..."
+if ! command -v python3 &>/dev/null; then
+    err "python3 not found. Install it with: brew install python3"
+fi
+
+PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 11 ]; }; then
+    err "Python 3.11 or higher is required. Found: $PYTHON_VERSION"
+fi
+ok "Python $PYTHON_VERSION"
+
+# ── 2. Check Claude Code ──────────────────────────────────────────────────────
+info "Checking Claude Code..."
+if ! command -v claude &>/dev/null; then
+    err "Claude Code not found. Install it with: npm install -g @anthropic-ai/claude-code"
+fi
+CLAUDE_VERSION=$(claude --version 2>/dev/null | head -1)
+ok "Claude Code: $CLAUDE_VERSION"
+
+# ── 3. Create virtual environment ────────────────────────────────────────────
+info "Setting up Python virtual environment..."
+if [ -d "$SCRIPT_DIR/.venv" ]; then
+    warn "Virtual environment already exists, skipping creation."
+else
+    python3 -m venv "$SCRIPT_DIR/.venv"
+    ok "Virtual environment created at .venv/"
+fi
+
+PYTHON_VENV="$SCRIPT_DIR/.venv/bin/python"
+PIP_VENV="$SCRIPT_DIR/.venv/bin/pip"
+
+# ── 4. Install dependencies ───────────────────────────────────────────────────
+info "Installing Python dependencies..."
+"$PIP_VENV" install --quiet --no-user -r "$SCRIPT_DIR/requirements.txt"
+ok "Dependencies installed (mcp)"
+
+# ── 5. Install Flame hook ─────────────────────────────────────────────────────
+HOOK_SRC="$SCRIPT_DIR/hooks/flame_mcp_bridge.py"
+HOOK_DST="/opt/Autodesk/shared/python/flame_mcp_bridge.py"
+
+info "Installing Flame hook to /opt/Autodesk/shared/python/..."
+
+if [ ! -d "/opt/Autodesk/shared/python" ]; then
+    warn "/opt/Autodesk/shared/python/ not found."
+    warn "Is Autodesk Flame installed? Skipping hook installation."
+    warn "To install manually: sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/"
+else
+    if sudo cp "$HOOK_SRC" "$HOOK_DST"; then
+        ok "Flame hook installed. Restart Flame to activate the bridge."
+    else
+        err "Failed to copy hook. Try running: sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/"
+    fi
+fi
+
+# ── 6. Register MCP server with Claude Code ───────────────────────────────────
+info "Registering MCP server with Claude Code..."
+
+SERVER_SCRIPT="$SCRIPT_DIR/flame_mcp_server.py"
+
+# Remove existing registration silently, then re-add
+claude mcp remove flame 2>/dev/null || true
+claude mcp add flame -- "$PYTHON_VENV" "$SERVER_SCRIPT"
+ok "MCP server 'flame' registered with Claude Code."
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+echo ""
+echo "================================================="
+echo -e "  ${GREEN}Installation complete!${NC}"
+echo "================================================="
+echo ""
+echo "  Next steps:"
+echo "  1. Restart Autodesk Flame"
+echo "  2. Verify the bridge is active in Flame's Python console:"
+echo "     [FlameMCPBridge] Activo en 127.0.0.1:4444"
+echo "  3. Open Claude Code from this project folder:"
+echo "     cd $SCRIPT_DIR && claude"
+echo ""
