@@ -84,9 +84,18 @@ claude mcp add flame -- "$(pwd)/.venv/bin/python" "$(pwd)/flame_mcp_server.py"
 
 ## Usage
 
-1. **Open Flame.** The bridge starts automatically. Confirm it's active in Flame's Python console:
+1. **Open Flame.** The bridge starts automatically. A **MCP Bridge** menu appears in Flame's main menu bar showing the current status:
    ```
-   [FlameMCPBridge] Activo en 127.0.0.1:4444
+   MCP Bridge  [● Activo]
+   ├── Estado: ● Activo — puerto 4444
+   ├── Activar bridge
+   ├── Desactivar bridge
+   └── Reiniciar bridge
+   ```
+   You can also confirm the bridge is active from the terminal:
+   ```bash
+   lsof -i :4444
+   # Expected: flame <PID> ... TCP localhost:4444 (LISTEN)
    ```
 
 2. **Launch Claude Code** from the project folder:
