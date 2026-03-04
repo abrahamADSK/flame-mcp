@@ -26,6 +26,8 @@ import traceback
 import sys
 import io
 import time
+import subprocess
+import datetime
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
@@ -157,6 +159,22 @@ def _handle_connection(conn):
         conn.close()
 
 
+# ── Logging ───────────────────────────────────────────────────────────────────
+
+LOG_FILE = '/tmp/flame_mcp_bridge.log'
+
+
+def _log(msg):
+    """Write a timestamped line to the log file and to stdout."""
+    line = f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}"
+    print(line)
+    try:
+        with open(LOG_FILE, 'a') as f:
+            f.write(line + '\n')
+    except Exception:
+        pass
+
+
 # ── Quick Console — run Python directly inside Flame ─────────────────────────
 
 # Keep references alive so the GC does not destroy open dialogs
@@ -189,19 +207,35 @@ def _execute_in_flame(code):
 
 def _show_quick_console(selection):
     """Open the Quick Console dialog — run Python directly inside Flame."""
+    _log("Quick Console: requested")
+
+    # Step 1 — import PySide2
     try:
         from PySide2 import QtWidgets, QtCore, QtGui
-    except ImportError:
-        print("[FlameMCPBridge] PySide2 not available — cannot open Quick Console.")
+        _log("Quick Console: PySide2 imported OK")
+    except Exception as e:
+        _log(f"Quick Console: PySide2 import FAILED — {e}")
+        _osascript_alert("MCP Bridge — Quick Console",
+                         f"PySide2 is not available in this Flame environment.\n\nError: {e}\n\nSee log: {LOG_FILE}")
         return
 
+    # Step 2 — check QApplication
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        _log("Quick Console: QApplication.instance() is None — cannot create Qt widgets")
+        _osascript_alert("MCP Bridge — Quick Console",
+                         "No Qt application found in this Flame environment.\n\n"
+                         f"See log: {LOG_FILE}")
+        return
+    _log(f"Quick Console: QApplication OK — {app}")
+
+    # Step 3 — build and show dialog
     try:
         class QuickConsole(QtWidgets.QWidget):
             def __init__(self):
                 super().__init__()
                 self.setWindowTitle("MCP Bridge — Quick Console")
                 self.setMinimumSize(700, 500)
-                # Float above Flame, don't block its event loop
                 self.setWindowFlags(
                     QtCore.Qt.Window |
                     QtCore.Qt.WindowStaysOnTopHint |
@@ -243,7 +277,7 @@ def _show_quick_console(selection):
                 btn_row = QtWidgets.QHBoxLayout()
                 self.run_btn = QtWidgets.QPushButton("▶  Run")
                 self.run_btn.setObjectName("run_btn")
-                self.run_btn.clicked.connect(self._execute)
+                self.run_btn.clicked.connect(self._run)
                 self.clear_btn = QtWidgets.QPushButton("Clear output")
                 self.clear_btn.clicked.connect(self._clear_output)
                 btn_row.addWidget(self.run_btn)
@@ -265,9 +299,9 @@ def _show_quick_console(selection):
                 layout.addLayout(close_row)
 
                 shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
-                shortcut.activated.connect(self._execute)
+                shortcut.activated.connect(self._run)
 
-            def _execute(self):
+            def _run(self):
                 code = self.input.toPlainText().strip()
                 if not code:
                     return
@@ -279,46 +313,48 @@ def _show_quick_console(selection):
             def _clear_output(self):
                 self.output.clear()
 
+        _log("Quick Console: building widget")
         dlg = QuickConsole()
         _open_dialogs.append(dlg)
         dlg.destroyed.connect(lambda: _open_dialogs.remove(dlg) if dlg in _open_dialogs else None)
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
+        _log("Quick Console: show() called — window should be visible")
 
     except Exception as e:
-        print(f"[FlameMCPBridge] Quick Console error: {e}")
-        traceback.print_exc()
+        _log(f"Quick Console: EXCEPTION — {e}\n{traceback.format_exc()}")
+        _osascript_alert("MCP Bridge — Quick Console Error",
+                         f"{e}\n\nFull trace in: {LOG_FILE}")
 
 
 def _show_connection_test(selection):
-    """Test the bridge connection and show result in a floating label."""
+    """Test the bridge connection and show result — Qt with macOS fallback."""
+    status_str = "ACTIVE" if _bridge_active else "INACTIVE"
+    _log(f"Connection test: bridge is {status_str}")
+
+    if _bridge_active:
+        title = "MCP Bridge — Connected"
+        msg = (f"Bridge is ACTIVE\n"
+               f"Listening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\n"
+               f"Ready to receive commands from Claude.")
+    else:
+        title = "MCP Bridge — Not Connected"
+        msg = ("Bridge is INACTIVE\n\n"
+               "Use 'Start bridge' to activate it,\n"
+               "or restart Flame to load it automatically.")
+
+    # Try Qt first
     try:
         from PySide2 import QtWidgets, QtCore
-    except ImportError:
-        status = "ACTIVE" if _bridge_active else "INACTIVE"
-        print(f"[FlameMCPBridge] Connection test: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
-        return
-
-    try:
-        if _bridge_active:
-            title = "MCP Bridge — Connected"
-            msg = (f"Bridge is ACTIVE\n"
-                   f"Listening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\n"
-                   f"Ready to receive commands from Claude.")
-        else:
-            title = "MCP Bridge — Not Connected"
-            msg = ("Bridge is INACTIVE\n\n"
-                   "Use  'Start bridge'  to activate it,\n"
-                   "or restart Flame to load it automatically.")
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            raise RuntimeError("QApplication.instance() is None")
 
         box = QtWidgets.QMessageBox()
         box.setWindowTitle(title)
         box.setText(msg)
-        box.setWindowFlags(
-            QtCore.Qt.Dialog |
-            QtCore.Qt.WindowStaysOnTopHint
-        )
+        box.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
         box.setIcon(
             QtWidgets.QMessageBox.Information if _bridge_active
             else QtWidgets.QMessageBox.Warning
@@ -328,10 +364,25 @@ def _show_connection_test(selection):
         box.show()
         box.raise_()
         box.activateWindow()
+        _log("Connection test: Qt dialog shown")
 
     except Exception as e:
-        print(f"[FlameMCPBridge] Connection test error: {e}")
-        traceback.print_exc()
+        # Fallback: native macOS alert (always works regardless of Qt)
+        _log(f"Connection test: Qt failed ({e}), using osascript fallback")
+        _osascript_alert(title, msg)
+
+
+def _osascript_alert(title, message):
+    """Show a native macOS alert dialog via osascript (no Qt required)."""
+    try:
+        safe_msg = message.replace('"', '\\"').replace('\n', '\\n')
+        safe_title = title.replace('"', '\\"')
+        subprocess.Popen([
+            'osascript', '-e',
+            f'display dialog "{safe_msg}" with title "{safe_title}" buttons {{"OK"}} default button "OK"'
+        ])
+    except Exception as e:
+        _log(f"osascript fallback also failed: {e}")
 
 
 # ── Flame main menu ───────────────────────────────────────────────────────────
@@ -379,6 +430,14 @@ def get_main_menu_custom_ui_actions():
                     "name": "Connection test",
                     "execute": _show_connection_test,
                 },
+                {
+                    "name": "─────────────────",
+                    "execute": lambda s: None,
+                },
+                {
+                    "name": "View log...",
+                    "execute": _action_view_log,
+                },
             ],
         }
     ]
@@ -403,3 +462,14 @@ def _action_restart(selection):
     _stop_bridge()
     time.sleep(0.5)
     _start_bridge()
+
+
+def _action_view_log(selection):
+    """Open the bridge log file in TextEdit."""
+    try:
+        # Make sure file exists
+        open(LOG_FILE, 'a').close()
+        subprocess.Popen(['open', '-a', 'TextEdit', LOG_FILE])
+        _log("View log: opened in TextEdit")
+    except Exception as e:
+        _log(f"View log error: {e}")
