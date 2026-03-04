@@ -159,6 +159,10 @@ def _handle_connection(conn):
 
 # ── Quick Console — run Python directly inside Flame ─────────────────────────
 
+# Keep references alive so the GC does not destroy open dialogs
+_open_dialogs = []
+
+
 def _execute_in_flame(code):
     """Execute Python code directly inside Flame and return (status, output)."""
     import flame
@@ -187,14 +191,25 @@ def _show_quick_console(selection):
     """Open the Quick Console dialog — run Python directly inside Flame."""
     try:
         from PySide2 import QtWidgets, QtCore, QtGui
+    except ImportError:
+        print("[FlameMCPBridge] PySide2 not available — cannot open Quick Console.")
+        return
 
-        class QuickConsole(QtWidgets.QDialog):
+    try:
+        class QuickConsole(QtWidgets.QWidget):
             def __init__(self):
                 super().__init__()
                 self.setWindowTitle("MCP Bridge — Quick Console")
                 self.setMinimumSize(700, 500)
+                # Float above Flame, don't block its event loop
+                self.setWindowFlags(
+                    QtCore.Qt.Window |
+                    QtCore.Qt.WindowStaysOnTopHint |
+                    QtCore.Qt.WindowCloseButtonHint
+                )
+                self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
                 self.setStyleSheet("""
-                    QDialog         { background: #232323; color: #e0e0e0; }
+                    QWidget         { background: #232323; color: #e0e0e0; }
                     QLabel          { color: #a0a0a0; font-size: 11px; }
                     QPlainTextEdit  { background: #1a1a1a; color: #e8e8e8;
                                       font-family: Courier, monospace; font-size: 12px;
@@ -205,19 +220,16 @@ def _show_quick_console(selection):
                     QPushButton:hover   { background: #505050; }
                     QPushButton#run_btn { background: #1a5c8a; border-color: #2a7ab8; }
                     QPushButton#run_btn:hover { background: #2a7ab8; }
-                    QPushButton#clear_btn { background: #3a3a3a; }
                 """)
 
                 layout = QtWidgets.QVBoxLayout(self)
                 layout.setSpacing(8)
                 layout.setContentsMargins(12, 12, 12, 12)
 
-                # Header
                 header = QtWidgets.QLabel("Quick Console  —  Python runs directly inside Flame")
                 header.setStyleSheet("color: #ffffff; font-size: 13px; font-weight: bold;")
                 layout.addWidget(header)
 
-                # Input
                 layout.addWidget(QtWidgets.QLabel("Python code:"))
                 self.input = QtWidgets.QPlainTextEdit()
                 self.input.setPlaceholderText(
@@ -228,35 +240,30 @@ def _show_quick_console(selection):
                 self.input.setMinimumHeight(160)
                 layout.addWidget(self.input)
 
-                # Buttons row
                 btn_row = QtWidgets.QHBoxLayout()
                 self.run_btn = QtWidgets.QPushButton("▶  Run")
                 self.run_btn.setObjectName("run_btn")
                 self.run_btn.clicked.connect(self._execute)
                 self.clear_btn = QtWidgets.QPushButton("Clear output")
-                self.clear_btn.setObjectName("clear_btn")
                 self.clear_btn.clicked.connect(self._clear_output)
                 btn_row.addWidget(self.run_btn)
                 btn_row.addWidget(self.clear_btn)
                 btn_row.addStretch()
                 layout.addLayout(btn_row)
 
-                # Output
                 layout.addWidget(QtWidgets.QLabel("Output:"))
                 self.output = QtWidgets.QPlainTextEdit()
                 self.output.setReadOnly(True)
                 self.output.setMinimumHeight(160)
                 layout.addWidget(self.output)
 
-                # Close
                 close_row = QtWidgets.QHBoxLayout()
                 close_row.addStretch()
                 close_btn = QtWidgets.QPushButton("Close")
-                close_btn.clicked.connect(self.accept)
+                close_btn.clicked.connect(self.close)
                 close_row.addWidget(close_btn)
                 layout.addLayout(close_row)
 
-                # Shortcut: Ctrl+Enter to run
                 shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
                 shortcut.activated.connect(self._execute)
 
@@ -266,42 +273,65 @@ def _show_quick_console(selection):
                     return
                 self.output.appendPlainText(f">>> {code[:60]}{'...' if len(code) > 60 else ''}")
                 status, result = _execute_in_flame(code)
-                prefix = "✓" if status == 'ok' else "✗ ERROR"
-                self.output.appendPlainText(f"{prefix}\n{result}\n{'─' * 40}")
+                prefix = "OK" if status == 'ok' else "ERROR"
+                self.output.appendPlainText(f"[{prefix}]\n{result}\n{'-' * 40}")
 
             def _clear_output(self):
                 self.output.clear()
 
         dlg = QuickConsole()
-        dlg.exec_()
+        _open_dialogs.append(dlg)
+        dlg.destroyed.connect(lambda: _open_dialogs.remove(dlg) if dlg in _open_dialogs else None)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
 
-    except ImportError:
-        print("[FlameMCPBridge] PySide2 not available — cannot open Quick Console.")
     except Exception as e:
         print(f"[FlameMCPBridge] Quick Console error: {e}")
+        traceback.print_exc()
 
 
 def _show_connection_test(selection):
-    """Test the bridge connection and show result in a simple dialog."""
+    """Test the bridge connection and show result in a floating label."""
     try:
-        from PySide2 import QtWidgets
-
-        if _bridge_active:
-            msg = f"Bridge is ACTIVE\nListening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\nReady to receive commands from Claude Code."
-            icon = QtWidgets.QMessageBox.Information
-        else:
-            msg = f"Bridge is INACTIVE\n\nUse 'Start bridge' to activate it,\nor restart Flame to load it automatically."
-            icon = QtWidgets.QMessageBox.Warning
-
-        box = QtWidgets.QMessageBox()
-        box.setWindowTitle("MCP Bridge — Connection Test")
-        box.setText(msg)
-        box.setIcon(icon)
-        box.exec_()
-
+        from PySide2 import QtWidgets, QtCore
     except ImportError:
         status = "ACTIVE" if _bridge_active else "INACTIVE"
         print(f"[FlameMCPBridge] Connection test: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
+        return
+
+    try:
+        if _bridge_active:
+            title = "MCP Bridge — Connected"
+            msg = (f"Bridge is ACTIVE\n"
+                   f"Listening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\n"
+                   f"Ready to receive commands from Claude.")
+        else:
+            title = "MCP Bridge — Not Connected"
+            msg = ("Bridge is INACTIVE\n\n"
+                   "Use  'Start bridge'  to activate it,\n"
+                   "or restart Flame to load it automatically.")
+
+        box = QtWidgets.QMessageBox()
+        box.setWindowTitle(title)
+        box.setText(msg)
+        box.setWindowFlags(
+            QtCore.Qt.Dialog |
+            QtCore.Qt.WindowStaysOnTopHint
+        )
+        box.setIcon(
+            QtWidgets.QMessageBox.Information if _bridge_active
+            else QtWidgets.QMessageBox.Warning
+        )
+        _open_dialogs.append(box)
+        box.finished.connect(lambda: _open_dialogs.remove(box) if box in _open_dialogs else None)
+        box.show()
+        box.raise_()
+        box.activateWindow()
+
+    except Exception as e:
+        print(f"[FlameMCPBridge] Connection test error: {e}")
+        traceback.print_exc()
 
 
 # ── Flame main menu ───────────────────────────────────────────────────────────
