@@ -469,6 +469,10 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_restart,
                 },
                 {
+                    "name": "Launch Claude...",
+                    "execute": _action_launch_claude,
+                },
+                {
                     "name": "Quick Console...",
                     "execute": _show_quick_console,
                 },
@@ -504,6 +508,62 @@ def _action_restart(selection):
     _stop_bridge()
     time.sleep(0.5)
     _start_bridge()
+
+
+def _action_launch_claude(selection):
+    """Open a Terminal window running Claude Code with the flame MCP server."""
+    import os
+
+    # Locate the flame-mcp project directory
+    # Search common locations: next to the hook, or under ~/Projects/flame-mcp
+    candidates = [
+        os.path.expanduser('~/Projects/flame-mcp'),
+        os.path.expanduser('~/flame-mcp'),
+        os.path.expanduser('~/Documents/flame-mcp'),
+    ]
+    project_dir = next((p for p in candidates if os.path.isdir(p)), None)
+
+    if project_dir:
+        venv_python = os.path.join(project_dir, '.venv', 'bin', 'python')
+        if os.path.isfile(venv_python):
+            cmd = f'cd "{project_dir}" && source .venv/bin/activate && claude'
+        else:
+            cmd = f'cd "{project_dir}" && claude'
+    else:
+        # Fallback: just open claude wherever it is
+        cmd = 'claude'
+
+    _log(f"Launch Claude: running [{cmd}]")
+
+    try:
+        # Try iTerm2 first, fall back to Terminal.app
+        script = f'''
+tell application "System Events"
+    set iterm_running to (name of processes) contains "iTerm2"
+end tell
+if iterm_running then
+    tell application "iTerm2"
+        activate
+        tell current window
+            create tab with default profile
+            tell current session
+                write text "{cmd}"
+            end tell
+        end tell
+    end tell
+else
+    tell application "Terminal"
+        activate
+        do script "{cmd}"
+    end tell
+end if
+'''
+        subprocess.Popen(['osascript', '-e', script])
+        _log("Launch Claude: terminal opened")
+    except Exception as e:
+        _log(f"Launch Claude error: {e}")
+        _osascript_alert("MCP Bridge — Launch Claude",
+                         f"Could not open terminal.\n\nRun manually:\n{cmd}\n\nError: {e}")
 
 
 def _action_view_log(selection):
