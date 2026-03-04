@@ -348,7 +348,9 @@ def _show_quick_console(selection):
                 close_row.addWidget(close_btn)
                 layout.addLayout(close_row)
 
-                shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
+                # QShortcut is in QtWidgets (PySide2) or QtGui (PySide6)
+                QShortcut = getattr(QtWidgets, 'QShortcut', None) or QtGui.QShortcut
+                shortcut = QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
                 shortcut.activated.connect(self._run)
 
             def _run(self):
