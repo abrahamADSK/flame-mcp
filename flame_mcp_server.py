@@ -1,19 +1,19 @@
 """
 flame_mcp_server.py
 ===================
-Servidor MCP que expone herramientas para controlar Autodesk Flame.
-Se comunica con el bridge socket (flame_mcp_bridge.py) que corre dentro de Flame.
+MCP server that exposes tools for controlling Autodesk Flame.
+Communicates with the TCP bridge (flame_mcp_bridge.py) running inside Flame.
 
-Uso:
-    Registrar en Claude Code con:
-        claude mcp add flame -- /ruta/al/.venv/bin/python /ruta/al/flame_mcp_server.py
+Usage:
+    Register with Claude Code:
+        claude mcp add flame -- /path/to/.venv/bin/python /path/to/flame_mcp_server.py
 
-    O añadir manualmente a ~/.claude/mcp_settings.json
+    Or add manually to ~/.claude.json
 
-Requisitos:
-    pip install mcp --no-user
+Requirements:
+    pip install mcp>=1.26.0
 
-Puerto del bridge: 4444 (debe coincidir con flame_mcp_bridge.py)
+Bridge port: 4444 (must match flame_mcp_bridge.py)
 """
 
 import socket
@@ -26,12 +26,12 @@ BRIDGE_PORT = 4444
 mcp = FastMCP("flame")
 
 
-# ─── Comunicación con el bridge ──────────────────────────────────────────────
+# ─── Bridge communication ─────────────────────────────────────────────────────
 
 def _call_flame(code: str) -> dict:
     """
-    Envía código Python al bridge de Flame via socket TCP.
-    Devuelve el resultado como diccionario.
+    Send Python code to the Flame bridge via TCP socket.
+    Returns the result as a dictionary.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -54,11 +54,11 @@ def _call_flame(code: str) -> dict:
         return {
             'status': 'error',
             'error': (
-                'No se puede conectar a Flame en el puerto 4444.\n'
-                'Verifica que:\n'
-                '  1. Flame esté abierto\n'
-                '  2. flame_mcp_bridge.py esté en /opt/Autodesk/shared/python/\n'
-                '  3. Flame se haya reiniciado después de instalar el bridge'
+                'Cannot connect to Flame on port 4444.\n'
+                'Check that:\n'
+                '  1. Flame is open\n'
+                '  2. flame_mcp_bridge.py is in /opt/Autodesk/shared/python/\n'
+                '  3. Flame was restarted after installing the bridge'
             )
         }
     except Exception as e:
@@ -66,9 +66,9 @@ def _call_flame(code: str) -> dict:
 
 
 def _fmt(result: dict) -> str:
-    """Formatea la respuesta del bridge para presentarla a Claude."""
+    """Format the bridge response for Claude."""
     if result.get('status') == 'error':
-        return f"ERROR:\n{result.get('error', 'Error desconocido')}"
+        return f"ERROR:\n{result.get('error', 'Unknown error')}"
 
     parts = []
     output = result.get('output', '').strip()
@@ -77,22 +77,23 @@ def _fmt(result: dict) -> str:
     if output:
         parts.append(output)
     if return_value:
-        parts.append(f"Valor: {return_value}")
+        parts.append(f"Return value: {return_value}")
 
-    return '\n'.join(parts) if parts else '(ejecutado correctamente, sin salida)'
+    return '\n'.join(parts) if parts else '(executed successfully, no output)'
 
 
-# ─── Herramientas MCP ────────────────────────────────────────────────────────
+# ─── MCP tools ────────────────────────────────────────────────────────────────
 
 @mcp.tool()
-def run_python(code: str) -> str:
+def execute_python(code: str) -> str:
     """
-    Ejecuta código Python arbitrario dentro de Autodesk Flame.
-    Tiene acceso completo al módulo flame y a toda su API Python.
-    Útil para inspeccionar o modificar proyectos, reels, clips, secuencias, etc.
+    Execute arbitrary Python code inside Autodesk Flame.
+    Has full access to the flame module and its entire Python API.
+    Use this to inspect or modify projects, libraries, reels, clips,
+    sequences, batch setups, nodes, and anything else exposed by Flame.
 
-    Ejemplo de uso:
-        run_python("print(flame.project.current_project.name)")
+    Example:
+        execute_python("print(flame.projects.current_project.name)")
     """
     return _fmt(_call_flame(code))
 
@@ -100,15 +101,15 @@ def run_python(code: str) -> str:
 @mcp.tool()
 def get_project_info() -> str:
     """
-    Devuelve información básica del proyecto activo en Flame:
-    nombre, frame rate, resolución y profundidad de bits.
+    Return basic information about the active Flame project:
+    name, frame rate, resolution, and bit depth.
     """
     code = """
-p = flame.project.current_project
-print(f"Nombre: {p.name}")
+p = flame.projects.current_project
+print(f"Name: {p.name}")
 print(f"Frame rate: {p.frame_rate}")
-print(f"Resolución: {p.width}x{p.height}")
-print(f"Profundidad de bits: {p.bit_depth}")
+print(f"Resolution: {p.width}x{p.height}")
+print(f"Bit depth: {p.bit_depth}")
 """
     return _fmt(_call_flame(code))
 
@@ -116,11 +117,11 @@ print(f"Profundidad de bits: {p.bit_depth}")
 @mcp.tool()
 def list_libraries() -> str:
     """
-    Lista todas las librerías del proyecto activo en Flame,
-    con el número de reels que contiene cada una.
+    List all libraries in the active Flame project,
+    including the reel count for each library.
     """
     code = """
-p = flame.project.current_project
+p = flame.projects.current_project
 for lib in p.libraries:
     print(f"  {lib.name}  ({len(lib.reels)} reels)")
 """
@@ -130,22 +131,22 @@ for lib in p.libraries:
 @mcp.tool()
 def list_reels(library_name: str = "") -> str:
     """
-    Lista los reels de una librería. Si no se especifica nombre,
-    muestra los reels de todas las librerías del proyecto.
+    List reels in a library. If no library name is given,
+    shows reels across all libraries in the project.
     """
     if library_name:
         code = f"""
-p = flame.project.current_project
+p = flame.projects.current_project
 lib = next((l for l in p.libraries if l.name == "{library_name}"), None)
 if lib is None:
-    print(f"Librería '{library_name}' no encontrada.")
+    print(f"Library '{library_name}' not found.")
 else:
     for reel in lib.reels:
-        print(f"  {reel.name}  ({len(reel.clips)} clips)")
+        print(f"  {{reel.name}}  ({{len(reel.clips)}} clips)")
 """
     else:
         code = """
-p = flame.project.current_project
+p = flame.projects.current_project
 for lib in p.libraries:
     print(f"[{lib.name}]")
     for reel in lib.reels:
@@ -156,12 +157,12 @@ for lib in p.libraries:
 
 @mcp.tool()
 def get_flame_version() -> str:
-    """Devuelve la versión de Flame en ejecución."""
+    """Return the running Flame version string."""
     code = "print(flame.get_version())"
     return _fmt(_call_flame(code))
 
 
-# ─── Entry point ─────────────────────────────────────────────────────────────
+# ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')

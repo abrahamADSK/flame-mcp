@@ -118,13 +118,13 @@ claude mcp add flame -- "$(pwd)/.venv/bin/python" "$(pwd)/flame_mcp_server.py"
 
 | Tool | Description |
 |------|-------------|
-| `run_python` | Execute arbitrary Python code inside Flame with full API access |
+| `execute_python` | Execute arbitrary Python code inside Flame with full API access |
 | `get_project_info` | Return name, frame rate, resolution and bit depth of the active project |
 | `list_libraries` | List all libraries in the project with reel counts |
 | `list_reels` | List reels in a library, or across all libraries |
 | `get_flame_version` | Return the running Flame version |
 
-The most powerful tool is `run_python` — it lets Claude execute any Python code with full access to the `flame` module, so it can do anything the Flame Python API supports.
+The most powerful tool is `execute_python` — it lets Claude execute any Python code with full access to the `flame` module, so it can do anything the Flame Python API supports.
 
 ---
 

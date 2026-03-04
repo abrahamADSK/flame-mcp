@@ -159,7 +159,7 @@ def _handle_connection(conn):
 
 # ── Quick Console — run Python directly inside Flame ─────────────────────────
 
-def _run_python_in_flame(code):
+def _execute_in_flame(code):
     """Execute Python code directly inside Flame and return (status, output)."""
     import flame
 
@@ -265,7 +265,7 @@ def _show_quick_console(selection):
                 if not code:
                     return
                 self.output.appendPlainText(f">>> {code[:60]}{'...' if len(code) > 60 else ''}")
-                status, result = _run_python_in_flame(code)
+                status, result = _execute_in_flame(code)
                 prefix = "✓" if status == 'ok' else "✗ ERROR"
                 self.output.appendPlainText(f"{prefix}\n{result}\n{'─' * 40}")
 
