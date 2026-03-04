@@ -473,6 +473,10 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_launch_claude,
                 },
                 {
+                    "name": "Reload hook",
+                    "execute": _action_reload_hook,
+                },
+                {
                     "name": "Quick Console...",
                     "execute": _show_quick_console,
                 },
@@ -508,6 +512,38 @@ def _action_restart(selection):
     _stop_bridge()
     time.sleep(0.5)
     _start_bridge()
+
+
+def _action_reload_hook(selection):
+    """Reload this module without restarting Flame."""
+    import importlib
+
+    module_name = None
+    for name, mod in sys.modules.items():
+        try:
+            if hasattr(mod, '__file__') and mod.__file__ and 'flame_mcp_bridge' in mod.__file__:
+                module_name = name
+                break
+        except Exception:
+            pass
+
+    if module_name is None:
+        _log("Reload: module not found in sys.modules")
+        _osascript_alert("MCP Bridge — Reload", "Module not found in sys.modules.\nSee log for details.")
+        return
+
+    try:
+        _log(f"Reload: reloading '{module_name}'")
+        _stop_bridge()
+        importlib.reload(sys.modules[module_name])
+        # start_bridge is called by the reloaded module's globals,
+        # but since we're in the old frame we call it explicitly
+        sys.modules[module_name]._start_bridge()
+        _log("Reload: done — open the menu again to see changes")
+        _osascript_alert("MCP Bridge — Reload", "Hook reloaded successfully.\nOpen the menu again to see any changes.")
+    except Exception as e:
+        _log(f"Reload error: {e}\n{traceback.format_exc()}")
+        _osascript_alert("MCP Bridge — Reload Error", f"{e}\n\nSee log: {LOG_FILE}")
 
 
 def _action_launch_claude(selection):
