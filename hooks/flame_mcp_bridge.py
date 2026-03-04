@@ -45,11 +45,11 @@ def app_initialized(project_name):
 # ── Control del bridge ────────────────────────────────────────────────────────
 
 def _start_bridge():
-    """Arranca el servidor TCP en un hilo de fondo."""
+    """Start the TCP server in a background thread."""
     global _server_thread, _bridge_active
 
     if _bridge_active:
-        print("[FlameMCPBridge] Ya está activo.")
+        print("[FlameMCPBridge] Already active.")
         return
 
     _server_thread = threading.Thread(target=_run_server, daemon=True, name="FlameMCPBridge")
@@ -57,11 +57,11 @@ def _start_bridge():
 
 
 def _stop_bridge():
-    """Detiene el servidor TCP cerrando el socket."""
+    """Stop the TCP server by closing the socket."""
     global _server_socket, _bridge_active
 
     if not _bridge_active:
-        print("[FlameMCPBridge] Ya está inactivo.")
+        print("[FlameMCPBridge] Already inactive.")
         return
 
     if _server_socket:
@@ -71,7 +71,7 @@ def _stop_bridge():
             pass
 
     _bridge_active = False
-    print(f"[FlameMCPBridge] Detenido.")
+    print("[FlameMCPBridge] Stopped.")
 
 
 def _run_server():
@@ -84,12 +84,12 @@ def _run_server():
     try:
         _server_socket.bind((BRIDGE_HOST, BRIDGE_PORT))
     except OSError as e:
-        print(f"[FlameMCPBridge] ERROR al abrir puerto {BRIDGE_PORT}: {e}", file=sys.stderr)
+        print(f"[FlameMCPBridge] ERROR opening port {BRIDGE_PORT}: {e}", file=sys.stderr)
         return
 
     _server_socket.listen(5)
     _bridge_active = True
-    print(f"[FlameMCPBridge] Activo en {BRIDGE_HOST}:{BRIDGE_PORT}")
+    print(f"[FlameMCPBridge] Active on {BRIDGE_HOST}:{BRIDGE_PORT}")
 
     while _bridge_active:
         try:
@@ -161,30 +161,30 @@ def _handle_connection(conn):
 
 def get_main_menu_custom_ui_actions():
     """
-    Registra un submenú 'MCP Bridge' en el menú principal de Flame.
-    Muestra el estado actual del bridge y permite activarlo, desactivarlo
-    y reiniciarlo sin salir de Flame.
+    Registers an 'MCP Bridge' submenu in Flame's main menu bar.
+    Shows the current bridge status and allows starting, stopping,
+    and restarting the bridge without leaving Flame.
     """
-    status = "● Activo" if _bridge_active else "○ Inactivo"
+    status = "● Active" if _bridge_active else "○ Inactive"
 
     return [
         {
             "name": f"MCP Bridge  [{status}]",
             "actions": [
                 {
-                    "name": f"Estado: {status} — puerto {BRIDGE_PORT}",
+                    "name": f"Status: {status} — port {BRIDGE_PORT}",
                     "execute": _action_status,
                 },
                 {
-                    "name": "Activar bridge",
+                    "name": "Start bridge",
                     "execute": _action_start,
                 },
                 {
-                    "name": "Desactivar bridge",
+                    "name": "Stop bridge",
                     "execute": _action_stop,
                 },
                 {
-                    "name": "Reiniciar bridge",
+                    "name": "Restart bridge",
                     "execute": _action_restart,
                 },
             ],
@@ -192,11 +192,11 @@ def get_main_menu_custom_ui_actions():
     ]
 
 
-# ── Acciones del menú ─────────────────────────────────────────────────────────
+# ── Menu actions ──────────────────────────────────────────────────────────────
 
 def _action_status(selection):
-    status = "ACTIVO" if _bridge_active else "INACTIVO"
-    print(f"[FlameMCPBridge] Estado: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
+    status = "ACTIVE" if _bridge_active else "INACTIVE"
+    print(f"[FlameMCPBridge] Status: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
 
 
 def _action_start(selection):
