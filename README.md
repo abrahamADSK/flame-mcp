@@ -75,6 +75,9 @@ sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/
 
 # 4. Register the MCP server with Claude Code
 claude mcp add flame -- "$(pwd)/.venv/bin/python" "$(pwd)/flame_mcp_server.py"
+# Expected output:
+# Added stdio MCP server flame with command: ... to local config
+# File modified: ~/.claude.json [project: ~/Projects/flame-mcp]
 ```
 
 ---
