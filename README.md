@@ -175,12 +175,6 @@ Add `--no-user` to the pip command. This happens when pip is globally configured
 
 ---
 
-## Credits
-
-Inspired by the original concept discussed at [Logik Forums — Flame Claude via MCP](https://forum.logik.tv/t/flame-claude-via-mcp/14139) by **cnoellert** and **philm**.
-
----
-
 ## License
 
 [MIT](LICENSE)
