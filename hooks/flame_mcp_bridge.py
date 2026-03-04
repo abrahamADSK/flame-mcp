@@ -1,19 +1,22 @@
 """
 flame_mcp_bridge.py
 ===================
-Hook de Python para Autodesk Flame que abre un servidor TCP socket.
-Permite ejecutar código Python dentro de Flame desde el exterior.
+Python hook for Autodesk Flame that opens a TCP socket server.
+Allows executing Python code inside Flame from the outside (via MCP server
+or directly from the Quick Console dialog).
 
-Instalación:
+Installation:
     sudo cp flame_mcp_bridge.py /opt/Autodesk/shared/python/
 
-Después reinicia Flame. El bridge se activa automáticamente al iniciar.
+Restart Flame after installing. The bridge activates automatically on startup.
 
-Puerto por defecto: 4444 (localhost únicamente)
+Default port: 4444 (localhost only)
 
-Menú Flame:
-    Se añade un submenú "MCP Bridge" en el menú principal de Flame con
-    opciones para ver el estado, activar, desactivar y reiniciar el bridge.
+Flame menu  (MCP Bridge in main menu bar):
+    Status indicator  — shows Active / Inactive
+    Start / Stop / Restart bridge
+    Quick Console     — run Python directly inside Flame
+    Connection test   — verify the bridge is reachable
 """
 
 import threading
@@ -22,27 +25,25 @@ import json
 import traceback
 import sys
 import io
+import time
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
 
-# Estado global del bridge
+# Global bridge state
 _bridge_active = False
 _server_socket = None
 _server_thread = None
 
 
-# ── Flame hook de inicialización ──────────────────────────────────────────────
+# ── Flame initialisation hook ─────────────────────────────────────────────────
 
 def app_initialized(project_name):
-    """
-    Hook de Flame: llamado automáticamente cuando la aplicación termina
-    de inicializarse. Arranca el servidor socket en un hilo de fondo.
-    """
+    """Called automatically by Flame when the application finishes loading."""
     _start_bridge()
 
 
-# ── Control del bridge ────────────────────────────────────────────────────────
+# ── Bridge control ────────────────────────────────────────────────────────────
 
 def _start_bridge():
     """Start the TCP server in a background thread."""
@@ -75,7 +76,7 @@ def _stop_bridge():
 
 
 def _run_server():
-    """Bucle principal del servidor TCP. Acepta conexiones entrantes."""
+    """Main TCP server loop. Accepts incoming connections."""
     global _server_socket, _bridge_active
 
     _server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -107,12 +108,12 @@ def _run_server():
 
 def _handle_connection(conn):
     """
-    Maneja una conexión entrante:
-    1. Lee el payload JSON con el código Python a ejecutar.
-    2. Ejecuta el código con acceso al módulo flame.
-    3. Devuelve resultado o error en JSON.
+    Handle an incoming connection:
+    1. Read JSON payload containing Python code to execute.
+    2. Execute the code with access to the flame module.
+    3. Return result or error as JSON.
     """
-    import flame  # importado aquí para garantizar acceso al módulo ya cargado
+    import flame
 
     try:
         raw = b""
@@ -149,21 +150,166 @@ def _handle_connection(conn):
 
     except Exception as e:
         try:
-            error_response = json.dumps({'status': 'error', 'error': str(e)}) + "\n"
-            conn.sendall(error_response.encode('utf-8'))
+            conn.sendall((json.dumps({'status': 'error', 'error': str(e)}) + "\n").encode('utf-8'))
         except Exception:
             pass
     finally:
         conn.close()
 
 
-# ── Menú principal de Flame ───────────────────────────────────────────────────
+# ── Quick Console — run Python directly inside Flame ─────────────────────────
+
+def _run_python_in_flame(code):
+    """Execute Python code directly inside Flame and return (status, output)."""
+    import flame
+
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buf
+    local_ns = {'flame': flame}
+    error = None
+
+    try:
+        exec(compile(code, '<quick_console>', 'exec'), local_ns)
+    except Exception:
+        error = traceback.format_exc()
+    finally:
+        sys.stdout = old_stdout
+
+    output = buf.getvalue()
+    if '_result' in local_ns:
+        output += f"\n=> {local_ns['_result']}"
+
+    return ('error' if error else 'ok'), (error or output or '(no output)')
+
+
+def _show_quick_console(selection):
+    """Open the Quick Console dialog — run Python directly inside Flame."""
+    try:
+        from PySide2 import QtWidgets, QtCore, QtGui
+
+        class QuickConsole(QtWidgets.QDialog):
+            def __init__(self):
+                super().__init__()
+                self.setWindowTitle("MCP Bridge — Quick Console")
+                self.setMinimumSize(700, 500)
+                self.setStyleSheet("""
+                    QDialog         { background: #232323; color: #e0e0e0; }
+                    QLabel          { color: #a0a0a0; font-size: 11px; }
+                    QPlainTextEdit  { background: #1a1a1a; color: #e8e8e8;
+                                      font-family: Courier, monospace; font-size: 12px;
+                                      border: 1px solid #444; border-radius: 3px; }
+                    QPushButton     { background: #3a3a3a; color: #e0e0e0;
+                                      border: 1px solid #555; border-radius: 3px;
+                                      padding: 5px 14px; font-size: 11px; }
+                    QPushButton:hover   { background: #505050; }
+                    QPushButton#run_btn { background: #1a5c8a; border-color: #2a7ab8; }
+                    QPushButton#run_btn:hover { background: #2a7ab8; }
+                    QPushButton#clear_btn { background: #3a3a3a; }
+                """)
+
+                layout = QtWidgets.QVBoxLayout(self)
+                layout.setSpacing(8)
+                layout.setContentsMargins(12, 12, 12, 12)
+
+                # Header
+                header = QtWidgets.QLabel("Quick Console  —  Python runs directly inside Flame")
+                header.setStyleSheet("color: #ffffff; font-size: 13px; font-weight: bold;")
+                layout.addWidget(header)
+
+                # Input
+                layout.addWidget(QtWidgets.QLabel("Python code:"))
+                self.input = QtWidgets.QPlainTextEdit()
+                self.input.setPlaceholderText(
+                    "# Example:\n"
+                    "p = flame.projects.current_project\n"
+                    "print(p.name, p.frame_rate)"
+                )
+                self.input.setMinimumHeight(160)
+                layout.addWidget(self.input)
+
+                # Buttons row
+                btn_row = QtWidgets.QHBoxLayout()
+                self.run_btn = QtWidgets.QPushButton("▶  Run")
+                self.run_btn.setObjectName("run_btn")
+                self.run_btn.clicked.connect(self._execute)
+                self.clear_btn = QtWidgets.QPushButton("Clear output")
+                self.clear_btn.setObjectName("clear_btn")
+                self.clear_btn.clicked.connect(self._clear_output)
+                btn_row.addWidget(self.run_btn)
+                btn_row.addWidget(self.clear_btn)
+                btn_row.addStretch()
+                layout.addLayout(btn_row)
+
+                # Output
+                layout.addWidget(QtWidgets.QLabel("Output:"))
+                self.output = QtWidgets.QPlainTextEdit()
+                self.output.setReadOnly(True)
+                self.output.setMinimumHeight(160)
+                layout.addWidget(self.output)
+
+                # Close
+                close_row = QtWidgets.QHBoxLayout()
+                close_row.addStretch()
+                close_btn = QtWidgets.QPushButton("Close")
+                close_btn.clicked.connect(self.accept)
+                close_row.addWidget(close_btn)
+                layout.addLayout(close_row)
+
+                # Shortcut: Ctrl+Enter to run
+                shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
+                shortcut.activated.connect(self._execute)
+
+            def _execute(self):
+                code = self.input.toPlainText().strip()
+                if not code:
+                    return
+                self.output.appendPlainText(f">>> {code[:60]}{'...' if len(code) > 60 else ''}")
+                status, result = _run_python_in_flame(code)
+                prefix = "✓" if status == 'ok' else "✗ ERROR"
+                self.output.appendPlainText(f"{prefix}\n{result}\n{'─' * 40}")
+
+            def _clear_output(self):
+                self.output.clear()
+
+        dlg = QuickConsole()
+        dlg.exec_()
+
+    except ImportError:
+        print("[FlameMCPBridge] PySide2 not available — cannot open Quick Console.")
+    except Exception as e:
+        print(f"[FlameMCPBridge] Quick Console error: {e}")
+
+
+def _show_connection_test(selection):
+    """Test the bridge connection and show result in a simple dialog."""
+    try:
+        from PySide2 import QtWidgets
+
+        if _bridge_active:
+            msg = f"Bridge is ACTIVE\nListening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\nReady to receive commands from Claude Code."
+            icon = QtWidgets.QMessageBox.Information
+        else:
+            msg = f"Bridge is INACTIVE\n\nUse 'Start bridge' to activate it,\nor restart Flame to load it automatically."
+            icon = QtWidgets.QMessageBox.Warning
+
+        box = QtWidgets.QMessageBox()
+        box.setWindowTitle("MCP Bridge — Connection Test")
+        box.setText(msg)
+        box.setIcon(icon)
+        box.exec_()
+
+    except ImportError:
+        status = "ACTIVE" if _bridge_active else "INACTIVE"
+        print(f"[FlameMCPBridge] Connection test: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
+
+
+# ── Flame main menu ───────────────────────────────────────────────────────────
 
 def get_main_menu_custom_ui_actions():
     """
     Registers an 'MCP Bridge' submenu in Flame's main menu bar.
-    Shows the current bridge status and allows starting, stopping,
-    and restarting the bridge without leaving Flame.
+    Shows bridge status and provides controls + Quick Console.
     """
     status = "● Active" if _bridge_active else "○ Inactive"
 
@@ -176,6 +322,10 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_status,
                 },
                 {
+                    "name": "─────────────────",
+                    "execute": lambda s: None,
+                },
+                {
                     "name": "Start bridge",
                     "execute": _action_start,
                 },
@@ -186,6 +336,18 @@ def get_main_menu_custom_ui_actions():
                 {
                     "name": "Restart bridge",
                     "execute": _action_restart,
+                },
+                {
+                    "name": "─────────────────",
+                    "execute": lambda s: None,
+                },
+                {
+                    "name": "Quick Console...",
+                    "execute": _show_quick_console,
+                },
+                {
+                    "name": "Connection test",
+                    "execute": _show_connection_test,
                 },
             ],
         }
@@ -209,6 +371,5 @@ def _action_stop(selection):
 
 def _action_restart(selection):
     _stop_bridge()
-    import time
     time.sleep(0.5)
     _start_bridge()
