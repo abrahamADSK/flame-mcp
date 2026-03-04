@@ -226,158 +226,8 @@ def _import_qt():
     return None, None, None
 
 
-# ── Quick Console — run Python directly inside Flame ─────────────────────────
-
 # Keep references alive so the GC does not destroy open dialogs
 _open_dialogs = []
-
-
-def _execute_in_flame(code):
-    """Execute Python code directly inside Flame and return (status, output)."""
-    import flame
-
-    buf = io.StringIO()
-    old_stdout = sys.stdout
-    sys.stdout = buf
-    local_ns = {'flame': flame}
-    error = None
-
-    try:
-        exec(compile(code, '<quick_console>', 'exec'), local_ns)
-    except Exception:
-        error = traceback.format_exc()
-    finally:
-        sys.stdout = old_stdout
-
-    output = buf.getvalue()
-    if '_result' in local_ns:
-        output += f"\n=> {local_ns['_result']}"
-
-    return ('error' if error else 'ok'), (error or output or '(no output)')
-
-
-def _show_quick_console(selection):
-    """Open the Quick Console dialog — run Python directly inside Flame."""
-    _log("Quick Console: requested")
-
-    # Step 1 — import Qt
-    QtWidgets, QtCore, QtGui = _import_qt()
-    if QtWidgets is None:
-        _log("Quick Console: Qt not available — no PySide2 or PySide6 found")
-        _osascript_alert("MCP Bridge — Quick Console",
-                         f"Qt (PySide2/PySide6) is not available in this Flame environment.\n\nSee log: {LOG_FILE}")
-        return
-    _log("Quick Console: Qt imported OK")
-
-    # Step 2 — check QApplication
-    app = QtWidgets.QApplication.instance()
-    if app is None:
-        _log("Quick Console: QApplication.instance() is None — cannot create Qt widgets")
-        _osascript_alert("MCP Bridge — Quick Console",
-                         "No Qt application found in this Flame environment.\n\n"
-                         f"See log: {LOG_FILE}")
-        return
-    _log(f"Quick Console: QApplication OK — {app}")
-
-    # Step 3 — build and show dialog
-    try:
-        class QuickConsole(QtWidgets.QWidget):
-            def __init__(self):
-                super().__init__()
-                self.setWindowTitle("MCP Bridge — Quick Console")
-                self.setMinimumSize(700, 500)
-                self.setWindowFlags(
-                    QtCore.Qt.Window |
-                    QtCore.Qt.WindowStaysOnTopHint |
-                    QtCore.Qt.WindowCloseButtonHint
-                )
-                self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-                self.setStyleSheet("""
-                    QWidget         { background: #232323; color: #e0e0e0; }
-                    QLabel          { color: #a0a0a0; font-size: 11px; }
-                    QPlainTextEdit  { background: #1a1a1a; color: #e8e8e8;
-                                      font-family: Courier, monospace; font-size: 12px;
-                                      border: 1px solid #444; border-radius: 3px; }
-                    QPushButton     { background: #3a3a3a; color: #e0e0e0;
-                                      border: 1px solid #555; border-radius: 3px;
-                                      padding: 5px 14px; font-size: 11px; }
-                    QPushButton:hover   { background: #505050; }
-                    QPushButton#run_btn { background: #1a5c8a; border-color: #2a7ab8; }
-                    QPushButton#run_btn:hover { background: #2a7ab8; }
-                """)
-
-                layout = QtWidgets.QVBoxLayout(self)
-                layout.setSpacing(8)
-                layout.setContentsMargins(12, 12, 12, 12)
-
-                header = QtWidgets.QLabel("Quick Console  —  Python runs directly inside Flame")
-                header.setStyleSheet("color: #ffffff; font-size: 13px; font-weight: bold;")
-                layout.addWidget(header)
-
-                layout.addWidget(QtWidgets.QLabel("Python code:"))
-                self.input = QtWidgets.QPlainTextEdit()
-                self.input.setPlaceholderText(
-                    "# Example:\n"
-                    "p = flame.projects.current_project\n"
-                    "print(p.name, p.frame_rate)"
-                )
-                self.input.setMinimumHeight(160)
-                layout.addWidget(self.input)
-
-                btn_row = QtWidgets.QHBoxLayout()
-                self.run_btn = QtWidgets.QPushButton("▶  Run")
-                self.run_btn.setObjectName("run_btn")
-                self.run_btn.clicked.connect(self._run)
-                self.clear_btn = QtWidgets.QPushButton("Clear output")
-                self.clear_btn.clicked.connect(self._clear_output)
-                btn_row.addWidget(self.run_btn)
-                btn_row.addWidget(self.clear_btn)
-                btn_row.addStretch()
-                layout.addLayout(btn_row)
-
-                layout.addWidget(QtWidgets.QLabel("Output:"))
-                self.output = QtWidgets.QPlainTextEdit()
-                self.output.setReadOnly(True)
-                self.output.setMinimumHeight(160)
-                layout.addWidget(self.output)
-
-                close_row = QtWidgets.QHBoxLayout()
-                close_row.addStretch()
-                close_btn = QtWidgets.QPushButton("Close")
-                close_btn.clicked.connect(self.close)
-                close_row.addWidget(close_btn)
-                layout.addLayout(close_row)
-
-                # QShortcut is in QtWidgets (PySide2) or QtGui (PySide6)
-                QShortcut = getattr(QtWidgets, 'QShortcut', None) or QtGui.QShortcut
-                shortcut = QShortcut(QtGui.QKeySequence("Ctrl+Return"), self)
-                shortcut.activated.connect(self._run)
-
-            def _run(self):
-                code = self.input.toPlainText().strip()
-                if not code:
-                    return
-                self.output.appendPlainText(f">>> {code[:60]}{'...' if len(code) > 60 else ''}")
-                status, result = _execute_in_flame(code)
-                prefix = "OK" if status == 'ok' else "ERROR"
-                self.output.appendPlainText(f"[{prefix}]\n{result}\n{'-' * 40}")
-
-            def _clear_output(self):
-                self.output.clear()
-
-        _log("Quick Console: building widget")
-        dlg = QuickConsole()
-        _open_dialogs.append(dlg)
-        dlg.destroyed.connect(lambda: _open_dialogs.remove(dlg) if dlg in _open_dialogs else None)
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
-        _log("Quick Console: show() called — window should be visible")
-
-    except Exception as e:
-        _log(f"Quick Console: EXCEPTION — {e}\n{traceback.format_exc()}")
-        _osascript_alert("MCP Bridge — Quick Console Error",
-                         f"{e}\n\nFull trace in: {LOG_FILE}")
 
 
 def _show_connection_test(selection):
@@ -477,10 +327,6 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_reload_hook,
                 },
                 {
-                    "name": "Quick Console...",
-                    "execute": _show_quick_console,
-                },
-                {
                     "name": "Connection test",
                     "execute": _show_connection_test,
                 },
@@ -548,10 +394,9 @@ def _action_reload_hook(selection):
 
 def _action_launch_claude(selection):
     """Open a Terminal window running Claude Code with the flame MCP server."""
-    import os
+    import os, stat
 
     # Locate the flame-mcp project directory
-    # Search common locations: next to the hook, or under ~/Projects/flame-mcp
     candidates = [
         os.path.expanduser('~/Projects/flame-mcp'),
         os.path.expanduser('~/flame-mcp'),
@@ -560,20 +405,30 @@ def _action_launch_claude(selection):
     project_dir = next((p for p in candidates if os.path.isdir(p)), None)
 
     if project_dir:
-        venv_python = os.path.join(project_dir, '.venv', 'bin', 'python')
-        if os.path.isfile(venv_python):
-            cmd = f'cd "{project_dir}" && source .venv/bin/activate && claude'
+        venv_activate = os.path.join(project_dir, '.venv', 'bin', 'activate')
+        if os.path.isfile(venv_activate):
+            launch_cmd = f'cd "{project_dir}" && source .venv/bin/activate && claude'
         else:
-            cmd = f'cd "{project_dir}" && claude'
+            launch_cmd = f'cd "{project_dir}" && claude'
     else:
-        # Fallback: just open claude wherever it is
-        cmd = 'claude'
+        launch_cmd = 'claude'
 
-    _log(f"Launch Claude: running [{cmd}]")
-
+    # Write to a temp shell script to avoid quoting issues in AppleScript
+    script_path = '/tmp/flame_launch_claude.sh'
     try:
-        # Try iTerm2 first, fall back to Terminal.app
-        script = f'''
+        with open(script_path, 'w') as f:
+            f.write('#!/bin/bash\n')
+            f.write(f'{launch_cmd}\n')
+        os.chmod(script_path, stat.S_IRWXU)
+    except Exception as e:
+        _log(f"Launch Claude: could not write script — {e}")
+        _osascript_alert("MCP Bridge — Launch Claude", f"Could not write launch script.\n\n{e}")
+        return
+
+    _log(f"Launch Claude: script written — {launch_cmd}")
+
+    # AppleScript: iTerm2 if running, else Terminal.app
+    applescript = '''
 tell application "System Events"
     set iterm_running to (name of processes) contains "iTerm2"
 end tell
@@ -582,24 +437,25 @@ if iterm_running then
         activate
         tell current window
             create tab with default profile
-            tell current session
-                write text "{cmd}"
+            tell current session of current tab
+                write text "/tmp/flame_launch_claude.sh"
             end tell
         end tell
     end tell
 else
     tell application "Terminal"
         activate
-        do script "{cmd}"
+        do script "/tmp/flame_launch_claude.sh"
     end tell
 end if
 '''
-        subprocess.Popen(['osascript', '-e', script])
+    try:
+        subprocess.Popen(['osascript', '-e', applescript])
         _log("Launch Claude: terminal opened")
     except Exception as e:
         _log(f"Launch Claude error: {e}")
         _osascript_alert("MCP Bridge — Launch Claude",
-                         f"Could not open terminal.\n\nRun manually:\n{cmd}\n\nError: {e}")
+                         f"Could not open terminal.\n\nRun manually:\n{launch_cmd}\n\nError: {e}")
 
 
 def _action_view_log(selection):
