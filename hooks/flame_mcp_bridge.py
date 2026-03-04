@@ -175,6 +175,57 @@ def _log(msg):
         pass
 
 
+# ── Qt import helper ──────────────────────────────────────────────────────────
+
+def _import_qt():
+    """
+    Try to import Qt widgets from PySide2 or PySide6.
+    Flame bundles PySide2 but may not add it to sys.path automatically.
+    Searches /opt/Autodesk/ for the correct site-packages if needed.
+    Returns (QtWidgets, QtCore, QtGui) or (None, None, None).
+    """
+    import glob
+
+    def _try_pyside2():
+        from PySide2 import QtWidgets, QtCore, QtGui
+        return QtWidgets, QtCore, QtGui
+
+    def _try_pyside6():
+        from PySide6 import QtWidgets, QtCore, QtGui
+        return QtWidgets, QtCore, QtGui
+
+    # 1. Standard import (works if Flame already added site-packages to sys.path)
+    for fn in (_try_pyside2, _try_pyside6):
+        try:
+            return fn()
+        except ImportError:
+            pass
+
+    # 2. Search Flame's own Python site-packages under /opt/Autodesk/
+    candidates = sorted(
+        glob.glob('/opt/Autodesk/*/python/lib/python*/site-packages') +
+        glob.glob('/opt/Autodesk/*/lib/python*/site-packages') +
+        glob.glob('/opt/autodesk/*/python/lib/python*/site-packages'),
+        reverse=True  # newest version first
+    )
+    _log(f"Qt search: found {len(candidates)} candidate site-packages paths")
+    for path in candidates:
+        if path not in sys.path:
+            sys.path.insert(0, path)
+            _log(f"Qt search: added {path}")
+
+    for fn in (_try_pyside2, _try_pyside6):
+        try:
+            result = fn()
+            _log(f"Qt search: import succeeded after path search")
+            return result
+        except ImportError:
+            pass
+
+    _log("Qt search: PySide2 and PySide6 both unavailable")
+    return None, None, None
+
+
 # ── Quick Console — run Python directly inside Flame ─────────────────────────
 
 # Keep references alive so the GC does not destroy open dialogs
@@ -209,15 +260,14 @@ def _show_quick_console(selection):
     """Open the Quick Console dialog — run Python directly inside Flame."""
     _log("Quick Console: requested")
 
-    # Step 1 — import PySide2
-    try:
-        from PySide2 import QtWidgets, QtCore, QtGui
-        _log("Quick Console: PySide2 imported OK")
-    except Exception as e:
-        _log(f"Quick Console: PySide2 import FAILED — {e}")
+    # Step 1 — import Qt
+    QtWidgets, QtCore, QtGui = _import_qt()
+    if QtWidgets is None:
+        _log("Quick Console: Qt not available — no PySide2 or PySide6 found")
         _osascript_alert("MCP Bridge — Quick Console",
-                         f"PySide2 is not available in this Flame environment.\n\nError: {e}\n\nSee log: {LOG_FILE}")
+                         f"Qt (PySide2/PySide6) is not available in this Flame environment.\n\nSee log: {LOG_FILE}")
         return
+    _log("Quick Console: Qt imported OK")
 
     # Step 2 — check QApplication
     app = QtWidgets.QApplication.instance()
@@ -346,7 +396,9 @@ def _show_connection_test(selection):
 
     # Try Qt first
     try:
-        from PySide2 import QtWidgets, QtCore
+        QtWidgets, QtCore, _ = _import_qt()
+        if QtWidgets is None:
+            raise ImportError("Qt not available")
         app = QtWidgets.QApplication.instance()
         if app is None:
             raise RuntimeError("QApplication.instance() is None")
@@ -403,10 +455,6 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_status,
                 },
                 {
-                    "name": "─────────────────",
-                    "execute": lambda s: None,
-                },
-                {
                     "name": "Start bridge",
                     "execute": _action_start,
                 },
@@ -419,20 +467,12 @@ def get_main_menu_custom_ui_actions():
                     "execute": _action_restart,
                 },
                 {
-                    "name": "─────────────────",
-                    "execute": lambda s: None,
-                },
-                {
                     "name": "Quick Console...",
                     "execute": _show_quick_console,
                 },
                 {
                     "name": "Connection test",
                     "execute": _show_connection_test,
-                },
-                {
-                    "name": "─────────────────",
-                    "execute": lambda s: None,
                 },
                 {
                     "name": "View log...",
