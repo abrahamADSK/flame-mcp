@@ -439,6 +439,9 @@ def _action_launch_claude(selection):
     _log(f"Launch Claude: script written — {launch_cmd}")
 
     # AppleScript: iTerm2 if running, else Terminal.app
+    # Use "bash /path" explicitly — avoids Terminal.app dropping the leading slash
+    # during oh-my-zsh / shell init when executing a bare path via do script
+    bash_cmd = f'bash {script_path}'
     applescript = f'''
 tell application "System Events"
     set iterm_running to (name of processes) contains "iTerm2"
@@ -449,14 +452,14 @@ if iterm_running then
         tell current window
             create tab with default profile
             tell current session of current tab
-                write text "{script_path}"
+                write text "{bash_cmd}"
             end tell
         end tell
     end tell
 else
     tell application "Terminal"
         activate
-        do script "{script_path}"
+        do script "{bash_cmd}"
     end tell
 end if
 '''
