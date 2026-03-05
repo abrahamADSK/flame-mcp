@@ -302,6 +302,7 @@ class _FlameChat:
         self._Qt = QtWidgets
         self._Core = QtCore
         self._messages = []          # list of {"role": str, "content": str}
+        self._ui_queue = []          # written by bg thread, drained by QTimer in main thread
         self._busy = False
         self._session_tokens = 0     # cumulative tokens this widget session
         self._rate_limited = False   # True if last call hit a rate limit
@@ -379,6 +380,13 @@ class _FlameChat:
         row.addLayout(btns)
         layout.addLayout(row)
 
+        # QTimer drains the UI queue — runs in the main thread every 40 ms.
+        # QTimer.singleShot from background threads does NOT work in PySide2
+        # (background threads have no event loop), so we use this polling approach.
+        self._timer = Core.QTimer()
+        self._timer.timeout.connect(self._flush_ui_queue)
+        self._timer.start(40)
+
         _open_dialogs.append(self._window)
 
     def show(self):
@@ -407,7 +415,7 @@ class _FlameChat:
         self._chat.clear()
         self._session_tokens = 0
         self._rate_limited = False
-        self._Core.QTimer.singleShot(0, lambda: self._set_busy(False))
+        self._ui_queue.append(lambda: self._set_busy(False))
 
     # ── Agent loop (background thread) ───────────────────────────────────────
 
@@ -424,7 +432,7 @@ class _FlameChat:
         Uses the user's existing Claude Code session (Pro/Max) — no API key needed.
         """
         try:
-            self._Core.QTimer.singleShot(0, lambda: (
+            self._ui_queue.append(lambda: (
                 self._status.setStyleSheet(self._STYLE_BUSY),
                 self._status.setText("Thinking…"),
             ))
@@ -518,8 +526,8 @@ class _FlameChat:
             response = self._strip_ansi('\n\n'.join(assistant_parts).strip())
             if response:
                 self._messages.append({"role": "assistant", "content": response})
-                self._Core.QTimer.singleShot(
-                    0, lambda r=response: self._append_bubble("assistant", r))
+                self._ui_queue.append(
+                    lambda r=response: self._append_bubble("assistant", r))
             elif not tool_summaries:
                 err = self._strip_ansi(''.join(stderr_lines).strip())
                 if err:
@@ -533,21 +541,20 @@ class _FlameChat:
             for raw in learn_msgs:
                 clean = self._strip_ansi(raw.strip())
                 if clean:
-                    self._Core.QTimer.singleShot(
-                        0, lambda s=clean: self._append_bubble("tool", s))
+                    self._ui_queue.append(
+                        lambda s=clean: self._append_bubble("tool", s))
 
             if stats_footers:
                 last = self._strip_ansi(stats_footers[-1].strip())
                 if last:
-                    self._Core.QTimer.singleShot(
-                        0, lambda s=last: self._append_bubble("tool", s))
+                    self._ui_queue.append(
+                        lambda s=last: self._append_bubble("tool", s))
 
         except Exception as e:
             err = str(e)
-            self._Core.QTimer.singleShot(
-                0, lambda e=err: self._append_bubble("error", e))
+            self._ui_queue.append(lambda e=err: self._append_bubble("error", e))
         finally:
-            self._Core.QTimer.singleShot(0, lambda: self._set_busy(False))
+            self._ui_queue.append(lambda: self._set_busy(False))
 
     def _handle_stream_event(self, event, assistant_parts, tool_summaries):
         """
@@ -581,7 +588,7 @@ class _FlameChat:
                         'get_flame_version': "🔥  Getting Flame version…",
                     }
                     status = _TOOL_STATUS.get(name, f"⚙️   Running {name}…")
-                    self._Core.QTimer.singleShot(0, lambda s=status: (
+                    self._ui_queue.append(lambda s=status: (
                         self._status.setStyleSheet(self._STYLE_BUSY),
                         self._status.setText(s),
                     ))
@@ -603,8 +610,7 @@ class _FlameChat:
                     warn = ("⚠️  Excepción C++ interna de Flame detectada.\n"
                             "La interfaz puede estar corrupta.\n"
                             "Si ves paneles rotos o líneas curvadas → reinicia Flame.")
-                    self._Core.QTimer.singleShot(
-                        0, lambda w=warn: self._append_bubble("error", w))
+                    self._ui_queue.append(lambda w=warn: self._append_bubble("error", w))
 
                 footer = self._extract_stats_footer(full_text)
                 if footer:
@@ -770,6 +776,14 @@ class _FlameChat:
         return re.sub(r'\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*(\x07|\x1b\\)', '', text)
 
     # ── UI helpers ────────────────────────────────────────────────────────────
+
+    def _flush_ui_queue(self):
+        """Drain UI callbacks queued by background threads. Called by QTimer (main thread)."""
+        while self._ui_queue:
+            try:
+                self._ui_queue.pop(0)()
+            except Exception:
+                pass
 
     def _append_bubble(self, role, content):
         colors = {
