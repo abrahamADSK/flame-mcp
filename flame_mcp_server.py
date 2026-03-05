@@ -98,6 +98,9 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 6. On success, remember the working pattern for future calls in this session.
    On failure, do NOT retry the same approach — try a different method.
+
+7. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
+   This shows the user token usage and RAG savings for the session.
 """
 )
 
@@ -211,7 +214,10 @@ print(f"Frame rate: {p.frame_rate}")
 print(f"Resolution: {p.width}x{p.height}")
 print(f"Bit depth: {p.bit_depth}")
 """
-    return _fmt(_call_flame(code))
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
 
 
 @mcp.tool()
@@ -225,7 +231,10 @@ ws = flame.projects.current_project.current_workspace
 for lib in ws.libraries:
     print(f"  {lib.name}  ({len(lib.reels)} reels)")
 """
-    return _fmt(_call_flame(code))
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
 
 
 @mcp.tool()
@@ -252,14 +261,20 @@ for lib in ws.libraries:
     for reel in lib.reels:
         print(f"  {reel.name}  ({len(reel.clips)} clips)")
 """
-    return _fmt(_call_flame(code))
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
 
 
 @mcp.tool()
 def get_flame_version() -> str:
     """Return the running Flame version string."""
     code = "print(flame.get_version())"
-    return _fmt(_call_flame(code))
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
 
 
 # ─── RAG: documentation search ────────────────────────────────────────────────

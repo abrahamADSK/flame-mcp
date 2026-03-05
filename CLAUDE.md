@@ -35,6 +35,9 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 7. **Use Background Reactor for renders.** Long renders block Flame's UI. Always use
    `render_option="Background Reactor"` unless the user explicitly requests Foreground.
 
+8. **Always call `session_stats` last.** After every response that uses any Flame tool,
+   call `session_stats` as the final tool call to display token usage and RAG savings.
+
 ---
 
 ## Flame Environment
