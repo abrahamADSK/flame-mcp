@@ -13,7 +13,7 @@ import datetime
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
-LOG_FILE  = '/tmp/flame_rag.log'
+LOG_FILE  = os.path.join(ROOT, 'logs', 'flame_rag.log')
 
 
 def _log(msg: str):

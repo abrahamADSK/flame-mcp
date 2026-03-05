@@ -161,7 +161,7 @@ def _handle_connection(conn):
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
-LOG_FILE = '/tmp/flame_mcp_bridge.log'
+LOG_FILE = os.path.expanduser('~/Projects/flame-mcp/logs/flame_mcp_bridge.log')
 
 
 def _log(msg):

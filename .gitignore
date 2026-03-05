@@ -24,8 +24,8 @@ build/
 *.swp
 *.swo
 
-# Logs
-*.log
+# Logs (keep folder, ignore content)
+logs/*.log
 
 # Distribution
 *.tar.gz
