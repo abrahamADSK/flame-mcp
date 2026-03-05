@@ -433,7 +433,7 @@ class _FlameChat:
             cwd = os.path.expanduser('~/Projects/flame-mcp')
 
             proc = subprocess.Popen(
-                [claude_path, '-p', '--output-format', 'stream-json', prompt],
+                [claude_path, '-p', '--verbose', '--output-format', 'stream-json', prompt],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
