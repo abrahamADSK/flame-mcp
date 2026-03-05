@@ -410,10 +410,15 @@ class _FlameChat:
 
             claude_path, env = self._find_claude()
             if not claude_path:
+                # Log all paths searched to help diagnose
+                _log("Chat: claude not found. Searched: " + env.get('PATH', ''))
                 raise RuntimeError(
-                    "claude not found.\n"
-                    "Install Claude Code: npm install -g @anthropic-ai/claude-code\n"
-                    "Then log in: claude login"
+                    "claude CLI not found in PATH.\n\n"
+                    "Check the bridge log (MCP Bridge → View log) for searched paths.\n\n"
+                    "Quick fix — run in Terminal:\n"
+                    "  which claude\n"
+                    "Then paste the full path into ~/Projects/flame-mcp/.env:\n"
+                    "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
             prompt = self._build_prompt()
@@ -452,21 +457,43 @@ class _FlameChat:
     # ── Claude Code subprocess helpers ────────────────────────────────────────
 
     @staticmethod
+    @staticmethod
     def _find_claude():
         """
-        Locate the 'claude' CLI executable and build a suitable environment.
-        Flame's process may not inherit the user's full PATH, so we search
-        common npm global install locations explicitly.
+        Locate the 'claude' CLI and return (path, env).
+
+        Strategy:
+        1. Search common npm/nvm/volta install paths directly.
+        2. If not found, ask the user's login shell ('which claude') — this
+           sources ~/.zprofile / ~/.bash_profile so nvm, fnm, volta etc. are
+           resolved correctly even when Flame's process has a stripped PATH.
         """
         import shutil
+
+        # ── 0. Explicit override via CLAUDE_PATH env var or .env ─────────
+        explicit = os.environ.get('CLAUDE_PATH', '')
+        if not explicit:
+            for candidate in ['~/Projects/flame-mcp/.env', '~/flame-mcp/.env']:
+                p = os.path.expanduser(candidate)
+                if os.path.exists(p):
+                    with open(p) as f:
+                        for line in f:
+                            if line.startswith('CLAUDE_PATH='):
+                                explicit = line.split('=', 1)[1].strip().strip('"\'')
+        if explicit and os.path.isfile(explicit):
+            _log(f"Chat: using CLAUDE_PATH override: {explicit}")
+            return explicit, dict(os.environ)
+
+        # ── 1. Candidate paths ────────────────────────────────────────────
         extra = [
             '/usr/local/bin',
             '/usr/bin',
+            '/opt/homebrew/bin',
             os.path.expanduser('~/.npm-global/bin'),
             os.path.expanduser('~/Library/pnpm'),
             os.path.expanduser('~/.volta/bin'),
+            os.path.expanduser('~/.fnm/aliases/default/bin'),
         ]
-        # Also pick up any nvm-managed node versions
         nvm_base = os.path.expanduser('~/.nvm/versions/node')
         if os.path.isdir(nvm_base):
             for ver in sorted(os.listdir(nvm_base), reverse=True):
@@ -475,7 +502,40 @@ class _FlameChat:
         env = dict(os.environ)
         env['PATH'] = ':'.join(extra + [env.get('PATH', '')])
         found = shutil.which('claude', path=env['PATH'])
-        return found, env
+        if found:
+            return found, env
+
+        # ── 2. Ask the login shell ────────────────────────────────────────
+        # Uses '-l' (login) so it sources ~/.zprofile / ~/.bash_profile
+        # WITHOUT '-i' (interactive) to avoid oh-my-zsh update prompts.
+        shell = os.environ.get('SHELL', '/bin/zsh')
+        try:
+            result = subprocess.run(
+                [shell, '-l', '-c', 'which claude'],
+                capture_output=True, text=True, timeout=10
+            )
+            path = result.stdout.strip()
+            if path and os.path.isfile(path):
+                _log(f"Chat: found claude via login shell at {path}")
+                return path, env
+        except Exception as e:
+            _log(f"Chat: login-shell which failed: {e}")
+
+        # ── 3. Ask npm directly ────────────────────────────────────────────
+        try:
+            result = subprocess.run(
+                [shell, '-l', '-c', 'npm config get prefix'],
+                capture_output=True, text=True, timeout=10
+            )
+            prefix = result.stdout.strip()
+            candidate = os.path.join(prefix, 'bin', 'claude')
+            if prefix and os.path.isfile(candidate):
+                _log(f"Chat: found claude via npm prefix at {candidate}")
+                return candidate, env
+        except Exception as e:
+            _log(f"Chat: npm prefix lookup failed: {e}")
+
+        return None, env
 
     def _build_prompt(self):
         """
