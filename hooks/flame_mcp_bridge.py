@@ -19,6 +19,7 @@ Flame menu  (MCP Bridge in main menu bar):
     Connection test   — verify the bridge is reachable
 """
 
+import os
 import threading
 import socket
 import json
@@ -394,7 +395,7 @@ def _action_reload_hook(selection):
 
 def _action_launch_claude(selection):
     """Open a Terminal window running Claude Code with the flame MCP server."""
-    import os, stat
+    import stat
 
     # Locate the flame-mcp project directory
     candidates = [
