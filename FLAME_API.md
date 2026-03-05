@@ -371,6 +371,53 @@ for i, clip in enumerate(clips):
 
 ---
 
+## Delete / Remove Objects
+
+```python
+# ── flame.delete() — remove any Media Panel object ────────────────────────
+# Works on: clips, reels, folders, libraries, sequences, batch groups
+# Always wrap in a list, even for a single object
+flame.delete(obj)          # delete one object
+flame.delete([obj1, obj2]) # delete multiple at once
+
+# ── Pattern: delete a reel by name ────────────────────────────────────────
+ws  = flame.projects.current_project.current_workspace
+lib = next(l for l in ws.libraries if l.name == "Default Library")
+reel = next(r for r in lib.reels if r.name == "OLD_REEL")
+flame.delete(reel)
+print("Deleted reel")
+
+# ── Pattern: delete multiple reels by name list ────────────────────────────
+ws      = flame.projects.current_project.current_workspace
+lib     = next(l for l in ws.libraries if l.name == "Default Library")
+targets = {"TEST", "TEST2", "DESKTOP_TEST"}
+to_del  = [r for r in lib.reels if r.name in targets]
+flame.delete(to_del)
+print(f"Deleted: {[r.name for r in to_del]}")
+
+# ── Pattern: delete a library by name ─────────────────────────────────────
+ws  = flame.projects.current_project.current_workspace
+lib = next(l for l in ws.libraries if l.name == "OLD_LIB")
+flame.delete(lib)
+print("Deleted library")
+
+# ── Pattern: delete a folder inside a library ─────────────────────────────
+ws     = flame.projects.current_project.current_workspace
+lib    = next(l for l in ws.libraries if l.name == "Default Library")
+folder = next(f for f in lib.folders if f.name == "OLD_FOLDER")
+flame.delete(folder)
+print("Deleted folder")
+
+# ── Pattern: delete all clips in a reel ───────────────────────────────────
+ws   = flame.projects.current_project.current_workspace
+lib  = next(l for l in ws.libraries if l.name == "Default Library")
+reel = next(r for r in lib.reels if r.name == "REEL_NAME")
+flame.delete(list(reel.clips))
+print(f"Cleared {reel.name}")
+```
+
+---
+
 ## Notes & Gotchas
 
 - `flame.projects` and `flame.project` are the same object (`PyProjectSelector`)
