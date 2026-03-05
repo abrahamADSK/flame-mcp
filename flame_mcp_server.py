@@ -557,7 +557,9 @@ def session_stats() -> str:
         f"  Tokens saved (RAG)        : ~{saved}\n"
         f"  Savings vs total          : {pct}\n"
         f"{'─'*32}\n"
-        f"  {'✅ Efficient' if saved > used else '⚠️  Consider using RAG more'}"
+        + (f"  ✅ Efficient — RAG saved more than it cost" if saved > used
+           else f"  ℹ️  No RAG savings this session" if _stats['exec_calls'] == 0
+           else f"  ⚠️  Low RAG usage — call search_flame_docs before execute_python")
     )
 
 

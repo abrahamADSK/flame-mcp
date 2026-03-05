@@ -597,8 +597,14 @@ class _FlameChat:
         Extract the ─────… stats block from a tool result string.
         The MCP server appends this footer to every tool response.
 
+        Some MCP / Claude Code versions deliver tool_result content with
+        literal '\\n' (two chars) instead of real newlines — unescape first.
+
         Returns the footer string, or '' if none found.
         """
+        # Unescape literal \\n that some pipeline stages leave in the text
+        text = text.replace('\\n', '\n')
+
         STATS_MARKERS = ('🔍', '📊', '🧠', '✅ Pattern', '─────')
         if not any(m in text for m in STATS_MARKERS):
             return ''
@@ -871,8 +877,12 @@ def get_main_menu_custom_ui_actions():
                     "execute": _show_connection_test,
                 },
                 {
-                    "name": "View log...",
+                    "name": "View bridge log...",
                     "execute": _action_view_log,
+                },
+                {
+                    "name": "View RAG log...",
+                    "execute": _action_view_rag_log,
                 },
             ],
         }
@@ -997,9 +1007,21 @@ def _action_launch_claude(selection):
 def _action_view_log(selection):
     """Open the bridge log file in TextEdit."""
     try:
-        # Make sure file exists
         open(LOG_FILE, 'a').close()
         subprocess.Popen(['open', '-a', 'TextEdit', LOG_FILE])
         _log("View log: opened in TextEdit")
     except Exception as e:
         _log(f"View log error: {e}")
+
+
+RAG_LOG_FILE = os.path.expanduser('~/Projects/flame-mcp/logs/flame_rag.log')
+
+
+def _action_view_rag_log(selection):
+    """Open the RAG search log file in TextEdit."""
+    try:
+        open(RAG_LOG_FILE, 'a').close()
+        subprocess.Popen(['open', '-a', 'TextEdit', RAG_LOG_FILE])
+        _log("View RAG log: opened in TextEdit")
+    except Exception as e:
+        _log(f"View RAG log error: {e}")
