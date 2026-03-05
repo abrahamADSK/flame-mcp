@@ -66,6 +66,25 @@ _DANGEROUS_PATTERNS = [
         "Use the standard flame module API. Call search_flame_docs for the correct pattern."
     ),
     (
+        r'WireTapServerHandle|WireTapClientHandle|libwiretap|wiretapPythonClient',
+        "Direct access to WireTap C-bindings crashes or destabilises Flame. "
+        "WireTap is already loaded in Flame's process — accessing it directly is unsafe.",
+        "Use the standard flame module API only. Call search_flame_docs for the correct pattern."
+    ),
+    (
+        r'\.createNode\s*\(|\.getNumChildren\s*\(|\.getNodeInfo\s*\(',
+        "WireTap tree-traversal methods (createNode, getNumChildren, getNodeInfo) "
+        "are unreliable from Python hooks and can crash Flame.",
+        "Use the standard flame module API. Call search_flame_docs for the correct pattern."
+    ),
+    (
+        r'\.replace_desktop\s*\(',
+        "ws.replace_desktop() is an internal Flame method that can corrupt the workspace "
+        "state and crash Flame when called from a Python hook.",
+        "To work with desktops use ws.desktop and its reel_groups/reels attributes. "
+        "Call search_flame_docs('desktop reel group') for the correct pattern."
+    ),
+    (
         r'\bdir\s*\(\s*flame\b',
         "Using dir() to discover the Flame API is unsafe and causes speculative/crashing code.",
         "Call search_flame_docs(query) instead — it returns verified, working patterns."

@@ -544,6 +544,17 @@ library.clear()                 # crashes Flame immediately
 desk.clear()                    # crashes Flame immediately
 # ✅ Instead: iterate and flame.delete(item) each child individually
 
+# ❌ CRASH: WireTap C-bindings — destabilise Flame process
+import wiretap                  # crash-prone, never use
+WireTapServerHandle(...)        # direct C-binding, crashes unpredictably
+obj.createNode(...)             # WireTap tree method, unreliable from hooks
+obj.getNumChildren(...)         # WireTap tree method, unreliable from hooks
+# ✅ Instead: use flame module API only
+
+# ❌ CRASH: ws.replace_desktop() — corrupts workspace state
+ws.replace_desktop(new_desktop) # internal method, not safe from Python hooks
+# ✅ Instead: use ws.desktop and its reel_groups / reels attributes directly
+
 # ❌ CRASH: flame.clear_desktop() does not exist
 flame.clear_desktop()           # AttributeError / crash
 # ✅ Instead: see "Clear Desktop" pattern above
@@ -603,6 +614,109 @@ clips_info.sort(key=lambda x: x[0], reverse=True)
 
 # Move clip to another reel
 flame.media_panel.move(clip, destination_reel)
+```
+
+
+# ── Auto-learned: create sequence from all desktop clips using PyTime and overwrite 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+# Collect all clips from all reel groups
+all_clips = []
+for rg in desk.reel_groups:
+    for reel in rg.reels:
+        for c in reel.clips:
+            all_clips.append(c)
+
+# Find target reel (e.g. "Sequences")
+seq_reel = None
+for rg in desk.reel_groups:
+    for reel in rg.reels:
+        if reel.name == 'Sequences':
+            seq_reel = reel
+            break
+
+total_frames = sum(c.duration.frame for c in all_clips)
+
+seq = seq_reel.create_sequence(
+    name="ALL_CLIPS_EDIT",
+    video_tracks=1,
+    width=1920,
+    height=1080,
+    frame_rate="25 fps",
+    start_at="01:00:00:00",
+    duration=total_frames
+)
+
+# PyTime(frame_number) is required — passing int directly raises ArgumentError
+cursor = 0
+for c in all_clips:
+    seq.overwrite(c, flame.PyTime(cursor))
+    cursor += c.duration.frame
+
+print(f"Done: {len(all_clips)} clips, {cursor} frames")
+```
+
+
+# ── Auto-learned: create sequence from clips without gaps using seq.duration.frame as insert position 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+
+# Collect clips from reels
+all_clips = []
+for rg in desktop.reel_groups:
+    for reel in rg.reels:
+        if "CLIP sources" in str(reel.name) or "SELECTION" in str(reel.name):
+            all_clips.extend(reel.clips)
+
+# Get target reel
+seq_reel = None
+for rg in desktop.reel_groups:
+    for reel in rg.reels:
+        if "Sequences" in str(reel.name):
+            seq_reel = reel
+            break
+
+# Create sequence
+seq = seq_reel.create_sequence(
+    name="Edit_v01",
+    width=1920, height=1080,
+    frame_rate="25 fps",
+    start_at="00:00:00:00",
+    duration=1
+)
+
+# Insert clips sequentially without gaps
+# Key: use seq.duration.frame after each overwrite as next insert point
+# Works with mixed fps clips — Flame handles conversion automatically
+current_pos = 0
+for clip in all_clips:
+    seq.overwrite(clip, flame.PyTime(current_pos))
+    current_pos = seq.duration.frame
+
+print(f"Done. {len(all_clips)} clips, duration: {seq.duration}")
+```
+
+
+# ── Auto-learned: delete PySequence from desktop reel ───────────────────
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+for rg in desk.reel_groups:
+    for reel in rg.reels:
+        if "Sequences" in str(reel.name):
+            for s in list(reel.sequences):
+                flame.delete(s)  # works for PySequence despite unordered_map error on first attempt
+                print(f"Deleted sequence: {s.name}")
 ```
 
 ## Notes & Gotchas
