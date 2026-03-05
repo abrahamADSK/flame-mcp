@@ -91,9 +91,9 @@ The Python `flame` module covers most operations. Use Wiretap only when:
 **Works:** ✅ (llamada directa a `flame.batch.render()` crashea Flame ❌)
 
 ```python
-import flame
+import flame, os
 
-result_file = "/tmp/flame_render_result.txt"
+result_file = os.path.expanduser("~/Projects/flame-mcp/logs/flame_render_result.txt")
 
 def do_render():
     try:
@@ -109,5 +109,10 @@ flame.schedule_idle_event(do_render)
 print("Render programado via idle event.")
 ```
 
-Luego leer `/tmp/flame_render_result.txt` con una llamada separada para confirmar.
+Luego leer `~/Projects/flame-mcp/logs/flame_render_result.txt` con una llamada separada para confirmar.
+
+### Substance Noise crashea Flame — 2026-03-05
+**Task:** Crear clip de ruido coloreado con nodo Substance Noise en Batch
+**Works:** ❌ — El nodo Substance Noise conectado a Render crashea Flame al hacer render (incluso via schedule_idle_event). El archivo de resultado nunca se crea.
+**Alternativa pendiente:** usar `Colour Source` + `Gradient` o generar frames externos e importarlos.
 
