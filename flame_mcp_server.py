@@ -126,8 +126,8 @@ def list_libraries() -> str:
     including the reel count for each library.
     """
     code = """
-p = flame.projects.current_project
-for lib in p.libraries:
+ws = flame.projects.current_project.current_workspace
+for lib in ws.libraries:
     print(f"  {lib.name}  ({len(lib.reels)} reels)")
 """
     return _fmt(_call_flame(code))
@@ -141,8 +141,8 @@ def list_reels(library_name: str = "") -> str:
     """
     if library_name:
         code = f"""
-p = flame.projects.current_project
-lib = next((l for l in p.libraries if l.name == "{library_name}"), None)
+ws = flame.projects.current_project.current_workspace
+lib = next((l for l in ws.libraries if l.name == "{library_name}"), None)
 if lib is None:
     print(f"Library '{library_name}' not found.")
 else:
@@ -151,8 +151,8 @@ else:
 """
     else:
         code = """
-p = flame.projects.current_project
-for lib in p.libraries:
+ws = flame.projects.current_project.current_workspace
+for lib in ws.libraries:
     print(f"[{lib.name}]")
     for reel in lib.reels:
         print(f"  {reel.name}  ({len(reel.clips)} clips)")
