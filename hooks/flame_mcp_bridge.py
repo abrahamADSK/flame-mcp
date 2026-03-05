@@ -421,21 +421,6 @@ def _action_launch_claude(selection):
     else:
         launch_cmd = 'claude'
 
-    # Suppress oh-my-zsh auto-update prompt — it intercepts Terminal.app 'do script'
-    # commands sent during shell init, causing 'bash' to become 'ash' (leading char eaten).
-    # DISABLE_AUTO_UPDATE in ~/.zshenv is loaded before .zshrc in every zsh session.
-    # This does NOT disable oh-my-zsh — only the automatic update check.
-    # Users can still update manually with: omz update
-    zshenv_path = os.path.expanduser('~/.zshenv')
-    try:
-        existing = open(zshenv_path).read() if os.path.exists(zshenv_path) else ''
-        if 'DISABLE_AUTO_UPDATE' not in existing:
-            with open(zshenv_path, 'a') as f:
-                f.write('\n# flame-mcp: suppress oh-my-zsh auto-update prompt in automated Terminal launches\nexport DISABLE_AUTO_UPDATE=true\n')
-            _log("Launch Claude: added DISABLE_AUTO_UPDATE=true to ~/.zshenv")
-    except Exception as e:
-        _log(f"Launch Claude: could not update ~/.zshenv — {e}")
-
     # Write to a temp shell script in ~/Library/Caches to avoid /tmp path issues
     # on macOS Sequoia where Terminal.app may drop the leading slash in do script
     cache_dir = os.path.expanduser('~/Library/Caches/flame-mcp')
