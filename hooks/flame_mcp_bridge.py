@@ -289,6 +289,8 @@ class _FlameChat:
         self._messages = []          # list of {"role": str, "content": str}
         self._ui_queue = []          # written by bg thread, drained by QTimer
         self._busy = False
+        self._session_tokens = 0     # cumulative tokens this widget session
+        self._rate_limited = False   # True if last call hit a rate limit
         self._build_ui()
 
     # ── UI ───────────────────────────────────────────────────────────────────
@@ -394,8 +396,9 @@ class _FlameChat:
     def _on_clear(self):
         self._messages.clear()
         self._chat.clear()
-        self._ui_queue.append(
-            lambda: self._status.setText("Ready  ·  Ctrl+Return to send"))
+        self._session_tokens = 0
+        self._rate_limited = False
+        self._ui_queue.append(lambda: self._set_busy(False))
 
     # ── Agent loop (background thread) ───────────────────────────────────────
 
@@ -487,6 +490,16 @@ class _FlameChat:
 
             if _timed_out[0]:
                 raise RuntimeError("Claude timed out (180 s). Try a simpler request.")
+
+            # ── Rate-limit detection ──────────────────────────────────────────
+            # Look for 429 / "rate limit" / "quota" in stderr output
+            _RL_KW = ('rate limit', 'rate_limit', '429',
+                      'too many requests', 'quota exceeded', 'overloaded')
+            stderr_text = ''.join(stderr_lines).lower()
+            if any(k in stderr_text for k in _RL_KW):
+                self._rate_limited = True
+            else:
+                self._rate_limited = False
 
             if not assistant_parts and proc.returncode != 0:
                 err = self._strip_ansi(''.join(stderr_lines).strip())
@@ -585,7 +598,24 @@ class _FlameChat:
                     tool_summaries.append(footer)
 
         elif etype == 'result':
-            # Fallback: if Claude produced no text blocks, use the result summary
+            # ── Token accounting ──────────────────────────────────────────────
+            # The result event carries usage counts (may be top-level or nested
+            # under a 'usage' key depending on Claude Code version).
+            usage   = event.get('usage') or {}
+            in_tok  = usage.get('input_tokens',  event.get('input_tokens',  0)) or 0
+            out_tok = usage.get('output_tokens', event.get('output_tokens', 0)) or 0
+            if in_tok or out_tok:
+                self._session_tokens += in_tok + out_tok
+
+            # ── Rate-limit detection in result event ──────────────────────────
+            if event.get('is_error') or event.get('subtype') == 'error_during_execution':
+                err_text = (event.get('error', '') or event.get('result', '')).lower()
+                _RL_KW = ('rate limit', 'rate_limit', '429',
+                          'too many requests', 'quota exceeded')
+                if any(k in err_text for k in _RL_KW):
+                    self._rate_limited = True
+
+            # ── Fallback: if Claude produced no text blocks, use result summary
             if not assistant_parts:
                 r = event.get('result', '').strip()
                 if r:
@@ -757,10 +787,34 @@ class _FlameChat:
         sb = self._chat.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    # ── Busy / idle styles ────────────────────────────────────────────────────
-    _STYLE_IDLE = "color:#555;font-size:12px;padding:2px 4px;"
-    _STYLE_BUSY = ("color:#f59e0b;font-size:13px;font-weight:bold;"
-                   "padding:2px 4px;")
+    # ── Token warning thresholds ──────────────────────────────────────────────
+    _TOKEN_WARN   = 100_000   # 🟡 caution — approach rate-limit territory
+    _TOKEN_DANGER = 200_000   # 🔴 high — risk of hitting daily/minute limits
+
+    # ── Status-bar styles ─────────────────────────────────────────────────────
+    _STYLE_IDLE   = "color:#555;font-size:12px;padding:2px 4px;"
+    _STYLE_BUSY   = ("color:#f59e0b;font-size:13px;font-weight:bold;"
+                     "padding:2px 4px;")
+    _STYLE_WARN   = "color:#f59e0b;font-size:12px;padding:2px 4px;"
+    _STYLE_DANGER = ("color:#ef4444;font-size:12px;font-weight:bold;"
+                     "padding:2px 4px;")
+
+    def _idle_status_text(self):
+        """Return the status bar text (and style) for the idle state."""
+        if self._rate_limited:
+            return (self._STYLE_DANGER,
+                    "⏱️ Rate limit alcanzado — espera antes del siguiente envío")
+        tok = self._session_tokens
+        if tok >= self._TOKEN_DANGER:
+            return (self._STYLE_DANGER,
+                    f"🔴 {tok // 1000}k tokens esta sesión — considera reiniciar chat")
+        if tok >= self._TOKEN_WARN:
+            return (self._STYLE_WARN,
+                    f"⚠️ {tok // 1000}k tokens esta sesión · Ctrl+Return to send")
+        if tok >= 1000:
+            return (self._STYLE_IDLE,
+                    f"Ready · {tok // 1000}k tokens  ·  Ctrl+Return to send")
+        return (self._STYLE_IDLE, "Ready  ·  Ctrl+Return to send")
 
     def _set_busy(self, busy):
         self._busy = busy
@@ -768,8 +822,9 @@ class _FlameChat:
         if busy:
             self._status.setStyleSheet(self._STYLE_BUSY)
         else:
-            self._status.setStyleSheet(self._STYLE_IDLE)
-            self._status.setText("Ready  ·  Ctrl+Return to send")
+            style, text = self._idle_status_text()
+            self._status.setStyleSheet(style)
+            self._status.setText(text)
 
 
 def _show_connection_test(selection):
