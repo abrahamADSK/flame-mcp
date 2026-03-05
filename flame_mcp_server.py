@@ -47,11 +47,11 @@ def _tok(text: str) -> int:
 def _rating(tokens: int) -> str:
     """Return an emoji rating based on token count for a single call."""
     if tokens < 100:
-        return "🟢 bajo"
+        return "🟢 low"
     elif tokens < 400:
-        return "🟡 medio"
+        return "🟡 medium"
     else:
-        return "🔴 alto"
+        return "🔴 high"
 
 
 def _stats_footer() -> str:
@@ -61,9 +61,9 @@ def _stats_footer() -> str:
     ratio  = f"{saved/(used+saved)*100:.0f}%" if (used + saved) > 0 else "—"
     return (
         f"\n─────────────────────────────\n"
-        f"📊 Sesión · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG\n"
-        f"   Tokens usados  : ~{used}  {_rating(used)}\n"
-        f"   Tokens ahorrados (RAG): ~{saved}  ({ratio} del total)"
+        f"📊 Session · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG\n"
+        f"   Tokens used    : ~{used}  {_rating(used)}\n"
+        f"   Tokens saved (RAG): ~{saved}  ({ratio} of total)"
     )
 
 BRIDGE_HOST = '127.0.0.1'
@@ -192,7 +192,7 @@ def execute_python(code: str) -> str:
     call_rating = _rating(t_in + t_out)
     footer = (
         f"\n─────────────────────────────\n"
-        f"🔥 Esta llamada · ~{t_in + t_out} tokens  {call_rating}"
+        f"🔥 This call · ~{t_in + t_out} tokens  {call_rating}"
         + _stats_footer()
     )
     return _fmt(result) + footer
@@ -294,7 +294,7 @@ def search_flame_docs(query: str) -> str:
         _stats['tokens_saved'] += saved
         footer = (
             f"\n─────────────────────────────\n"
-            f"🔍 RAG · ~{result_tokens} tokens devueltos · ~{saved} ahorrados vs doc completo"
+            f"🔍 RAG · ~{result_tokens} tokens returned · ~{saved} saved vs full doc"
             + _stats_footer()
         )
         return result + footer
@@ -321,18 +321,18 @@ def session_stats() -> str:
     total = used + saved
     pct   = f"{saved/total*100:.0f}%" if total > 0 else "—"
     return (
-        f"📊 Resumen de sesión\n"
+        f"📊 Session summary\n"
         f"{'─'*32}\n"
-        f"  Llamadas execute_python : {_stats['exec_calls']}\n"
-        f"  Llamadas search_flame_docs: {_stats['rag_calls']}\n"
-        f"  Tokens enviados (código)  : ~{_stats['tokens_in']}\n"
-        f"  Tokens recibidos (output) : ~{_stats['tokens_out']}\n"
-        f"  Total tokens usados       : ~{used}  {_rating(used)}\n"
+        f"  execute_python calls      : {_stats['exec_calls']}\n"
+        f"  search_flame_docs calls   : {_stats['rag_calls']}\n"
+        f"  Tokens sent (code)        : ~{_stats['tokens_in']}\n"
+        f"  Tokens received (output)  : ~{_stats['tokens_out']}\n"
+        f"  Total tokens used         : ~{used}  {_rating(used)}\n"
         f"{'─'*32}\n"
-        f"  Tokens ahorrados (RAG)    : ~{saved}\n"
-        f"  Ahorro sobre total        : {pct}\n"
+        f"  Tokens saved (RAG)        : ~{saved}\n"
+        f"  Savings vs total          : {pct}\n"
         f"{'─'*32}\n"
-        f"  {'✅ Eficiente' if saved > used else '⚠️  Considera usar más el RAG'}"
+        f"  {'✅ Efficient' if saved > used else '⚠️  Consider using RAG more'}"
     )
 
 
