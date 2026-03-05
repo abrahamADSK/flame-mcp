@@ -30,6 +30,67 @@ _SERVER_DIR = Path(__file__).parent
 # Make rag/ importable when running from any working directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ─── Safety: known-crasher patterns ──────────────────────────────────────────
+# Each entry: (regex, explanation, safe_alternative)
+_DANGEROUS_PATTERNS = [
+    (
+        r'len\s*\(\s*flame\.projects\s*\)',
+        "flame.projects has no len() — PyProjectSelector is not a list.",
+        "Use flame.projects.current_project.name for the active project, "
+        "or read /opt/Autodesk/project directory to list all projects."
+    ),
+    (
+        r'for\s+\w+\s+in\s+flame\.projects\b',
+        "flame.projects is not iterable — iterating it crashes Flame.",
+        "Use flame.projects.current_project for the active project, "
+        "or os.listdir('/opt/Autodesk/project') to enumerate all projects."
+    ),
+    (
+        r'flame\.projects\s*\[\s*\d',
+        "flame.projects is not subscriptable — indexing it crashes Flame.",
+        "Use flame.projects.current_project to access the current project."
+    ),
+    (
+        r'flame\.projects\.current_project\.libraries\b',
+        "project.libraries returns None — libraries live on the workspace.",
+        "Use: ws = flame.projects.current_project.current_workspace; ws.libraries"
+    ),
+    (
+        r'flame\.batch\.render\s*\(\s*\)',
+        "flame.batch.render() blocks Flame's main thread and can freeze or crash it.",
+        "Use: flame.schedule_idle_event(lambda: flame.batch.render(render_option='Background Reactor'))"
+    ),
+    (
+        r'\bimport\s+wiretap\b',
+        "The wiretap module is crash-prone for general scripting tasks.",
+        "Use the standard flame module API. Call search_flame_docs for the correct pattern."
+    ),
+    (
+        r'\bdir\s*\(\s*flame\b',
+        "Using dir() to discover the Flame API is unsafe and causes speculative/crashing code.",
+        "Call search_flame_docs(query) instead — it returns verified, working patterns."
+    ),
+]
+
+
+def _check_dangerous(code: str):
+    """
+    Scan code for patterns known to crash Flame.
+    Returns a formatted error string if any are found, else None.
+    """
+    hits = []
+    for pattern, reason, alternative in _DANGEROUS_PATTERNS:
+        if re.search(pattern, code):
+            hits.append(f"  • {reason}\n    ✅ Instead: {alternative}")
+    if not hits:
+        return None
+    return (
+        "🛑 Blocked — contains pattern(s) known to crash Flame:\n\n"
+        + "\n\n".join(hits)
+        + "\n\nRevise the code and try again. "
+        "If unsure of the correct approach, call search_flame_docs first."
+    )
+
 # ─── Token tracking ───────────────────────────────────────────────────────────
 
 # Full FLAME_API.md size in tokens (measured once, used as baseline for savings)
@@ -112,7 +173,15 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 7. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
    This shows the user token usage and RAG savings for the session.
 
-8. SELF-IMPROVEMENT — after execute_python succeeds:
+8. NEVER use these patterns — they crash Flame (execute_python will block them):
+   - len(flame.projects) or for x in flame.projects  → PyProjectSelector is not iterable
+   - flame.projects.current_project.libraries         → returns None, use ws.libraries
+   - flame.batch.render()                             → blocks main thread
+   - import wiretap                                   → crash-prone
+   - dir(flame...)                                    → use search_flame_docs instead
+   To list all Flame projects: os.listdir("/opt/Autodesk/project")
+
+9. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern
      was NOT in the docs. Call learn_pattern(description, code) immediately after
      the successful execute_python, BEFORE session_stats.
@@ -202,6 +271,10 @@ def execute_python(code: str) -> str:
     Example:
         execute_python("print(flame.projects.current_project.name)")
     """
+    danger = _check_dangerous(code)
+    if danger:
+        return danger + _stats_footer()
+
     t_in  = _tok(code)
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')

@@ -337,7 +337,38 @@ flame.execute_command("/usr/bin/cmd arg1 arg2", blocking=True, capture_stdout=Tr
 ## Common Patterns
 
 ```python
+# ── Pattern: create reel in existing library (no import) ───────────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+lib  = next(l for l in ws.libraries if l.name == "Default Library")
+reel = lib.create_reel("MY_REEL")
+print(f"Created reel: {reel.name} in {lib.name}")
+
+# ── Pattern: create new library and reel ────────────────────────────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+lib  = ws.create_library("Incoming")
+reel = lib.create_reel("Raw")
+print(f"Created: {lib.name} / {reel.name}")
+
+# ── Pattern: create library + reel + import file ────────────────────────────
+import flame
+ws    = flame.projects.current_project.current_workspace
+lib   = ws.create_library("Incoming")
+reel  = lib.create_reel("Raw")
+clips = flame.import_clips("/path/file.mov", reel)
+print(f"Imported: {[c.name for c in clips]}")
+
+# ── Pattern: list all libraries and their reels ────────────────────────────
+import flame
+ws = flame.projects.current_project.current_workspace
+for lib in ws.libraries:
+    print(f"Library: {lib.name}")
+    for reel in lib.reels:
+        print(f"  Reel: {reel.name} ({len(reel.clips)} clips)")
+
 # ── Pattern: import file to first reel of current desktop ──────────────────
+import flame
 proj  = flame.projects.current_project
 ws    = proj.current_workspace
 desk  = ws.desktop
@@ -346,27 +377,21 @@ reel  = rg.reels[0]
 clips = flame.import_clips("/path/file.mov", reel)
 print(f"Imported: {[c.name for c in clips]}")
 
-# ── Pattern: create library + reel + import ────────────────────────────────
-lib   = ws.create_library("Incoming")
-reel  = lib.create_reel("Raw")
-clips = flame.import_clips("/path/file.mov", reel)
-
-# ── Pattern: list all libraries and their reels ────────────────────────────
-for lib in ws.libraries:
-    print(f"Library: {lib.name}")
-    for reel in lib.reels:
-        print(f"  Reel: {reel.name} ({len(reel.clips)} clips)")
-
 # ── Pattern: get selected clip and print info ──────────────────────────────
+import flame
 clip = flame.media_panel.selected_entries[0]
 print(f"{clip.name} | {clip.duration} | {clip.frame_rate} | {clip.width}x{clip.height}")
 
 # ── Pattern: create batch group from selected clips ────────────────────────
+import flame
+ws    = flame.projects.current_project.current_workspace
+desk  = ws.desktop
 clips = flame.media_panel.selected_entries
-bg    = desk.create_batch_group("New_Shot", duration=len(clips[0].duration) if clips else 100)
+bg    = desk.create_batch_group("New_Shot", duration=100)
 bg.open()
-for i, clip in enumerate(clips):
+for clip in clips:
     flame.batch.import_clip(clip, "Reel 1")
+print(f"Batch group created: {bg.name}")
 ```
 
 ---
@@ -418,14 +443,93 @@ print(f"Cleared {reel.name}")
 
 ---
 
+
+# ── Auto-learned: list all projects via filesystem (flame.projects is not iterable) 
+```python
+import os
+# flame.projects only exposes current_project; no API to list all.
+# Read project dirs from filesystem instead:
+base = "/opt/Autodesk/project"
+projects = [d for d in os.listdir(base) if d != "project.db"]
+for p in sorted(projects):
+    print(p)
+# The currently open project (not stored there) can be found via:
+import flame
+print(f"Current (active): {flame.projects.current_project.name}")
+```
+
+## Projects — list all / switch project
+
+```python
+# ── flame.projects is NOT iterable and has NO len() — do NOT do this ───────
+# WRONG:  len(flame.projects)           → TypeError: PyProjectSelector has no len()
+# WRONG:  for p in flame.projects:      → TypeError: not iterable
+# WRONG:  flame.projects[0]             → TypeError: not subscriptable
+
+# ── Correct: current project only ───────────────────────────────────────────
+import flame
+print(flame.projects.current_project.name)   # active project
+
+# ── Correct: list ALL projects via filesystem ────────────────────────────────
+import os
+base     = "/opt/Autodesk/project"
+projects = sorted(d for d in os.listdir(base)
+                  if os.path.isdir(os.path.join(base, d)) and d != "project.db")
+for p in projects:
+    print(p)
+import flame
+print(f"Currently open: {flame.projects.current_project.name}")
+
+# ── Switch to a different project ────────────────────────────────────────────
+import flame
+flame.projects.open_project("MY_PROJECT_NAME")
+print(f"Switched to: {flame.projects.current_project.name}")
+```
+
+---
+
+## Known Crashers — NEVER use these
+
+These patterns are **confirmed to crash or corrupt** Flame. The execute_python
+tool will block them automatically.
+
+```python
+# ❌ CRASH: PyProjectSelector is not iterable
+len(flame.projects)             # TypeError → do NOT use
+for p in flame.projects: ...    # TypeError → do NOT use
+flame.projects[0]               # TypeError → do NOT use
+
+# ❌ CRASH: project.libraries returns None (use ws.libraries instead)
+flame.projects.current_project.libraries      # None → AttributeError on iteration
+
+# ❌ CRASH: flame.batch.render() blocks Flame's main thread
+flame.batch.render()            # hangs / crashes → use schedule_idle_event
+
+# ❌ CRASH: Wiretap bridge is not safe for general scripting
+import wiretap                  # complex, crash-prone, not needed for normal ops
+node.children                   # Wiretap tree traversal crashes unpredictably
+
+# ❌ BAD PRACTICE: do NOT use dir() to discover the API
+dir(flame.projects)             # never do this — use search_flame_docs instead
+```
+
+**Safe alternatives:**
+- List projects → read `/opt/Autodesk/project` directory (see pattern above)
+- Libraries → `ws = current_workspace; ws.libraries`
+- Renders → `flame.schedule_idle_event(render_fn)`
+
+---
+
 ## Notes & Gotchas
 
-- `flame.projects` and `flame.project` are the same object (`PyProjectSelector`)
+- `flame.projects` and `flame.project` are the same object (`PyProjectSelector`) — NOT iterable
+- Libraries live on the **workspace**, not the project: `ws.libraries` not `project.libraries`
 - `commit()` must be called to persist changes to disk (clips, reels, libraries)
 - `open()` must be called on a Library before accessing its contents if it was closed
 - `PyTime` objects support arithmetic: `t1 + t2`, `t + 10` (frames)
-- All Media Panel objects inherit `get_wiretap_node_id()` from `PyArchiveEntry`
 - `flame.execute_command()` is preferred over `subprocess` inside Flame hooks
 - Node names in Batch are unique — use `get_node("name")` to retrieve them
 - `flame.batch` refers to the **currently open** batch group
 - Rendering can block Flame UI — prefer `render_option="Background Reactor"` for long renders
+- When using `next()` on a list, always provide a default to avoid StopIteration crashes:
+  `next((l for l in ws.libraries if l.name == "X"), None)` — then check for None
