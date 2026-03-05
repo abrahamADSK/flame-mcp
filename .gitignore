@@ -30,3 +30,6 @@ build/
 # Distribution
 *.tar.gz
 *.zip
+
+# RAG vector index (built locally, not committed)
+rag/index/

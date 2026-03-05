@@ -18,7 +18,12 @@ Bridge port: 4444 (must match flame_mcp_bridge.py)
 
 import socket
 import json
+import os
+import sys
 from mcp.server.fastmcp import FastMCP
+
+# Make rag/ importable when running from any working directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
@@ -160,6 +165,42 @@ def get_flame_version() -> str:
     """Return the running Flame version string."""
     code = "print(flame.get_version())"
     return _fmt(_call_flame(code))
+
+
+# ─── RAG: documentation search ────────────────────────────────────────────────
+
+@mcp.tool()
+def search_flame_docs(query: str) -> str:
+    """
+    Search the local Flame API documentation index for content relevant to the query.
+    Uses semantic (vector) search — understands meaning, not just keywords.
+
+    Call this tool BEFORE writing any execute_python code when you are unsure
+    about the correct API method, class name, or pattern to use.
+
+    Examples:
+        search_flame_docs("how to import media into a reel")
+        search_flame_docs("create batch group with reels")
+        search_flame_docs("export clip with preset")
+        search_flame_docs("get selected clips from media panel")
+        search_flame_docs("library reel clip hierarchy")
+
+    Returns the most relevant sections from FLAME_API.md and any other
+    indexed documentation, with relevance scores.
+
+    If the index has not been built yet, returns setup instructions.
+    """
+    try:
+        from rag.search import search
+        return search(query, n_results=3)
+    except Exception as e:
+        return (
+            f"search_flame_docs error: {e}\n\n"
+            "To build the index:\n"
+            "  cd ~/Projects/flame-mcp\n"
+            "  source .venv/bin/activate\n"
+            "  python rag/build_index.py"
+        )
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
