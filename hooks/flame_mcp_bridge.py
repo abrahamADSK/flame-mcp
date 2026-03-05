@@ -421,8 +421,11 @@ def _action_launch_claude(selection):
     else:
         launch_cmd = 'claude'
 
-    # Write to a temp shell script to avoid quoting issues in AppleScript
-    script_path = '/tmp/flame_launch_claude.sh'
+    # Write to a temp shell script in ~/Library/Caches to avoid /tmp path issues
+    # on macOS Sequoia where Terminal.app may drop the leading slash in do script
+    cache_dir = os.path.expanduser('~/Library/Caches/flame-mcp')
+    os.makedirs(cache_dir, exist_ok=True)
+    script_path = os.path.join(cache_dir, 'launch_claude.sh')
     try:
         with open(script_path, 'w') as f:
             f.write('#!/bin/bash\n')
@@ -436,7 +439,7 @@ def _action_launch_claude(selection):
     _log(f"Launch Claude: script written — {launch_cmd}")
 
     # AppleScript: iTerm2 if running, else Terminal.app
-    applescript = '''
+    applescript = f'''
 tell application "System Events"
     set iterm_running to (name of processes) contains "iTerm2"
 end tell
@@ -446,14 +449,14 @@ if iterm_running then
         tell current window
             create tab with default profile
             tell current session of current tab
-                write text "/tmp/flame_launch_claude.sh"
+                write text "{script_path}"
             end tell
         end tell
     end tell
 else
     tell application "Terminal"
         activate
-        do script "/tmp/flame_launch_claude.sh"
+        do script "{script_path}"
     end tell
 end if
 '''
