@@ -102,6 +102,21 @@ _DANGEROUS_PATTERNS = [
         "To clear the desktop, delete individual reels/items using flame.delete(). "
         "See search_flame_docs('clear all reels from reel group') for the correct pattern."
     ),
+    (
+        r'for\s+\w+\s+in\s+list\s*\(\s*\w*\s*\.reels\s*\)\s*:\s*\n\s*flame\s*\.\s*delete',
+        "This loop deletes ALL reels from the reel group — Flame crashes when a "
+        "desktop reel group has zero reels.",
+        "Always keep at least one reel: use reels[:-1] to delete all but the last, "
+        "or filter by name with a 'keep' set. "
+        "See FLAME_API.md 'Clear Desktop' for the confirmed safe pattern."
+    ),
+    (
+        r'flame\s*\.\s*delete\s*\(\s*list\s*\(\s*\w*\s*\.reels\s*\)\s*\)',
+        "flame.delete(list(rg.reels)) deletes ALL reels at once — "
+        "Flame crashes when a desktop reel group has zero reels.",
+        "Always keep at least one reel: flame.delete(list(rg.reels)[:-1]) "
+        "or filter by name. See FLAME_API.md 'Clear Desktop' for the safe pattern."
+    ),
 ]
 
 

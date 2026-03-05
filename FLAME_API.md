@@ -493,25 +493,45 @@ print(f"Switched to: {flame.projects.current_project.name}")
 "Clear desktop" is NOT a Flame API method. To empty a reel group, delete each
 reel individually using `flame.delete()`.
 
+> 🚨 **CRITICAL: A desktop reel group MUST always have at least one reel.**
+> Deleting ALL reels from a desktop reel group crashes Flame immediately.
+> Always keep the last reel — rename it instead of deleting it if you want a clean slate.
+
 ```python
 import flame
 
 ws   = flame.projects.current_project.current_workspace
 desk = ws.desktop
 
-# ── Delete ALL reels from ALL reel groups on the desktop ─────────────────────
+# ── Delete most reels — ALWAYS keep the last one (Flame requires ≥1 reel per group) ──
 for rg in desk.reel_groups:
-    for reel in list(rg.reels):   # list() copy — modifying while iterating is unsafe
+    reels = list(rg.reels)          # snapshot before modifying
+    to_delete = reels[:-1]          # keep the LAST reel — never delete all
+    for reel in to_delete:
         flame.delete(reel)
-print("Desktop cleared.")
+    # Optionally rename the surviving reel to something clean
+    if rg.reels:
+        rg.reels[0].name = "Reel 1"
+print("Desktop cleared (one reel kept per group).")
 
-# ── Delete all reels from ONE specific reel group ────────────────────────────
+# ── Delete specific reels by name from one reel group ────────────────────────
+import flame
+
+ws      = flame.projects.current_project.current_workspace
+desk    = ws.desktop
 rg_name = "Reels"
+keep    = {"Sequences"}   # names to NEVER delete — adjust as needed
+
 for rg in desk.reel_groups:
     if str(rg.name) == rg_name:
-        for reel in list(rg.reels):
+        reels     = list(rg.reels)
+        to_delete = [r for r in reels if str(r.name) not in keep]
+        # Safety: never delete all — keep at least one if all would be removed
+        if len(to_delete) == len(reels):
+            to_delete = to_delete[:-1]
+        for reel in to_delete:
             flame.delete(reel)
-        print(f"Cleared reel group '{rg_name}'")
+        print(f"Deleted {len(to_delete)} reels from '{rg_name}'")
         break
 ```
 
@@ -717,6 +737,90 @@ for rg in desk.reel_groups:
             for s in list(reel.sequences):
                 flame.delete(s)  # works for PySequence despite unordered_map error on first attempt
                 print(f"Deleted sequence: {s.name}")
+```
+
+
+# ── Auto-learned: delete all clips directly in a library (not in reels) ─
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+lib = next(l for l in ws.libraries if l.name == "Default Library")
+
+clips = list(lib.clips)
+names = [str(c.name) for c in clips]
+for clip in clips:
+    flame.delete(clip, confirm=False)
+print(f"Deleted {len(names)} clips: {names}")
+# NOTE: flame.delete() does NOT accept a list — must delete one at a time
+# NOTE: clips can live directly on lib.clips (not inside lib.reels)
+```
+
+
+# ── Auto-learned: access desktop reel groups and reels, delete a reel by name 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+
+# Desktop has reel_groups, not reels directly
+# Each reel_group contains reels
+for rg in desktop.reel_groups:
+    for reel in rg.reels:
+        print(f"{rg.name} -> {reel.name}")
+
+# Delete a specific reel
+rg = next(g for g in desktop.reel_groups if g.name == "Reels")
+reel = next(r for r in rg.reels if r.name == "REEL_NAME")
+flame.delete(reel, confirm=False)
+```
+
+
+# ── Auto-learned: rename reel by setting .name property ─────────────────
+```python
+import flame
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+rg = desk.reel_groups[0]
+reel = next(r for r in rg.reels if r.name == "Reel 1")
+reel.name = "SOURCE_CLIPS"
+print(f"Renamed to: {reel.name}")
+```
+
+
+# ── Auto-learned: create folder in library and import clips into it ─────
+```python
+import flame, os
+
+IMPORT_DIR = "/path/to/files"
+paths = sorted([
+    os.path.join(IMPORT_DIR, f)
+    for f in os.listdir(IMPORT_DIR)
+    if not f.startswith('.')
+])
+
+ws = flame.projects.current_project.current_workspace
+lib = next(l for l in ws.libraries if l.name == "Default Library")
+
+# Create folder (or find existing one)
+folder = lib.create_folder("source")
+# If folder already exists, use: folder = next(f for f in lib.folders if f.name == "source")
+
+result_file = "/tmp/flame_import_result.txt"
+
+def do_import():
+    try:
+        clips = flame.import_clips(paths, folder)
+        msg = f"OK: {[c.name for c in clips]}"
+    except Exception as e:
+        msg = f"ERROR: {e}"
+    with open(result_file, 'w') as f:
+        f.write(msg)
+
+flame.schedule_idle_event(do_import)
+print(f"Importing {len(paths)} files into folder — scheduled.")
+# Then read /tmp/flame_import_result.txt with a separate bridge call to confirm
 ```
 
 ## Notes & Gotchas
