@@ -594,6 +594,17 @@ new_reel = rg.create_reel("CLIP sources")
 print(f"Reel creado: {new_reel.name}")
 ```
 
+
+# ── Auto-learned: get clip duration in frames using PyTime.frame, move clips between reels 
+```python
+# PyTime duration in frames: clip.duration.frame (not int(clip.duration))
+clips_info = [(clip.duration.frame, clip) for clip in source_reel.clips]
+clips_info.sort(key=lambda x: x[0], reverse=True)
+
+# Move clip to another reel
+flame.media_panel.move(clip, destination_reel)
+```
+
 ## Notes & Gotchas
 
 - `flame.projects` and `flame.project` are the same object (`PyProjectSelector`) — NOT iterable
