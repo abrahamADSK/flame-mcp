@@ -25,6 +25,47 @@ from mcp.server.fastmcp import FastMCP
 # Make rag/ importable when running from any working directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ─── Token tracking ───────────────────────────────────────────────────────────
+
+# Full FLAME_API.md size in tokens (measured once, used as baseline for savings)
+_FULL_DOC_TOKENS = 1500
+
+_stats = {
+    'exec_calls':   0,
+    'tokens_in':    0,   # tokens sent to Flame (code)
+    'tokens_out':   0,   # tokens received from Flame (output)
+    'rag_calls':    0,
+    'tokens_saved': 0,   # tokens saved by RAG vs loading full doc
+}
+
+
+def _tok(text: str) -> int:
+    """Rough token estimate: 1 token ≈ 4 characters."""
+    return max(1, len(text) // 4)
+
+
+def _rating(tokens: int) -> str:
+    """Return an emoji rating based on token count for a single call."""
+    if tokens < 100:
+        return "🟢 bajo"
+    elif tokens < 400:
+        return "🟡 medio"
+    else:
+        return "🔴 alto"
+
+
+def _stats_footer() -> str:
+    """Return a compact session stats summary."""
+    used   = _stats['tokens_in'] + _stats['tokens_out']
+    saved  = _stats['tokens_saved']
+    ratio  = f"{saved/(used+saved)*100:.0f}%" if (used + saved) > 0 else "—"
+    return (
+        f"\n─────────────────────────────\n"
+        f"📊 Sesión · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG\n"
+        f"   Tokens usados  : ~{used}  {_rating(used)}\n"
+        f"   Tokens ahorrados (RAG): ~{saved}  ({ratio} del total)"
+    )
+
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
 
@@ -139,7 +180,22 @@ def execute_python(code: str) -> str:
     Example:
         execute_python("print(flame.projects.current_project.name)")
     """
-    return _fmt(_call_flame(code))
+    t_in  = _tok(code)
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    t_out = _tok(output)
+
+    _stats['exec_calls'] += 1
+    _stats['tokens_in']  += t_in
+    _stats['tokens_out'] += t_out
+
+    call_rating = _rating(t_in + t_out)
+    footer = (
+        f"\n─────────────────────────────\n"
+        f"🔥 Esta llamada · ~{t_in + t_out} tokens  {call_rating}"
+        + _stats_footer()
+    )
+    return _fmt(result) + footer
 
 
 @mcp.tool()
@@ -231,7 +287,17 @@ def search_flame_docs(query: str) -> str:
     """
     try:
         from rag.search import search
-        return search(query, n_results=3)
+        result = search(query, n_results=3)
+        result_tokens = _tok(result)
+        saved = max(0, _FULL_DOC_TOKENS - result_tokens)
+        _stats['rag_calls']    += 1
+        _stats['tokens_saved'] += saved
+        footer = (
+            f"\n─────────────────────────────\n"
+            f"🔍 RAG · ~{result_tokens} tokens devueltos · ~{saved} ahorrados vs doc completo"
+            + _stats_footer()
+        )
+        return result + footer
     except Exception as e:
         return (
             f"search_flame_docs error: {e}\n\n"
@@ -240,6 +306,34 @@ def search_flame_docs(query: str) -> str:
             "  source .venv/bin/activate\n"
             "  python rag/build_index.py"
         )
+
+
+# ─── Session stats ────────────────────────────────────────────────────────────
+
+@mcp.tool()
+def session_stats() -> str:
+    """
+    Return a summary of token usage and RAG savings for this session.
+    Call this at any time to see how efficient the current session has been.
+    """
+    used  = _stats['tokens_in'] + _stats['tokens_out']
+    saved = _stats['tokens_saved']
+    total = used + saved
+    pct   = f"{saved/total*100:.0f}%" if total > 0 else "—"
+    return (
+        f"📊 Resumen de sesión\n"
+        f"{'─'*32}\n"
+        f"  Llamadas execute_python : {_stats['exec_calls']}\n"
+        f"  Llamadas search_flame_docs: {_stats['rag_calls']}\n"
+        f"  Tokens enviados (código)  : ~{_stats['tokens_in']}\n"
+        f"  Tokens recibidos (output) : ~{_stats['tokens_out']}\n"
+        f"  Total tokens usados       : ~{used}  {_rating(used)}\n"
+        f"{'─'*32}\n"
+        f"  Tokens ahorrados (RAG)    : ~{saved}\n"
+        f"  Ahorro sobre total        : {pct}\n"
+        f"{'─'*32}\n"
+        f"  {'✅ Eficiente' if saved > used else '⚠️  Considera usar más el RAG'}"
+    )
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
