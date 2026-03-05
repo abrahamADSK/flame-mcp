@@ -28,7 +28,37 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
 
-mcp = FastMCP("flame")
+mcp = FastMCP(
+    "flame",
+    instructions="""
+You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
+
+## MANDATORY WORKFLOW — follow this for every task
+
+1. ALWAYS call search_flame_docs FIRST before writing any execute_python code.
+   Use a short query describing what you need, e.g. "import clip to reel",
+   "create batch group", "get selected clips". This saves tokens and finds
+   the correct API patterns. Only skip this if the task is trivially simple
+   (e.g. print project name).
+
+2. Use the correct object hierarchy:
+   - Libraries → flame.projects.current_project.current_workspace.libraries
+   - Desktop   → flame.projects.current_project.current_workspace.desktop
+   - Never use flame.projects.current_project.libraries (returns None)
+
+3. Never call flame.batch.render() directly — it crashes Flame.
+   Schedule renders via flame.schedule_idle_event(render_fn).
+
+4. Always print output in execute_python — every call must end with print().
+   The result is only visible through stdout capture.
+
+5. Keep code minimal. Flame's Python environment is sensitive to long loops
+   or anything that blocks the main thread.
+
+6. On success, remember the working pattern for future calls in this session.
+   On failure, do NOT retry the same approach — try a different method.
+"""
+)
 
 
 # ─── Bridge communication ─────────────────────────────────────────────────────
@@ -96,6 +126,15 @@ def execute_python(code: str) -> str:
     Has full access to the flame module and its entire Python API.
     Use this to inspect or modify projects, libraries, reels, clips,
     sequences, batch setups, nodes, and anything else exposed by Flame.
+
+    IMPORTANT: Call search_flame_docs BEFORE using this tool whenever you
+    need to look up API methods, class names, or patterns. Do not guess.
+
+    Key rules:
+    - Libraries: use ws = flame.projects.current_project.current_workspace,
+      then ws.libraries  (NOT project.libraries — that returns None)
+    - Renders: never call flame.batch.render() directly, use schedule_idle_event
+    - Always end with print() so the result is visible
 
     Example:
         execute_python("print(flame.projects.current_project.name)")

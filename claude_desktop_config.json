@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "flame": {
+      "command": "/Users/abraham/Projects/flame-mcp/.venv/bin/python",
+      "args": ["/Users/abraham/Projects/flame-mcp/flame_mcp_server.py"],
+      "env": {}
+    }
+  }
+}
