@@ -243,20 +243,30 @@ _open_dialogs = []
 _chat_instance = None  # singleton — keeps widget alive
 
 
-class _EnterCatcher(object):
-    """Qt event filter: sends message on Ctrl+Return in the input field."""
-    def __init__(self, callback, QtCore):
-        self._cb = callback
-        self._Core = QtCore
+def _make_enter_catcher(callback, QtCore):
+    """
+    Factory that returns a QObject-based event filter for Ctrl+Return.
+    The class is built at runtime so it inherits from the correct QtCore.QObject
+    (PySide2 vs PySide6 both require QObject as base for installEventFilter).
+    """
+    class _EnterCatcher(QtCore.QObject):
+        def __init__(self):
+            super().__init__()
+            self._cb = callback
 
-    def eventFilter(self, obj, event):
-        Core = self._Core
-        if (event.type() == Core.QEvent.KeyPress and
-                event.key() == Core.Qt.Key_Return and
-                bool(event.modifiers() & Core.Qt.ControlModifier)):
-            self._cb()
-            return True
-        return False
+        def eventFilter(self, obj, event):
+            # PySide2: QEvent.KeyPress  /  PySide6: QEvent.Type.KeyPress
+            key_press = getattr(QtCore.QEvent, 'Type', QtCore.QEvent).KeyPress
+            # PySide2: Qt.Key_Return / Qt.ControlModifier at QtCore.Qt
+            # PySide6: same path, still works
+            if (event.type() == key_press and
+                    event.key() == QtCore.Qt.Key_Return and
+                    bool(event.modifiers() & QtCore.Qt.ControlModifier)):
+                self._cb()
+                return True
+            return False
+
+    return _EnterCatcher()
 
 
 class _FlameChat:
@@ -348,7 +358,7 @@ class _FlameChat:
             "QTextEdit{background:#252525;color:#e8e8e8;font-size:13px;"
             "border:1px solid #444;border-radius:6px;padding:8px;}")
         # Install Ctrl+Return event filter
-        self._enter_catcher = _EnterCatcher(self._on_send, Core)
+        self._enter_catcher = _make_enter_catcher(self._on_send, Core)
         self._input.installEventFilter(self._enter_catcher)
         row.addWidget(self._input, stretch=1)
 
