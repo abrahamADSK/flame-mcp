@@ -46,12 +46,13 @@ def _get_collection():
         return None
 
 
-def search(query: str, n_results: int = 3) -> str:
+def search(query: str, n_results: int = 3) -> tuple:
     """
     Search the documentation index for content relevant to `query`.
-    Returns the top n_results sections as a single formatted string.
+    Returns (text: str, max_relevance: int) where max_relevance is 0-100.
 
-    If the index has not been built yet, returns an actionable error message.
+    If the index has not been built yet, returns an actionable error message
+    and max_relevance = 0.
     """
     collection = _get_collection()
 
@@ -60,12 +61,13 @@ def search(query: str, n_results: int = 3) -> str:
             "RAG index not found. Build it first:\n"
             "  cd ~/Projects/flame-mcp\n"
             "  source .venv/bin/activate\n"
-            "  python rag/build_index.py"
+            "  python rag/build_index.py",
+            0
         )
 
     count = collection.count()
     if count == 0:
-        return "Index is empty. Run: python rag/build_index.py"
+        return "Index is empty. Run: python rag/build_index.py", 0
 
     _log(f"QUERY: '{query}'")
 
@@ -80,13 +82,16 @@ def search(query: str, n_results: int = 3) -> str:
 
     if not docs:
         _log("  → no results")
-        return "No relevant documentation found for that query."
+        return "No relevant documentation found for that query.", 0
 
     parts = []
+    max_relevance = 0
     for doc, meta, dist in zip(docs, metadatas, distances):
         section   = meta.get('section', '')
         source    = meta.get('source', '')
         relevance = round((1 - dist) * 100)
+        if relevance > max_relevance:
+            max_relevance = relevance
         _log(f"  → [{relevance}%] {source} :: {section}")
         header = f"### [{source}] {section}  (relevance: {relevance}%)"
         parts.append(f"{header}\n\n{doc}")
@@ -94,4 +99,4 @@ def search(query: str, n_results: int = 3) -> str:
     total_chars = sum(len(p) for p in parts)
     _log(f"  → returned {len(parts)} chunks, ~{total_chars} chars (~{total_chars//4} tokens saved vs full doc)")
 
-    return "\n\n---\n\n".join(parts)
+    return "\n\n---\n\n".join(parts), max_relevance

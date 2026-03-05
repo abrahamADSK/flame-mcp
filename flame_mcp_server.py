@@ -19,8 +19,13 @@ Bridge port: 4444 (must match flame_mcp_bridge.py)
 import socket
 import json
 import os
+import re
 import sys
+import subprocess
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+_SERVER_DIR = Path(__file__).parent
 
 # Make rag/ importable when running from any working directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,12 +36,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _FULL_DOC_TOKENS = 1500
 
 _stats = {
-    'exec_calls':   0,
-    'tokens_in':    0,   # tokens sent to Flame (code)
-    'tokens_out':   0,   # tokens received from Flame (output)
-    'rag_calls':    0,
-    'tokens_saved': 0,   # tokens saved by RAG vs loading full doc
+    'exec_calls':      0,
+    'tokens_in':       0,   # tokens sent to Flame (code)
+    'tokens_out':      0,   # tokens received from Flame (output)
+    'rag_calls':       0,
+    'tokens_saved':    0,   # tokens saved by RAG vs loading full doc
+    'patterns_learned': 0,  # auto-learned patterns added to FLAME_API.md
 }
+
+# Tracks the max relevance score of the most recent search_flame_docs call.
+# Used by the LLM to decide whether to call learn_pattern after a success.
+_last_rag_score: int = 100  # default high so we don't nag on first call
 
 
 def _tok(text: str) -> int:
@@ -101,6 +111,15 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 7. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
    This shows the user token usage and RAG savings for the session.
+
+8. SELF-IMPROVEMENT — after execute_python succeeds:
+   - If the preceding search_flame_docs showed max relevance < 60%, the pattern
+     was NOT in the docs. Call learn_pattern(description, code) immediately after
+     the successful execute_python, BEFORE session_stats.
+   - description: short label in English, e.g. "delete folder by name from library"
+   - code: the exact working Python code that just ran
+   - This teaches the system so future sessions find the pattern instantly.
+   - Do NOT call learn_pattern if relevance was >= 60% (already documented).
 """
 )
 
@@ -300,16 +319,28 @@ def search_flame_docs(query: str) -> str:
 
     If the index has not been built yet, returns setup instructions.
     """
+    global _last_rag_score
     try:
         from rag.search import search
-        result = search(query, n_results=3)
+        result, max_score = search(query, n_results=3)
+        _last_rag_score = max_score
         result_tokens = _tok(result)
         saved = max(0, _FULL_DOC_TOKENS - result_tokens)
         _stats['rag_calls']    += 1
         _stats['tokens_saved'] += saved
+
+        # Warn Claude when coverage is low so it knows to call learn_pattern later
+        coverage_note = ""
+        if max_score < 60:
+            coverage_note = (
+                f"\n⚠️  Low RAG coverage (max {max_score}%) — pattern may not be documented. "
+                "If execute_python succeeds, call learn_pattern(description, code) to teach the system."
+            )
+
         footer = (
             f"\n─────────────────────────────\n"
-            f"🔍 RAG · ~{result_tokens} tokens returned · ~{saved} saved vs full doc"
+            f"🔍 RAG · max relevance {max_score}% · ~{result_tokens} tokens · ~{saved} saved vs full doc"
+            f"{coverage_note}"
             + _stats_footer()
         )
         return result + footer
@@ -321,6 +352,74 @@ def search_flame_docs(query: str) -> str:
             "  source .venv/bin/activate\n"
             "  python rag/build_index.py"
         )
+
+
+# ─── Self-improvement: auto-learn new patterns ────────────────────────────────
+
+@mcp.tool()
+def learn_pattern(description: str, code: str) -> str:
+    """
+    Add a new working code pattern to FLAME_API.md and rebuild the RAG index.
+
+    Call this after successfully executing code when search_flame_docs returned
+    max relevance < 60% — meaning the pattern was not in the documentation.
+    The system will learn it so future sessions find it instantly.
+
+    Args:
+        description: Short English label, e.g. "delete folder by name from library"
+        code:        The exact working Python code that just ran successfully.
+    """
+    api_doc = _SERVER_DIR / "FLAME_API.md"
+    build_script = _SERVER_DIR / "rag" / "build_index.py"
+
+    # Normalise code — strip leading/trailing blank lines
+    code = code.strip()
+
+    # Avoid duplicates: check if a very similar description already exists
+    content = api_doc.read_text(encoding='utf-8')
+    safe_desc = re.escape(description[:40])
+    if re.search(safe_desc, content, re.IGNORECASE):
+        return (
+            f"⚠️  Pattern '{description}' already appears to be documented. "
+            "No change made."
+        )
+
+    # Build the new pattern block
+    divider = "─" * 70
+    block = (
+        f"\n# ── Auto-learned: {description} {divider[:max(0,70-len(description)-16)]}\n"
+        f"```python\n{code}\n```\n"
+    )
+
+    # Insert before "## Notes & Gotchas" so it stays in Common Patterns area
+    marker = "## Notes & Gotchas"
+    if marker not in content:
+        # Fallback: append at end of file
+        new_content = content.rstrip() + "\n\n## Auto-learned Patterns\n" + block + "\n"
+    else:
+        new_content = content.replace(marker, block + "\n" + marker, 1)
+
+    api_doc.write_text(new_content, encoding='utf-8')
+    _stats['patterns_learned'] += 1
+
+    # Rebuild RAG index in the background (non-blocking)
+    try:
+        python_exe = sys.executable
+        subprocess.Popen(
+            [python_exe, str(build_script)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        rebuild_status = "RAG index rebuild started in background ✅"
+    except Exception as e:
+        rebuild_status = f"RAG index rebuild failed: {e}"
+
+    return (
+        f"✅ Pattern learned: '{description}'\n"
+        f"   Added to FLAME_API.md\n"
+        f"   {rebuild_status}\n"
+        f"   Total patterns learned this session: {_stats['patterns_learned']}"
+    )
 
 
 # ─── Session stats ────────────────────────────────────────────────────────────
@@ -335,11 +434,14 @@ def session_stats() -> str:
     saved = _stats['tokens_saved']
     total = used + saved
     pct   = f"{saved/total*100:.0f}%" if total > 0 else "—"
+    learned = _stats['patterns_learned']
     return (
         f"📊 Session summary\n"
         f"{'─'*32}\n"
         f"  execute_python calls      : {_stats['exec_calls']}\n"
         f"  search_flame_docs calls   : {_stats['rag_calls']}\n"
+        f"  Patterns learned          : {learned}"
+        + (" 🧠 self-improved!" if learned > 0 else "") + "\n"
         f"  Tokens sent (code)        : ~{_stats['tokens_in']}\n"
         f"  Tokens received (output)  : ~{_stats['tokens_out']}\n"
         f"  Total tokens used         : ~{used}  {_rating(used)}\n"
