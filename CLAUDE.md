@@ -9,9 +9,11 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 
 ## Rules — read before every task
 
-1. **Read FLAME_API.md first.** Before writing any `execute_python` code, read
-   `FLAME_API.md` in this project. It contains the complete API cheatsheet for
-   Flame 2026. Use it as the primary reference — do not guess method names.
+1. **Call `search_flame_docs` first.** Before writing any `execute_python` code,
+   call the `search_flame_docs` MCP tool with a short description of what you need
+   (e.g. `"import clip to reel"`, `"list libraries"`). It returns the relevant API
+   section from the local index (~200 tokens vs 1500 for the full file). Only fall
+   back to reading `FLAME_API.md` directly if the search returns nothing useful.
 
 2. **Check Learned Patterns second.** After reading the API reference, check
    `## Learned Patterns` below. If a matching pattern exists, use it directly.

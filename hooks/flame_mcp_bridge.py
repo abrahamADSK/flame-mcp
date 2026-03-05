@@ -129,6 +129,10 @@ def _handle_connection(conn):
         payload = json.loads(raw.decode('utf-8').strip())
         code = payload.get('code', '')
 
+        # Log first line of code so we can see what's being executed
+        first_line = code.strip().splitlines()[0] if code.strip() else '(empty)'
+        _log(f"EXEC: {first_line[:120]}")
+
         buf = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = buf
@@ -142,16 +146,19 @@ def _handle_connection(conn):
             result['output'] = buf.getvalue()
             if '_result' in local_ns:
                 result['return_value'] = str(local_ns['_result'])
+            _log(f"  → ok  output: {buf.getvalue()[:80].strip()!r}")
         except Exception:
             result['status'] = 'error'
             result['error'] = traceback.format_exc()
             result['output'] = buf.getvalue()
+            _log(f"  → ERROR: {traceback.format_exc().splitlines()[-1][:120]}")
         finally:
             sys.stdout = old_stdout
 
         conn.sendall((json.dumps(result) + "\n").encode('utf-8'))
 
     except Exception as e:
+        _log(f"CONNECTION ERROR: {e}")
         try:
             conn.sendall((json.dumps({'status': 'error', 'error': str(e)}) + "\n").encode('utf-8'))
         except Exception:
