@@ -33,17 +33,70 @@ import datetime
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
 
+# Crash recovery: written before each exec, cleared after success.
+# If Flame crashes mid-exec, this file will contain the offending code
+# on the next Flame startup so the chat widget can show a warning.
+CRASH_RECOVERY_FILE = os.path.expanduser(
+    '~/Projects/flame-mcp/logs/crash_recovery.json')
+
 # Global bridge state
 _bridge_active = False
 _server_socket = None
 _server_thread = None
+_last_crash_info = None   # set at startup if a crash was detected
 
 
 # ── Flame initialisation hook ─────────────────────────────────────────────────
 
 def app_initialized(project_name):
     """Called automatically by Flame when the application finishes loading."""
+    _check_crash_recovery()
     _start_bridge()
+
+
+# ── Crash recovery ────────────────────────────────────────────────────────────
+
+def _check_crash_recovery():
+    """
+    Called at Flame startup. If crash_recovery.json exists with status='running',
+    Flame crashed during the previous session while executing Python code.
+    Save the info so the chat widget can display it.
+    """
+    global _last_crash_info
+    try:
+        if not os.path.exists(CRASH_RECOVERY_FILE):
+            return
+        with open(CRASH_RECOVERY_FILE) as f:
+            data = json.load(f)
+        if data.get('status') == 'running':
+            _last_crash_info = data
+            _log("⚠️  CRASH RECOVERY: Flame crashed during previous session.")
+            _log(f"   Last code executed: {data.get('code','')[:200].strip()}")
+    except Exception as e:
+        _log(f"Crash recovery check failed: {e}")
+
+
+def _write_crash_recovery(code):
+    """Write code to crash recovery file before execution."""
+    try:
+        os.makedirs(os.path.dirname(CRASH_RECOVERY_FILE), exist_ok=True)
+        with open(CRASH_RECOVERY_FILE, 'w') as f:
+            json.dump({
+                'status':    'running',
+                'timestamp': datetime.datetime.now().isoformat(),
+                'code':      code,
+            }, f)
+    except Exception:
+        pass
+
+
+def _clear_crash_recovery():
+    """Mark last exec as successful — no crash occurred."""
+    try:
+        with open(CRASH_RECOVERY_FILE, 'w') as f:
+            json.dump({'status': 'ok'}, f)
+    except Exception:
+        pass
 
 
 # ── Bridge control ────────────────────────────────────────────────────────────
@@ -141,7 +194,9 @@ def _handle_connection(conn):
         result = {}
 
         try:
+            _write_crash_recovery(code)   # record before exec — cleared on success
             exec(compile(code, '<flame_mcp>', 'exec'), local_ns)
+            _clear_crash_recovery()       # exec completed — no crash
             result['status'] = 'ok'
             result['output'] = buf.getvalue()
             if '_result' in local_ns:
@@ -1025,6 +1080,21 @@ def _action_open_chat(selection):
             _chat_instance = _FlameChat()
         _chat_instance.show()
         _log("Chat widget opened")
+        # If a crash was detected at startup, show recovery info in chat
+        if _last_crash_info:
+            code_preview = _last_crash_info.get('code', '').strip()[:600]
+            ts = _last_crash_info.get('timestamp', 'unknown time')
+            msg = (
+                "💥 Flame crasheó en la sesión anterior\n"
+                f"Hora del crash: {ts}\n\n"
+                "Último código ejecutado antes del crash:\n"
+                "─────────────────────────────────────\n"
+                f"{code_preview}\n"
+                "─────────────────────────────────────\n"
+                "Puedes preguntar: '¿Por qué crasheó este código y cómo lo arreglo?'"
+            )
+            _chat_instance._ui_queue.append(
+                lambda m=msg: _chat_instance._append_bubble("error", m))
     except Exception as e:
         _log(f"Chat widget error: {e}\n{traceback.format_exc()}")
         _osascript_alert("MCP Bridge — Chat Error", str(e))

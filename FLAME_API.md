@@ -582,6 +582,62 @@ else:
 
 ---
 
+## Timeline / Sequence Editing — NOT supported via Python API
+
+> 🚫 **Flame's Python API has NO public methods for timeline editing.**
+> Operations like removing gaps, ripple delete, trimming segments, moving clips
+> on the timeline — **none of these exist in the Python API**. Attempting them
+> crashes Flame.
+
+The following timeline properties exist but are **read-only** — writing to them
+or calling methods on their children crashes Flame:
+
+```python
+seq.versions          # → [PyVersion]  (read-only inspection only)
+ver.tracks            # → NoneType in Flame 2026 — DO NOT ACCESS
+track.segments        # → [PySegment]  (read-only)
+seg.record_in         # → PyTime       (read-only)
+seg.record_out        # → PyTime       (read-only)
+seg.source_in         # → PyTime       (read-only)
+
+# ❌ CRASH: these methods do NOT exist or crash Flame
+seg.delete()          # AttributeError / crash
+track.remove_gap()    # does not exist
+track.ripple()        # does not exist
+flame.timeline.delete_gap()   # does not exist
+```
+
+**What you CAN do with sequences:**
+
+```python
+# ✅ Inspect sequence structure (read-only)
+import flame
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+for rg in desk.reel_groups:
+    for reel in rg.reels:
+        for seq in reel.sequences:
+            print(f"Seq: {str(seq.name)}, duration: {seq.duration.frame}")
+            for ver in seq.versions:
+                for track in ver.tracks:
+                    for seg in track.segments:
+                        print(f"  seg type={seg.type} "
+                              f"rec_in={seg.record_in} rec_out={seg.record_out}")
+
+# ✅ Create a new sequence (does NOT edit existing)
+rg.create_sequence("NEW_SEQ")
+
+# ✅ Duplicate a sequence (then manually edit via Flame UI)
+flame.duplicate(seq)
+```
+
+**For gap removal — use Flame UI:**
+- Select the gap in the timeline
+- Press `Delete` or use the Timeline menu → Remove Gap
+- The Python API cannot automate this safely
+
+---
+
 ## Known Crashers — NEVER use these
 
 These patterns are **confirmed to crash or corrupt** Flame. The execute_python
@@ -883,6 +939,63 @@ for rg in desk.reel_groups:
             deleted.append(name)
 
 print(f"Deleted: {deleted}")
+```
+
+
+# ── Auto-learned: create sequence from clips in reel using overwrite with PyTime cursor 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+
+# Find source reel and sequence reel
+src_reel = None
+seq_reel = None
+for rg in desktop.reel_groups:
+    for r in rg.reels:
+        name = str(r.name).strip("'\"")
+        if name == "SOURCE_MEDIA":
+            src_reel = r
+        elif name == "Sequences":
+            seq_reel = r
+
+all_clips = list(src_reel.clips)
+total_frames = sum(c.duration.frame for c in all_clips)
+
+# Create sequence
+seq = seq_reel.create_sequence(
+    name="SEQ_MASTER",
+    width=3840,
+    height=2160,
+    frame_rate="25 fps",
+    start_at="01:00:00:00",
+    duration=total_frames
+)
+
+# Place each clip back-to-back using PyTime cursor
+cursor = 0
+for c in all_clips:
+    seq.overwrite(c, flame.PyTime(cursor))
+    cursor += c.duration.frame
+
+print(f"Done: {len(all_clips)} clips placed, {cursor} total frames")
+```
+
+
+# ── Auto-learned: copy desktop reel group to library using flame.media_panel.copy 
+```python
+import flame
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+lib = next((l for l in ws.libraries if str(l.name).strip("'") == "Default Library"), None)
+
+rg = list(desk.reel_groups)[0]
+result = flame.media_panel.copy([rg], lib)
+print(f"Result: {result}")
+# Verifying: lib now has reel_groups with the copied content
+# lib.reel_groups → copied reel group with reels
+# Sequences reel: use r.sequences (not r.clips) to access sequences
 ```
 
 ## Notes & Gotchas
