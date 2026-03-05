@@ -488,6 +488,39 @@ print(f"Switched to: {flame.projects.current_project.name}")
 
 ---
 
+## Clear Desktop / Empty All Reels from Reel Group
+
+"Clear desktop" is NOT a Flame API method. To empty a reel group, delete each
+reel individually using `flame.delete()`.
+
+```python
+import flame
+
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+# ── Delete ALL reels from ALL reel groups on the desktop ─────────────────────
+for rg in desk.reel_groups:
+    for reel in list(rg.reels):   # list() copy — modifying while iterating is unsafe
+        flame.delete(reel)
+print("Desktop cleared.")
+
+# ── Delete all reels from ONE specific reel group ────────────────────────────
+rg_name = "Reels"
+for rg in desk.reel_groups:
+    if str(rg.name) == rg_name:
+        for reel in list(rg.reels):
+            flame.delete(reel)
+        print(f"Cleared reel group '{rg_name}'")
+        break
+```
+
+> ⚠️  **NEVER call `.clear()` on any Flame object** (PyReelGroup, PyLibrary,
+> PyReel, PyDesktop …).  It is a raw C-level destructor that crashes Flame
+> immediately.  Always use `flame.delete(item)` on individual items instead.
+
+---
+
 ## Known Crashers — NEVER use these
 
 These patterns are **confirmed to crash or corrupt** Flame. The execute_python
@@ -505,9 +538,18 @@ flame.projects.current_project.libraries      # None → AttributeError on itera
 # ❌ CRASH: flame.batch.render() blocks Flame's main thread
 flame.batch.render()            # hangs / crashes → use schedule_idle_event
 
+# ❌ CRASH: .clear() on any Flame object — raw C-level destructor
+reel_group.clear()              # crashes Flame immediately
+library.clear()                 # crashes Flame immediately
+desk.clear()                    # crashes Flame immediately
+# ✅ Instead: iterate and flame.delete(item) each child individually
+
+# ❌ CRASH: flame.clear_desktop() does not exist
+flame.clear_desktop()           # AttributeError / crash
+# ✅ Instead: see "Clear Desktop" pattern above
+
 # ❌ CRASH: Wiretap bridge is not safe for general scripting
 import wiretap                  # complex, crash-prone, not needed for normal ops
-node.children                   # Wiretap tree traversal crashes unpredictably
 
 # ❌ BAD PRACTICE: do NOT use dir() to discover the API
 dir(flame.projects)             # never do this — use search_flame_docs instead
@@ -517,6 +559,7 @@ dir(flame.projects)             # never do this — use search_flame_docs instea
 - List projects → read `/opt/Autodesk/project` directory (see pattern above)
 - Libraries → `ws = current_workspace; ws.libraries`
 - Renders → `flame.schedule_idle_event(render_fn)`
+- Clear desktop → see "Clear Desktop / Empty All Reels" pattern above
 
 ---
 

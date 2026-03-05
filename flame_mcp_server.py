@@ -70,6 +70,19 @@ _DANGEROUS_PATTERNS = [
         "Using dir() to discover the Flame API is unsafe and causes speculative/crashing code.",
         "Call search_flame_docs(query) instead — it returns verified, working patterns."
     ),
+    (
+        r'\.\s*clear\s*\(\s*\)',
+        "Calling .clear() on Flame objects (PyReelGroup, PyLibrary, PyReel, etc.) "
+        "crashes Flame — it is a raw C-level destructor, not a public API.",
+        "To empty a container, iterate its children and call flame.delete(item) on each one. "
+        "See FLAME_API.md §Delete / Remove Objects for the correct pattern."
+    ),
+    (
+        r'flame\s*\.\s*clear_desktop\s*\(',
+        "flame.clear_desktop() does not exist in the public Flame Python API.",
+        "To clear the desktop, delete individual reels/items using flame.delete(). "
+        "See search_flame_docs('clear all reels from reel group') for the correct pattern."
+    ),
 ]
 
 
