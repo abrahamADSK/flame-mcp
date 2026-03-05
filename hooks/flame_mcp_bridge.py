@@ -318,7 +318,8 @@ class _FlameChat:
         layout.addWidget(self._chat, stretch=1)
 
         self._status = Qt.QLabel("Ready  ·  Ctrl+Return to send")
-        self._status.setStyleSheet("color:#555;font-size:11px;")
+        self._status.setStyleSheet(
+            "color:#555;font-size:12px;padding:2px 4px;")
         layout.addWidget(self._status)
 
         row = Qt.QHBoxLayout()
@@ -411,7 +412,10 @@ class _FlameChat:
         Uses the user's existing Claude Code session (Pro/Max) — no API key needed.
         """
         try:
-            self._ui_queue.append(lambda: self._status.setText("Thinking…"))
+            self._ui_queue.append(lambda: (
+                self._status.setStyleSheet(self._STYLE_BUSY),
+                self._status.setText("Thinking…"),
+            ))
 
             claude_path, env = self._find_claude()
             if not claude_path:
@@ -500,11 +504,26 @@ class _FlameChat:
                     raise RuntimeError(err)
 
             # ── Display tool stats / learn_pattern confirmations ─────────────
-            for raw_summary in tool_summaries:
-                clean = self._strip_ansi(raw_summary.strip())
+            # Separate learn_pattern confirmations (🧠 / ✅ Pattern) from
+            # session-stats footers (📊 / 🔍).  Always show all learn messages
+            # (they are important events), but show only the LAST stats footer
+            # — it contains the cumulative session totals, so showing one is
+            # enough and avoids repeating the same numbers for every tool call.
+            learn_msgs   = [s for s in tool_summaries if '✅ Pattern' in s or
+                            ('🧠' in s and '📊' not in s)]
+            stats_footers = [s for s in tool_summaries if s not in learn_msgs]
+
+            for raw in learn_msgs:
+                clean = self._strip_ansi(raw.strip())
                 if clean:
                     self._ui_queue.append(
                         lambda s=clean: self._append_bubble("tool", s))
+
+            if stats_footers:
+                last = self._strip_ansi(stats_footers[-1].strip())
+                if last:
+                    self._ui_queue.append(
+                        lambda s=last: self._append_bubble("tool", s))
 
         except Exception as e:
             err = str(e)
@@ -544,7 +563,10 @@ class _FlameChat:
                         'get_flame_version': "🔥  Getting Flame version…",
                     }
                     status = _TOOL_STATUS.get(name, f"⚙️   Running {name}…")
-                    self._ui_queue.append(lambda s=status: self._status.setText(s))
+                    self._ui_queue.append(lambda s=status: (
+                        self._status.setStyleSheet(self._STYLE_BUSY),
+                        self._status.setText(s),
+                    ))
 
         elif etype == 'user':
             for block in event.get('message', {}).get('content', []):
@@ -729,10 +751,18 @@ class _FlameChat:
         sb = self._chat.verticalScrollBar()
         sb.setValue(sb.maximum())
 
+    # ── Busy / idle styles ────────────────────────────────────────────────────
+    _STYLE_IDLE = "color:#555;font-size:12px;padding:2px 4px;"
+    _STYLE_BUSY = ("color:#f59e0b;font-size:13px;font-weight:bold;"
+                   "padding:2px 4px;")
+
     def _set_busy(self, busy):
         self._busy = busy
         self._send_btn.setEnabled(not busy)
-        if not busy:
+        if busy:
+            self._status.setStyleSheet(self._STYLE_BUSY)
+        else:
+            self._status.setStyleSheet(self._STYLE_IDLE)
             self._status.setText("Ready  ·  Ctrl+Return to send")
 
 

@@ -2,6 +2,12 @@
 
 > Control Autodesk Flame with natural language using Claude and the Model Context Protocol (MCP).
 
+> [!WARNING]
+> **Experimental project — use at your own risk.**
+> This is an independent, unofficial experiment created with [Claude Code](https://claude.com/claude-code). It is **not** affiliated with, endorsed by, or officially supported by Autodesk in any way. The Flame name and trademarks belong to Autodesk, Inc.
+>
+> Executing AI-generated code inside a live Flame session carries real risks: **unexpected crashes, loss of unsaved work, unintended modifications to projects, sequences, or media.** Always work on a duplicate or test project. Never run this on production material without a full backup. The author(s) accept no responsibility for data loss, corruption, or any other damage resulting from its use.
+
 `flame-mcp` connects [Claude](https://claude.ai) to [Autodesk Flame](https://www.autodesk.com/products/flame) via a lightweight Python bridge. Type what you want to do in plain language — Claude translates it into Flame API calls and executes them live.
 
 ```
