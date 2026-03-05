@@ -117,6 +117,21 @@ _DANGEROUS_PATTERNS = [
         "Always keep at least one reel: flame.delete(list(rg.reels)[:-1]) "
         "or filter by name. See FLAME_API.md 'Clear Desktop' for the safe pattern."
     ),
+    (
+        r'if\s+\w+\.name\s*[=!]=\s*["\']|\.name\s+in\s+\{|\.name\s+not\s+in\s+\{',
+        "Flame .name attributes return PyAttribute objects, not strings. "
+        "Direct comparison with == or 'in' always fails silently (returns []).",
+        "Always wrap with str(): str(reel.name) == 'Reel 1', "
+        "or str(reel.name) in {'Reel 1', 'Reel 2'}. "
+        "See FLAME_API.md 'PyAttribute' section."
+    ),
+    (
+        r'next\s*\(\s*\w+\s+for\s+\w+\s+in\s+\w+\.(?:reels|clips|libraries|reel_groups|folders)\b(?!\s*,)',
+        "next() without a default raises StopIteration if no item matches, "
+        "leaving Flame in an incomplete state.",
+        "Always provide a default: next((r for r in rg.reels if ...), None) "
+        "and check for None before using the result."
+    ),
 ]
 
 

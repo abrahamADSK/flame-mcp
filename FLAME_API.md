@@ -406,19 +406,25 @@ flame.delete(obj)          # delete one object
 flame.delete([obj1, obj2]) # delete multiple at once
 
 # ── Pattern: delete a reel by name ────────────────────────────────────────
-ws  = flame.projects.current_project.current_workspace
-lib = next(l for l in ws.libraries if l.name == "Default Library")
-reel = next(r for r in lib.reels if r.name == "OLD_REEL")
-flame.delete(reel)
-print("Deleted reel")
+# NOTE: .name is PyAttribute — use str() and next(..., None) to avoid StopIteration
+ws   = flame.projects.current_project.current_workspace
+lib  = next(l for l in ws.libraries if str(l.name) == "Default Library")
+reel = next((r for r in lib.reels if str(r.name) == "OLD_REEL"), None)
+if reel is None:
+    print("Reel not found")
+else:
+    flame.delete(reel)
+    print("Deleted reel")
 
 # ── Pattern: delete multiple reels by name list ────────────────────────────
+# NOTE: reel.name is PyAttribute — ALWAYS use str() for comparisons
 ws      = flame.projects.current_project.current_workspace
 lib     = next(l for l in ws.libraries if l.name == "Default Library")
 targets = {"TEST", "TEST2", "DESKTOP_TEST"}
-to_del  = [r for r in lib.reels if r.name in targets]
+to_del  = [r for r in lib.reels if str(r.name) in targets]
+names   = [str(r.name) for r in to_del]   # collect BEFORE deleting
 flame.delete(to_del)
-print(f"Deleted: {[r.name for r in to_del]}")
+print(f"Deleted: {names}")
 
 # ── Pattern: delete a library by name ─────────────────────────────────────
 ws  = flame.projects.current_project.current_workspace
@@ -538,6 +544,41 @@ for rg in desk.reel_groups:
 > ⚠️  **NEVER call `.clear()` on any Flame object** (PyReelGroup, PyLibrary,
 > PyReel, PyDesktop …).  It is a raw C-level destructor that crashes Flame
 > immediately.  Always use `flame.delete(item)` on individual items instead.
+
+---
+
+## PyAttribute — reel.name, clip.name, rg.name are NOT strings
+
+> 🚨 **Critical gotcha**: All `.name` attributes in Flame return a `PyAttribute`
+> object, NOT a Python `str`. Direct comparison with `==` always fails silently.
+> **Always wrap with `str()`** before any comparison or concatenation.
+
+```python
+# ❌ WRONG — comparison always False, deletion silently deletes nothing
+to_del = [r for r in rg.reels if r.name == "Reel 1"]   # Deleted: []
+
+# ✅ CORRECT — always use str()
+to_del = [r for r in rg.reels if str(r.name) == "Reel 1"]
+
+# ✅ ALSO CORRECT for sets / membership tests
+keep = {"Sequences", "Reel 1"}
+to_del = [r for r in rg.reels if str(r.name) not in keep]
+
+# ✅ CORRECT for next() — always provide a default to avoid StopIteration crash
+reel = next((r for r in rg.reels if str(r.name) == "Reel 1"), None)
+if reel is None:
+    print("Reel not found")
+else:
+    flame.delete(reel)
+```
+
+> ⚠️ **After `flame.delete(reel)`**, do NOT access `reel.name` or any attribute
+> of the deleted object — it is invalidated. Collect names BEFORE deleting:
+> ```python
+> names = [str(r.name) for r in to_del]   # collect first
+> for r in to_del: flame.delete(r)          # then delete
+> print(f"Deleted: {names}")               # use pre-collected names
+> ```
 
 ---
 
@@ -821,6 +862,27 @@ def do_import():
 flame.schedule_idle_event(do_import)
 print(f"Importing {len(paths)} files into folder — scheduled.")
 # Then read /tmp/flame_import_result.txt with a separate bridge call to confirm
+```
+
+
+# ── Auto-learned: delete reels by name using PyAttribute get_value() for name comparison 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+to_delete = {"Reel 1", "Reel 2", "Reel 3"}
+deleted = []
+
+for rg in desk.reel_groups:
+    for reel in list(rg.reels):
+        name = reel.name.get_value()  # reel.name is PyAttribute, must call .get_value()
+        if name in to_delete:
+            flame.delete(reel, confirm=False)
+            deleted.append(name)
+
+print(f"Deleted: {deleted}")
 ```
 
 ## Notes & Gotchas
