@@ -421,14 +421,16 @@ def _action_launch_claude(selection):
     else:
         launch_cmd = 'claude'
 
-    # Write to a temp shell script in ~/Library/Caches to avoid /tmp path issues
-    # on macOS Sequoia where Terminal.app may drop the leading slash in do script
+    # Use a .command file — macOS Terminal opens these directly via the shebang
+    # (bash --login), bypassing the user's interactive shell session and any
+    # shell plugin prompts (oh-my-zsh update, thefuck init, etc.).
+    # 'open launch_claude.command' is equivalent to double-clicking the file.
     cache_dir = os.path.expanduser('~/Library/Caches/flame-mcp')
     os.makedirs(cache_dir, exist_ok=True)
-    script_path = os.path.join(cache_dir, 'launch_claude.sh')
+    script_path = os.path.join(cache_dir, 'launch_claude.command')
     try:
         with open(script_path, 'w') as f:
-            f.write('#!/bin/bash\n')
+            f.write('#!/bin/bash --login\n')
             f.write(f'{launch_cmd}\n')
         os.chmod(script_path, stat.S_IRWXU)
     except Exception as e:
@@ -438,19 +440,9 @@ def _action_launch_claude(selection):
 
     _log(f"Launch Claude: script written — {launch_cmd}")
 
-    # AppleScript: always use native Terminal.app
-    # Use "bash /path" explicitly — avoids Terminal.app dropping the leading slash
-    # during oh-my-zsh / shell init when executing a bare path via do script
-    bash_cmd = f'bash {script_path}'
-    applescript = f'''
-tell application "Terminal"
-    activate
-    do script "{bash_cmd}"
-end tell
-'''
     try:
-        subprocess.Popen(['osascript', '-e', applescript])
-        _log("Launch Claude: terminal opened")
+        subprocess.Popen(['open', script_path])
+        _log("Launch Claude: terminal opened via .command file")
     except Exception as e:
         _log(f"Launch Claude error: {e}")
         _osascript_alert("MCP Bridge — Launch Claude",
