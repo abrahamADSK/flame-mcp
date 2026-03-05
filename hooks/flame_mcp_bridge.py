@@ -273,9 +273,11 @@ class _FlameChat:
     """
     Qt chat widget that lets you talk to Claude from inside Flame.
     - No terminal / no shell — pure GUI
-    - Calls Anthropic API directly via stdlib urllib (no extra packages)
-    - execute_python runs via the local TCP bridge (thread-safe)
-    - search_flame_docs uses the local RAG index
+    - Uses 'claude -p' subprocess (Claude Code) — no API key needed,
+      works with your existing Claude Pro / Max subscription
+    - All 8 MCP tools available: execute_python, search_flame_docs,
+      learn_pattern, session_stats, list_libraries, list_reels, etc.
+    - Token tracking and self-improving RAG work identically to the terminal
     """
 
     def __init__(self):
@@ -284,38 +286,10 @@ class _FlameChat:
             raise RuntimeError("Qt unavailable in this Flame installation")
         self._Qt = QtWidgets
         self._Core = QtCore
-        self._messages = []
+        self._messages = []          # list of {"role": str, "content": str}
         self._ui_queue = []          # written by bg thread, drained by QTimer
         self._busy = False
-        self._api_key = self._load_api_key()
         self._build_ui()
-
-    # ── API key ──────────────────────────────────────────────────────────────
-
-    def _load_api_key(self):
-        key = os.environ.get('ANTHROPIC_API_KEY', '')
-        if key:
-            return key
-        for candidate in ['~/Projects/flame-mcp/.env', '~/flame-mcp/.env']:
-            path = os.path.expanduser(candidate)
-            if os.path.exists(path):
-                with open(path) as f:
-                    for line in f:
-                        if line.startswith('ANTHROPIC_API_KEY='):
-                            return line.split('=', 1)[1].strip().strip('"\'')
-        return ''
-
-    def _ensure_api_key(self):
-        if self._api_key:
-            return True
-        key, ok = self._Qt.QInputDialog.getText(
-            self._window, "Anthropic API Key",
-            "Enter your ANTHROPIC_API_KEY:",
-            self._Qt.QLineEdit.Password)
-        if ok and key.strip():
-            self._api_key = key.strip()
-            return True
-        return False
 
     # ── UI ───────────────────────────────────────────────────────────────────
 
@@ -353,7 +327,7 @@ class _FlameChat:
         self._input = Qt.QTextEdit()
         self._input.setMaximumHeight(90)
         self._input.setMinimumHeight(60)
-        self._input.setPlaceholderText("Ask Claude to do something in Flame…")
+        self._input.setPlaceholderText("Ask Claude to do something in Flame…  (uses Claude Code — no API key needed)")
         self._input.setStyleSheet(
             "QTextEdit{background:#252525;color:#e8e8e8;font-size:13px;"
             "border:1px solid #444;border-radius:6px;padding:8px;}")
@@ -407,7 +381,7 @@ class _FlameChat:
         if self._busy:
             return
         text = self._input.toPlainText().strip()
-        if not text or not self._ensure_api_key():
+        if not text:
             return
         self._input.clear()
         self._messages.append({"role": "user", "content": text})
@@ -425,138 +399,112 @@ class _FlameChat:
     # ── Agent loop (background thread) ───────────────────────────────────────
 
     def _agent_loop(self):
+        """
+        Calls 'claude -p <prompt>' as a subprocess.
+        Claude Code handles all MCP tool calls (search_flame_docs, execute_python,
+        learn_pattern, session_stats, etc.) internally — identical to terminal usage.
+        Uses the user's existing Claude Code session (Pro/Max) — no API key needed.
+        """
         try:
-            while True:
-                self._ui_queue.append(
-                    lambda: self._status.setText("Thinking…"))
-                response = self._call_api()
+            self._ui_queue.append(lambda: self._status.setText("Thinking…"))
 
-                blocks = response.get('content', [])
-                stop   = response.get('stop_reason', '')
+            claude_path, env = self._find_claude()
+            if not claude_path:
+                raise RuntimeError(
+                    "claude not found.\n"
+                    "Install Claude Code: npm install -g @anthropic-ai/claude-code\n"
+                    "Then log in: claude login"
+                )
 
-                text_parts = [b['text'] for b in blocks if b.get('type') == 'text']
-                tool_calls = [b for b in blocks if b.get('type') == 'tool_use']
+            prompt = self._build_prompt()
+            cwd = os.path.expanduser('~/Projects/flame-mcp')
 
-                if text_parts:
-                    txt = '\n'.join(text_parts)
-                    self._ui_queue.append(
-                        lambda t=txt: self._append_bubble("assistant", t))
+            proc = subprocess.Popen(
+                [claude_path, '-p', prompt],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                cwd=cwd if os.path.isdir(cwd) else None,
+            )
 
-                if not tool_calls or stop == 'end_turn':
-                    break
+            try:
+                stdout, stderr = proc.communicate(timeout=180)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                raise RuntimeError("Claude timed out (180s). Try a simpler request.")
 
-                self._messages.append({"role": "assistant", "content": blocks})
+            response = self._strip_ansi(stdout.strip())
+            if not response:
+                err = self._strip_ansi(stderr.strip())
+                raise RuntimeError(err or f"Claude exited with code {proc.returncode}")
 
-                results = []
-                for tc in tool_calls:
-                    name   = tc.get('name', '')
-                    inputs = tc.get('input', {})
-                    tc_id  = tc.get('id', '')
-                    label  = f"↪ {name}({', '.join(f'{k}={repr(v)[:50]}' for k,v in inputs.items())})"
-                    self._ui_queue.append(
-                        lambda l=label: self._append_bubble("tool", l))
-                    self._ui_queue.append(
-                        lambda n=name: self._status.setText(f"Running {n}…"))
-                    result = self._run_tool(name, inputs)
-                    results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tc_id,
-                        "content": result})
-
-                self._messages.append({"role": "user", "content": results})
+            self._messages.append({"role": "assistant", "content": response})
+            self._ui_queue.append(
+                lambda r=response: self._append_bubble("assistant", r))
 
         except Exception as e:
-            self._ui_queue.append(
-                lambda err=str(e): self._append_bubble("error", err))
+            err = str(e)
+            self._ui_queue.append(lambda e=err: self._append_bubble("error", e))
         finally:
             self._ui_queue.append(lambda: self._set_busy(False))
 
-    # ── Tools ────────────────────────────────────────────────────────────────
+    # ── Claude Code subprocess helpers ────────────────────────────────────────
 
-    def _run_tool(self, name, inputs):
-        if name == 'execute_python':
-            return self._exec_via_bridge(inputs.get('code', ''))
-        if name == 'search_flame_docs':
-            return self._search_docs(inputs.get('query', ''))
-        return f"Unknown tool: {name}"
-
-    def _exec_via_bridge(self, code):
-        """Send code to the local TCP bridge — the safe path for Flame execution."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(30)
-                s.connect((BRIDGE_HOST, BRIDGE_PORT))
-                s.sendall((json.dumps({'code': code}) + '\n').encode())
-                buf = b''
-                while not buf.endswith(b'\n'):
-                    chunk = s.recv(4096)
-                    if not chunk:
-                        break
-                    buf += chunk
-                r = json.loads(buf.decode().strip())
-                if r.get('status') == 'error':
-                    return f"ERROR:\n{r.get('error', '')}"
-                return r.get('output', '').strip() or '(executed successfully, no output)'
-        except Exception as e:
-            return f"Bridge error: {e}"
-
-    def _search_docs(self, query):
-        try:
-            for p in ['~/Projects/flame-mcp', '~/flame-mcp']:
-                full = os.path.expanduser(p)
-                if os.path.isdir(full) and full not in sys.path:
-                    sys.path.insert(0, full)
-            from rag.search import search
-            return search(query, n_results=3)
-        except Exception as e:
-            return f"RAG search error: {e}"
-
-    # ── Claude API ───────────────────────────────────────────────────────────
-
-    def _call_api(self):
-        import urllib.request
-        tools = [
-            {
-                "name": "execute_python",
-                "description": (
-                    "Execute Python code inside Autodesk Flame 2026. "
-                    "ALWAYS call search_flame_docs first. "
-                    "Use ws=flame.projects.current_project.current_workspace for libraries. "
-                    "Never call flame.batch.render() directly. Always end with print()."),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"code": {"type": "string"}},
-                    "required": ["code"]}
-            },
-            {
-                "name": "search_flame_docs",
-                "description": "Search Flame Python API docs. Call BEFORE execute_python.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string"}},
-                    "required": ["query"]}
-            }
+    @staticmethod
+    def _find_claude():
+        """
+        Locate the 'claude' CLI executable and build a suitable environment.
+        Flame's process may not inherit the user's full PATH, so we search
+        common npm global install locations explicitly.
+        """
+        import shutil
+        extra = [
+            '/usr/local/bin',
+            '/usr/bin',
+            os.path.expanduser('~/.npm-global/bin'),
+            os.path.expanduser('~/Library/pnpm'),
+            os.path.expanduser('~/.volta/bin'),
         ]
-        payload = json.dumps({
-            "model": "claude-sonnet-4-5-20250929",
-            "max_tokens": 4096,
-            "system": (
-                "You are an AI assistant controlling Autodesk Flame 2026 "
-                "via a Qt chat widget embedded inside Flame. "
-                "Always call search_flame_docs before execute_python. "
-                "Keep responses concise — the user sees them in a small panel."),
-            "tools": tools,
-            "messages": self._messages
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={
-                "x-api-key": self._api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read())
+        # Also pick up any nvm-managed node versions
+        nvm_base = os.path.expanduser('~/.nvm/versions/node')
+        if os.path.isdir(nvm_base):
+            for ver in sorted(os.listdir(nvm_base), reverse=True):
+                extra.append(os.path.join(nvm_base, ver, 'bin'))
+
+        env = dict(os.environ)
+        env['PATH'] = ':'.join(extra + [env.get('PATH', '')])
+        found = shutil.which('claude', path=env['PATH'])
+        return found, env
+
+    def _build_prompt(self):
+        """
+        Build the prompt for 'claude -p', injecting recent conversation history
+        so Claude Code has context for follow-up requests.
+        """
+        history = self._messages[:-1]   # everything except the latest user message
+        user_msg = self._messages[-1]['content']
+
+        if not history:
+            return user_msg
+
+        # Include last 4 messages (2 exchanges) as context
+        context_lines = ["<recent_conversation>"]
+        for msg in history[-4:]:
+            role = "User" if msg['role'] == 'user' else "Assistant"
+            content = msg['content']
+            if len(content) > 500:
+                content = content[:500] + "…"
+            context_lines.append(f"{role}: {content}")
+        context_lines.append("</recent_conversation>")
+        context_lines.append(f"\n{user_msg}")
+        return "\n".join(context_lines)
+
+    @staticmethod
+    def _strip_ansi(text):
+        """Remove ANSI escape codes from Claude Code terminal output."""
+        import re
+        return re.sub(r'\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*(\x07|\x1b\\)', '', text)
 
     # ── Thread-safe UI helpers ────────────────────────────────────────────────
 
