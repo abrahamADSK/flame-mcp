@@ -9,25 +9,29 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 
 ## Rules — read before every task
 
-1. **Check Learned Patterns first.** Before attempting any Flame task, read the
-   `## Learned Patterns` section. If a matching pattern exists, use it directly.
+1. **Read FLAME_API.md first.** Before writing any `execute_python` code, read
+   `FLAME_API.md` in this project. It contains the complete API cheatsheet for
+   Flame 2026. Use it as the primary reference — do not guess method names.
+
+2. **Check Learned Patterns second.** After reading the API reference, check
+   `## Learned Patterns` below. If a matching pattern exists, use it directly.
    Do not improvise if a known-good solution is documented.
 
-2. **Self-update on success.** When a Flame task completes successfully, immediately
+3. **Self-update on success.** When a Flame task completes successfully, immediately
    append the working code to `## Learned Patterns` with a short description and date.
    Use the format defined in that section.
 
-3. **Mark failures.** If a pattern causes a timeout, crash, or wrong result, add a ❌
+4. **Mark failures.** If a pattern causes a timeout, crash, or wrong result, add a ❌
    note next to it explaining why, so it is not retried.
-
-4. **Research before guessing.** When tackling an unfamiliar Flame operation, research
-   it using the sources listed in `## API References` before attempting trial-and-error.
 
 5. **Keep code minimal.** Flame's Python environment is sensitive. Prefer short, direct
    API calls. Avoid long loops or anything that could block Flame's main thread.
 
 6. **Always return output.** Every `execute_python` call should end with a `print()` or
    return value so Claude can confirm success or failure.
+
+7. **Use Background Reactor for renders.** Long renders block Flame's UI. Always use
+   `render_option="Background Reactor"` unless the user explicitly requests Foreground.
 
 ---
 
@@ -45,35 +49,25 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 
 ## API References
 
-When researching how to perform a Flame operation, consult these sources in order:
+### Primary — embedded cheatsheet (read this, do not fetch URLs)
+- **`FLAME_API.md`** in this project — full cheatsheet with patterns, gotchas,
+  and common code snippets for Flame 2026. Always read this file first.
 
-### 1. Flame Python API (primary)
-- **Official docs:** https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Flame_Python_API_html
-- Covers: projects, libraries, reels, clips, sequences, batch, timeline, import/export
-- The `flame` module mirrors the Flame object hierarchy exactly
-- Key objects: `flame.projects`, `flame.project.current_project`,
-  `flame.project.current_project.current_workspace`,
-  `flame.project.current_project.current_workspace.desktop`
+### Fallback — fetch only if FLAME_API.md doesn't cover the operation
+- Official Python API: https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Flame_Python_API_html
+- Wiretap SDK: https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Wiretap_SDK_html
 
-### 2. Wiretap Python API (for library and media manipulation)
-- Wiretap is Autodesk's lower-level SDK for accessing Flame's media library
-- Python bindings are available inside Flame at `import wiretap` (may require
-  the Wiretap SDK to be installed separately)
-- Wiretap gives access to: projects, libraries, clips, and metadata at a lower
-  level than the `flame` module — useful when the high-level API is missing a feature
-- Wiretap documentation and SDK:
-  https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Wiretap_SDK_html
-- Key Wiretap concepts: server (`WireTapServer`), node paths (`/projects/...`),
-  clip handles, metadata XML
-- Wiretap server address inside Flame is typically `localhost`
-- Example pattern:
-  ```python
-  import libwiretap
-  server = libwiretap.WireTapServer('localhost', libwiretap.WireTapClientAPI())
-  ```
+### Wiretap — when to use it
+The Python `flame` module covers most operations. Use Wiretap only when:
+- The Python API doesn't expose what you need (e.g. raw metadata XML)
+- You need bulk library operations via CLI tools without Python
+- You need to access the Flame storage filesystem structure directly
+- Bridge from Python to Wiretap: `obj.get_wiretap_node_id()` and
+  `flame.find_by_wiretap_node_id(node_id)`
+- Wiretap server runs at `localhost` inside Flame
 
-### 3. Community references
-- Logik Forum: https://forum.logik.tv — search for specific operations
+### Community
+- Logik Forum: https://forum.logik.tv
 - Autodesk Community: https://forums.autodesk.com/t5/flame/ct-p/area_flame
 
 ---
