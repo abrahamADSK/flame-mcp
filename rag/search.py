@@ -9,9 +9,17 @@ The index must be built first:
 """
 
 import os
+import datetime
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
+LOG_FILE  = '/tmp/flame_rag.log'
+
+
+def _log(msg: str):
+    ts = datetime.datetime.now().strftime('%H:%M:%S')
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"[{ts}] {msg}\n")
 
 # Lazy singletons — loaded once, reused across calls
 _client     = None
@@ -24,14 +32,17 @@ def _get_collection():
         return _collection
 
     if not os.path.isdir(INDEX_DIR):
+        _log("ERROR: index not found — run python rag/build_index.py")
         return None
 
     try:
         import chromadb
         _client     = chromadb.PersistentClient(path=INDEX_DIR)
         _collection = _client.get_collection("flame_docs")
+        _log(f"Index loaded — {_collection.count()} chunks")
         return _collection
-    except Exception:
+    except Exception as e:
+        _log(f"ERROR loading index: {e}")
         return None
 
 
@@ -56,6 +67,8 @@ def search(query: str, n_results: int = 3) -> str:
     if count == 0:
         return "Index is empty. Run: python rag/build_index.py"
 
+    _log(f"QUERY: '{query}'")
+
     results = collection.query(
         query_texts=[query],
         n_results=min(n_results, count),
@@ -66,14 +79,19 @@ def search(query: str, n_results: int = 3) -> str:
     distances = results.get('distances', [[]])[0]
 
     if not docs:
+        _log("  → no results")
         return "No relevant documentation found for that query."
 
     parts = []
     for doc, meta, dist in zip(docs, metadatas, distances):
-        section  = meta.get('section', '')
-        source   = meta.get('source', '')
+        section   = meta.get('section', '')
+        source    = meta.get('source', '')
         relevance = round((1 - dist) * 100)
-        header   = f"### [{source}] {section}  (relevance: {relevance}%)"
+        _log(f"  → [{relevance}%] {source} :: {section}")
+        header = f"### [{source}] {section}  (relevance: {relevance}%)"
         parts.append(f"{header}\n\n{doc}")
+
+    total_chars = sum(len(p) for p in parts)
+    _log(f"  → returned {len(parts)} chunks, ~{total_chars} chars (~{total_chars//4} tokens saved vs full doc)")
 
     return "\n\n---\n\n".join(parts)
