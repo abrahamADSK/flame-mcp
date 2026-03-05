@@ -86,3 +86,28 @@ The Python `flame` module covers most operations. Use Wiretap only when:
 
 <!-- Claude appends new entries below this line -->
 
+### Render batch via schedule_idle_event — 2026-03-05
+**Task:** Renderizar un batch group (ej. Substance Noise) desde el bridge
+**Works:** ✅ (llamada directa a `flame.batch.render()` crashea Flame ❌)
+
+```python
+import flame
+
+result_file = "/tmp/flame_render_result.txt"
+
+def do_render():
+    try:
+        flame.batch.render(render_option="Background Reactor")
+        msg = "OK: render lanzado"
+    except Exception as e:
+        msg = f"ERROR: {e}"
+    with open(result_file, 'w') as f:
+        f.write(msg)
+
+# Asegurarse de que el batch correcto está abierto antes de llamar esto
+flame.schedule_idle_event(do_render)
+print("Render programado via idle event.")
+```
+
+Luego leer `/tmp/flame_render_result.txt` con una llamada separada para confirmar.
+
