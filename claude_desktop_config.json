@@ -1,4 +1,5 @@
 {
+  "_comment": "Copy this file to ~/Library/Application Support/Claude/claude_desktop_config.json — replace /Users/abraham/Projects/flame-mcp with your actual project path",
   "mcpServers": {
     "flame": {
       "command": "/Users/abraham/Projects/flame-mcp/.venv/bin/python",

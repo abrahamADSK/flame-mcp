@@ -33,3 +33,6 @@ logs/*.log
 
 # RAG vector index (built locally, not committed)
 rag/index/
+
+# Claude Code local settings (user-specific paths)
+.claude/
