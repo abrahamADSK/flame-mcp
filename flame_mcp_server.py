@@ -106,8 +106,11 @@ def _check_dangerous(code: str):
 
 # ─── Token tracking ───────────────────────────────────────────────────────────
 
-# Full FLAME_API.md size in tokens (measured once, used as baseline for savings)
-_FULL_DOC_TOKENS = 1500
+# Combined size of all indexed docs in tokens (baseline for RAG savings display).
+# FLAME_API.md ~4,700 + flame_api_full.md ~33,600 = ~38,300 total.
+# RAG returns ~3 chunks (~600 tokens) → saving ~37,000 tokens per call vs
+# loading all documentation into context.
+_FULL_DOC_TOKENS = 38000
 
 _stats = {
     'exec_calls':      0,
@@ -408,7 +411,7 @@ def search_flame_docs(query: str) -> str:
     global _last_rag_score
     try:
         from rag.search import search
-        result, max_score = search(query, n_results=3)
+        result, max_score = search(query, n_results=5)
         _last_rag_score = max_score
         result_tokens = _tok(result)
         saved = max(0, _FULL_DOC_TOKENS - result_tokens)
