@@ -520,6 +520,37 @@ dir(flame.projects)             # never do this — use search_flame_docs instea
 
 ---
 
+
+# ── Auto-learned: delete reels from desktop reel group by name (keep one) 
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+deleted = []
+for rg in desk.reel_groups:
+    for reel in list(rg.reels):
+        if reel.name != "Sequences":  # nombre a conservar
+            flame.delete(reel)
+            deleted.append(str(reel.name))
+
+print(f"Reels borrados: {deleted}")
+```
+
+
+# ── Auto-learned: create reel in desktop reel group ─────────────────────
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+rg = desk.reel_groups[0]
+new_reel = rg.create_reel("CLIP sources")
+print(f"Reel creado: {new_reel.name}")
+```
+
 ## Notes & Gotchas
 
 - `flame.projects` and `flame.project` are the same object (`PyProjectSelector`) — NOT iterable

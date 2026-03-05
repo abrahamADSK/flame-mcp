@@ -400,9 +400,14 @@ class _FlameChat:
 
     def _agent_loop(self):
         """
-        Calls 'claude -p <prompt>' as a subprocess.
-        Claude Code handles all MCP tool calls (search_flame_docs, execute_python,
-        learn_pattern, session_stats, etc.) internally — identical to terminal usage.
+        Calls 'claude -p --output-format stream-json <prompt>' as a subprocess.
+
+        Parses the newline-delimited JSON stream to display:
+          - assistant text blocks  → main green chat bubble
+          - tool_use events        → live status bar update (e.g. "⚡ Executing in Flame…")
+          - tool_result stats      → purple "tool" bubble with RAG / token summary
+          - learn_pattern confirm  → purple bubble with 🧠 message
+
         Uses the user's existing Claude Code session (Pro/Max) — no API key needed.
         """
         try:
@@ -410,7 +415,6 @@ class _FlameChat:
 
             claude_path, env = self._find_claude()
             if not claude_path:
-                # Log all paths searched to help diagnose
                 _log("Chat: claude not found. Searched: " + env.get('PATH', ''))
                 raise RuntimeError(
                     "claude CLI not found in PATH.\n\n"
@@ -425,28 +429,82 @@ class _FlameChat:
             cwd = os.path.expanduser('~/Projects/flame-mcp')
 
             proc = subprocess.Popen(
-                [claude_path, '-p', prompt],
+                [claude_path, '-p', '--output-format', 'stream-json', prompt],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 env=env,
                 cwd=cwd if os.path.isdir(cwd) else None,
+                bufsize=1,
             )
 
-            try:
-                stdout, stderr = proc.communicate(timeout=180)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                raise RuntimeError("Claude timed out (180s). Try a simpler request.")
+            # Drain stderr in background thread to prevent pipe deadlock
+            stderr_lines = []
+            def _read_stderr():
+                try:
+                    for line in proc.stderr:
+                        stderr_lines.append(line)
+                except Exception:
+                    pass
+            stderr_t = threading.Thread(target=_read_stderr, daemon=True)
+            stderr_t.start()
 
-            response = self._strip_ansi(stdout.strip())
-            if not response:
-                err = self._strip_ansi(stderr.strip())
+            # Watchdog — kill process after 180 s
+            _timed_out = [False]
+            def _kill():
+                _timed_out[0] = True
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            watchdog = threading.Timer(180, _kill)
+            watchdog.start()
+
+            assistant_parts = []    # text blocks from assistant messages
+            tool_summaries  = []    # extracted stats footers from tool results
+
+            try:
+                for raw_line in proc.stdout:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    self._handle_stream_event(event, assistant_parts, tool_summaries)
+            finally:
+                watchdog.cancel()
+                try:
+                    proc.wait(timeout=10)
+                except Exception:
+                    proc.kill()
+                stderr_t.join(timeout=5)
+
+            if _timed_out[0]:
+                raise RuntimeError("Claude timed out (180 s). Try a simpler request.")
+
+            if not assistant_parts and proc.returncode != 0:
+                err = self._strip_ansi(''.join(stderr_lines).strip())
                 raise RuntimeError(err or f"Claude exited with code {proc.returncode}")
 
-            self._messages.append({"role": "assistant", "content": response})
-            self._ui_queue.append(
-                lambda r=response: self._append_bubble("assistant", r))
+            # ── Display main assistant response ──────────────────────────────
+            response = self._strip_ansi('\n\n'.join(assistant_parts).strip())
+            if response:
+                self._messages.append({"role": "assistant", "content": response})
+                self._ui_queue.append(
+                    lambda r=response: self._append_bubble("assistant", r))
+            elif not tool_summaries:
+                err = self._strip_ansi(''.join(stderr_lines).strip())
+                if err:
+                    raise RuntimeError(err)
+
+            # ── Display tool stats / learn_pattern confirmations ─────────────
+            for raw_summary in tool_summaries:
+                clean = self._strip_ansi(raw_summary.strip())
+                if clean:
+                    self._ui_queue.append(
+                        lambda s=clean: self._append_bubble("tool", s))
 
         except Exception as e:
             err = str(e)
@@ -454,9 +512,83 @@ class _FlameChat:
         finally:
             self._ui_queue.append(lambda: self._set_busy(False))
 
-    # ── Claude Code subprocess helpers ────────────────────────────────────────
+    def _handle_stream_event(self, event, assistant_parts, tool_summaries):
+        """
+        Process one parsed JSON event from 'claude -p --output-format stream-json'.
+
+        Event types we care about:
+          assistant  → content blocks: text (response) or tool_use (show status)
+          user       → tool_result blocks: extract stats footers
+          result     → fallback: use result.result if no assistant text collected
+        """
+        etype = event.get('type', '')
+
+        if etype == 'assistant':
+            for block in event.get('message', {}).get('content', []):
+                btype = block.get('type', '')
+                if btype == 'text':
+                    text = block.get('text', '').strip()
+                    if text:
+                        assistant_parts.append(text)
+                elif btype == 'tool_use':
+                    # Live status update while tool executes
+                    name = block.get('name', '')
+                    _TOOL_STATUS = {
+                        'search_flame_docs': "🔍  Searching docs…",
+                        'execute_python':    "⚡  Executing in Flame…",
+                        'learn_pattern':     "🧠  Learning pattern…",
+                        'session_stats':     "📊  Getting session stats…",
+                        'list_libraries':    "📚  Listing libraries…",
+                        'list_reels':        "🎞️   Listing reels…",
+                        'get_project_info':  "🎬  Getting project info…",
+                        'get_flame_version': "🔥  Getting Flame version…",
+                    }
+                    status = _TOOL_STATUS.get(name, f"⚙️   Running {name}…")
+                    self._ui_queue.append(lambda s=status: self._status.setText(s))
+
+        elif etype == 'user':
+            for block in event.get('message', {}).get('content', []):
+                if block.get('type') != 'tool_result':
+                    continue
+                tc = block.get('content', '')
+                if isinstance(tc, list):
+                    full_text = '\n'.join(
+                        item.get('text', '') for item in tc
+                        if isinstance(item, dict) and item.get('type') == 'text'
+                    )
+                else:
+                    full_text = str(tc)
+                footer = self._extract_stats_footer(full_text)
+                if footer:
+                    tool_summaries.append(footer)
+
+        elif etype == 'result':
+            # Fallback: if Claude produced no text blocks, use the result summary
+            if not assistant_parts:
+                r = event.get('result', '').strip()
+                if r:
+                    assistant_parts.append(r)
 
     @staticmethod
+    def _extract_stats_footer(text):
+        """
+        Extract the ─────… stats block from a tool result string.
+        The MCP server appends this footer to every tool response.
+
+        Returns the footer string, or '' if none found.
+        """
+        STATS_MARKERS = ('🔍', '📊', '🧠', '✅ Pattern', '─────')
+        if not any(m in text for m in STATS_MARKERS):
+            return ''
+        sep = '─' * 5
+        if sep in text:
+            idx = text.index(sep)
+            return text[idx:].strip()
+        # No separator — return whole thing if it contains stats emoji
+        return text.strip()
+
+    # ── Claude Code subprocess helpers ────────────────────────────────────────
+
     @staticmethod
     def _find_claude():
         """
