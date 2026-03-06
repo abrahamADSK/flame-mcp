@@ -1244,12 +1244,16 @@ class _FlameChat:
             return (self._STYLE_DANGER,
                     "⏱️ Rate limit alcanzado — espera antes del siguiente envío")
         tok = self._session_tokens
-        if tok >= self._TOKEN_DANGER:
-            return (self._STYLE_DANGER,
-                    f"🔴 {tok // 1000}k tokens esta sesión — considera reiniciar chat")
-        if tok >= self._TOKEN_WARN:
-            return (self._STYLE_WARN,
-                    f"⚠️ {tok // 1000}k tokens esta sesión · Ctrl+Return to send")
+        # Token warnings only make sense for Anthropic (rate limits / cost).
+        # For self-hosted or cloud Ollama there is no per-token cost or strict
+        # rate limit, so we skip the danger/warn levels entirely.
+        if self._backend == "anthropic":
+            if tok >= self._TOKEN_DANGER:
+                return (self._STYLE_DANGER,
+                        f"🔴 {tok // 1000}k tokens esta sesión — considera reiniciar chat")
+            if tok >= self._TOKEN_WARN:
+                return (self._STYLE_WARN,
+                        f"⚠️ {tok // 1000}k tokens esta sesión · Ctrl+Return to send")
         if tok >= 1000:
             return (self._STYLE_IDLE,
                     f"Ready · {tok // 1000}k tokens  ·  Ctrl+Return to send")

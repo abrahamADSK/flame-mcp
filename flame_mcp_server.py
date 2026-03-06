@@ -228,9 +228,9 @@ def _stats_footer() -> str:
         f"📊 Session · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG"
         f" · {_stats['dedicated_calls']} tools\n"
         f"   Tokens used       : ~{used}  {_rating(used)}\n"
-        f"   Saved by RAG      : ~{saved_rag}\n"
-        f"   Saved by tools    : ~{saved_tools}\n"
-        f"   Total saved       : ~{saved_total}  ({ratio} of total)"
+        f"   Avoided by RAG    : ~{saved_rag}\n"
+        f"   Avoided by tools  : ~{saved_tools}\n"
+        f"   Total avoided     : ~{saved_total}  ({ratio} of context)"
     )
 
 BRIDGE_HOST = '127.0.0.1'
@@ -716,9 +716,9 @@ def session_stats() -> str:
     # Warn only when execute_python was called more times than search_flame_docs
     unguarded = max(0, exec_calls - rag_calls)
     if saved_total > used:
-        efficiency = "  ✅ Efficient — total savings exceed token cost"
+        efficiency = "  ✅ Compact — avoided tokens exceed used tokens"
     elif exec_calls == 0 and _stats['dedicated_calls'] > 0:
-        efficiency = "  ✅ Efficient — all queries handled by dedicated tools"
+        efficiency = "  ✅ Compact — all queries handled by dedicated tools"
     elif unguarded > 0:
         efficiency = f"  ⚠️  {unguarded} execute_python call(s) without prior search_flame_docs"
     else:
@@ -736,9 +736,9 @@ def session_stats() -> str:
         f"  Tokens received (output)  : ~{_stats['tokens_out']}\n"
         f"  Total tokens used         : ~{used}  {_rating(used)}\n"
         f"{'─'*32}\n"
-        f"  Saved by RAG              : ~{saved_rag}\n"
-        f"  Saved by dedicated tools  : ~{saved_tools}\n"
-        f"  Total saved               : ~{saved_total}  ({pct} of total)\n"
+        f"  Avoided by RAG            : ~{saved_rag}\n"
+        f"  Avoided by tools          : ~{saved_tools}\n"
+        f"  Total avoided             : ~{saved_total}  ({pct} of context)\n"
         f"{'─'*32}\n"
         + efficiency
     )
