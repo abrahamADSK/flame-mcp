@@ -58,8 +58,8 @@ AVAILABLE_MODELS = [
     # ── Self-hosted Ollama  (Linux workstation, NAS, any server on the LAN) ───
     ("qwen3-coder 30B",     "qwen3-flame",                   "ollama"),
     ("qwen2.5-coder 14B",   "qwen2.5-coder:14b",           "ollama"),
-    # ── Ollama cloud  (free tier · needs ollama_cloud_key in config.json) ─────
-    ("qwen3-coder 480B ☁",  "qwen3-coder:480b",            "ollama_cloud"),
+    # ── Ollama cloud  (free tier · routed through local Ollama server with :cloud tag) ─
+    ("qwen3-coder 480B ☁",  "qwen3-coder:480b-cloud",      "ollama_cloud"),
     # ── Custom ────────────────────────────────────────────────────────────────
     ("Custom",              "",                             "anthropic"),
 ]
@@ -67,10 +67,13 @@ DEFAULT_MODEL    = "claude-sonnet-4-5-20250929"
 DEFAULT_BACKEND  = "anthropic"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
-# Ollama cloud endpoint (Anthropic Messages API compatible since Ollama v0.14)
-# The base URL must be https://ollama.com — the SDK appends /v1/messages.
-# (https://api.ollama.com is the raw REST gateway; cloud Anthropic-compat lives at ollama.com)
-OLLAMA_CLOUD_URL = "https://ollama.com"
+# Ollama cloud models are accessed through the local/LAN Ollama server,
+# NOT via api.ollama.com or ollama.com directly.
+# The model name carries the ":cloud" / "-cloud" tag (e.g. qwen3-coder:480b-cloud)
+# and the local Ollama daemon proxies the request to Ollama's cloud infrastructure.
+# OLLAMA_CLOUD_URL is therefore the same as the self-hosted URL (self._ollama_url).
+# The constant is kept for backward-compat but is no longer used in _get_ollama_env.
+OLLAMA_CLOUD_URL = ""  # unused — cloud routes through self._ollama_url
 
 # Context window forced when pre-loading a self-hosted Ollama model.
 # Ollama's /v1/messages (Anthropic-compat) endpoint ignores the model's
@@ -1034,10 +1037,8 @@ class _FlameChat:
             masked = None
 
         for i, (label, _model_id, backend) in enumerate(AVAILABLE_MODELS):
-            if backend == "ollama":
+            if backend in ("ollama", "ollama_cloud"):
                 new_label = f"{label}  · {host}"
-            elif backend == "ollama_cloud" and masked:
-                new_label = f"{label}  · {masked}"
             else:
                 new_label = label
             self._model_combo.setItemText(i, new_label)
@@ -1119,15 +1120,13 @@ class _FlameChat:
             env['ANTHROPIC_AUTH_TOKEN'] = 'ollama'
             _log(f"Ollama backend: {self._ollama_url} / model={self._model}")
         elif self._backend == "ollama_cloud":
-            env['ANTHROPIC_BASE_URL'] = OLLAMA_CLOUD_URL
-            key = self._ollama_cloud_key
-            if key:
-                env['ANTHROPIC_API_KEY']    = key
-                env['ANTHROPIC_AUTH_TOKEN'] = key
-            else:
-                _log("WARNING: ollama_cloud_key not set in config.json. "
-                     "Add it to use Ollama cloud models (ollama.com → API keys).")
-            _log(f"Ollama cloud backend: {OLLAMA_CLOUD_URL} / model={self._model}")
+            # Cloud models (e.g. qwen3-coder:480b-cloud) are proxied by the local
+            # Ollama daemon — same base URL as the self-hosted backend.
+            # The daemon routes the request to Ollama's cloud infrastructure.
+            env['ANTHROPIC_BASE_URL']   = self._ollama_url
+            env['ANTHROPIC_API_KEY']    = 'ollama'
+            env['ANTHROPIC_AUTH_TOKEN'] = 'ollama'
+            _log(f"Ollama cloud backend via {self._ollama_url} / model={self._model}")
         return env
 
     # ── Claude Code subprocess helpers ────────────────────────────────────────
