@@ -23,16 +23,16 @@
 
 ```mermaid
 flowchart TD
-    A(["User request\nClaude Code · Desktop · Cowork · Chat"])
-    B["search_flame_docs(query)\nRAG · ChromaDB · 375 chunks"]
+    A(["User request<br/>Claude Code · Desktop · Cowork · Chat"])
+    B["search_flame_docs(query)<br/>RAG · ChromaDB · 375 chunks"]
     C{"score ≥ 60%?"}
-    D["Pattern found\nuse chunk as reference"]
-    E["Pattern missing ⚠\nbest effort + warn"]
-    F["execute_python(code)\nTCP 4444 → Flame bridge"]
-    G{"Execution\nsucceeded?"}
-    H["learn_pattern()\nappend to FLAME_API.md\nrebuild index 🧠"]
-    I["Retry max 3×\nread traceback\nmodify code"]
-    J(["Answer + stats footer\nto user"])
+    D["Pattern found<br/>use chunk as reference"]
+    E["Pattern missing ⚠<br/>best effort + warn"]
+    F["execute_python(code)<br/>TCP 4444 → Flame bridge"]
+    G{"Execution<br/>succeeded?"}
+    H["learn_pattern()<br/>append to FLAME_API.md<br/>rebuild index 🧠"]
+    I["Retry max 3x<br/>read traceback, modify code"]
+    J(["Answer + stats footer to user"])
 
     A --> B
     B --> C
