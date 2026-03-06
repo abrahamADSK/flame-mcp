@@ -126,11 +126,23 @@ _DANGEROUS_PATTERNS = [
         "See FLAME_API.md 'PyAttribute' section."
     ),
     (
+        r'\.name\s*\.\s*(?:startswith|endswith|lower|upper|split|strip|replace|find|contains)\s*\(',
+        "Flame .name returns a PyAttribute object, not a string. "
+        "String methods like .startswith(), .lower(), .split() crash with AttributeError.",
+        "Always wrap with str() first: str(clip.name).startswith('VFX_')"
+    ),
+    (
         r'next\s*\(\s*\w+\s+for\s+\w+\s+in\s+\w+\.(?:reels|clips|libraries|reel_groups|folders)\b(?!\s*,)',
         "next() without a default raises StopIteration if no item matches, "
         "leaving Flame in an incomplete state.",
         "Always provide a default: next((r for r in rg.reels if ...), None) "
         "and check for None before using the result."
+    ),
+    (
+        r'=\s*next\s*\(.*\bNone\b.*\)(?![\s\S]{0,200}if\s+\w+\s+is\s+(?:not\s+)?None)',
+        "Result of next(..., None) is used without a None check. "
+        "Accessing attributes on None causes AttributeError.",
+        "Always check: result = next(..., None); if result is None: print('not found'); else: use result"
     ),
     (
         r'seg\.delete\s*\(|\.remove_gap\s*\(|\.ripple\s*\(|flame\.timeline\.',
@@ -169,13 +181,19 @@ def _check_dangerous(code: str):
 # loading all documentation into context.
 _FULL_DOC_TOKENS = 38000
 
+# Estimated tokens saved per dedicated tool call (avoids search_flame_docs
+# + execute_python round-trip: ~600 RAG + ~200 LLM code generation overhead).
+_DEDICATED_TOOL_SAVINGS = 800
+
 _stats = {
-    'exec_calls':      0,
-    'tokens_in':       0,   # tokens sent to Flame (code)
-    'tokens_out':      0,   # tokens received from Flame (output)
-    'rag_calls':       0,
-    'tokens_saved':    0,   # tokens saved by RAG vs loading full doc
-    'patterns_learned': 0,  # auto-learned patterns added to FLAME_API.md
+    'exec_calls':         0,
+    'tokens_in':          0,   # tokens sent to Flame (code)
+    'tokens_out':         0,   # tokens received from Flame (output)
+    'rag_calls':          0,
+    'tokens_saved':       0,   # tokens saved by RAG vs loading full doc
+    'dedicated_calls':    0,   # calls to hardcoded tools (no RAG needed)
+    'tokens_saved_tools': 0,   # tokens saved by dedicated tools
+    'patterns_learned':   0,   # auto-learned patterns added to FLAME_API.md
 }
 
 # Tracks the max relevance score of the most recent search_flame_docs call.
@@ -200,14 +218,19 @@ def _rating(tokens: int) -> str:
 
 def _stats_footer() -> str:
     """Return a compact session stats summary."""
-    used   = _stats['tokens_in'] + _stats['tokens_out']
-    saved  = _stats['tokens_saved']
-    ratio  = f"{saved/(used+saved)*100:.0f}%" if (used + saved) > 0 else "—"
+    used        = _stats['tokens_in'] + _stats['tokens_out']
+    saved_rag   = _stats['tokens_saved']
+    saved_tools = _stats['tokens_saved_tools']
+    saved_total = saved_rag + saved_tools
+    ratio       = f"{saved_total/(used+saved_total)*100:.0f}%" if (used + saved_total) > 0 else "—"
     return (
         f"\n─────────────────────────────\n"
-        f"📊 Session · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG\n"
-        f"   Tokens used    : ~{used}  {_rating(used)}\n"
-        f"   Tokens saved (RAG): ~{saved}  ({ratio} of total)"
+        f"📊 Session · {_stats['exec_calls']} exec · {_stats['rag_calls']} RAG"
+        f" · {_stats['dedicated_calls']} tools\n"
+        f"   Tokens used       : ~{used}  {_rating(used)}\n"
+        f"   Saved by RAG      : ~{saved_rag}\n"
+        f"   Saved by tools    : ~{saved_tools}\n"
+        f"   Total saved       : ~{saved_total}  ({ratio} of total)"
     )
 
 BRIDGE_HOST = '127.0.0.1'
@@ -373,6 +396,12 @@ def execute_python(code: str) -> str:
     return _fmt(result) + footer
 
 
+def _track_dedicated() -> None:
+    """Increment dedicated tool counter and accumulate estimated savings."""
+    _stats['dedicated_calls']    += 1
+    _stats['tokens_saved_tools'] += _DEDICATED_TOOL_SAVINGS
+
+
 @mcp.tool()
 def get_project_info() -> str:
     """
@@ -381,14 +410,18 @@ def get_project_info() -> str:
     """
     code = """
 p = flame.projects.current_project
-print(f"Name: {p.name}")
-print(f"Frame rate: {p.frame_rate}")
-print(f"Resolution: {p.width}x{p.height}")
-print(f"Bit depth: {p.bit_depth}")
+def _v(attr):
+    v = getattr(p, attr, None)
+    return str(v) if v is not None else "—"
+print(f"Name: {str(p.name)}")
+print(f"Frame rate: {_v('frame_rate')}")
+print(f"Resolution: {_v('width')}x{_v('height')}")
+print(f"Bit depth: {_v('bit_depth')}")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -401,11 +434,12 @@ def list_libraries() -> str:
     code = """
 ws = flame.projects.current_project.current_workspace
 for lib in ws.libraries:
-    print(f"  {lib.name}  ({len(lib.reels)} reels)")
+    print(f"  {str(lib.name)}  ({len(lib.reels)} reels)")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -418,24 +452,25 @@ def list_reels(library_name: str = "") -> str:
     if library_name:
         code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if l.name == "{library_name}"), None)
+lib = next((l for l in ws.libraries if str(l.name) == "{library_name}"), None)
 if lib is None:
     print(f"Library '{library_name}' not found.")
 else:
     for reel in lib.reels:
-        print(f"  {{reel.name}}  ({{len(reel.clips)}} clips)")
+        print(f"  {{str(reel.name)}}  ({{len(reel.clips)}} clips)")
 """
     else:
         code = """
 ws = flame.projects.current_project.current_workspace
 for lib in ws.libraries:
-    print(f"[{lib.name}]")
+    print(f"[{str(lib.name)}]")
     for reel in lib.reels:
-        print(f"  {reel.name}  ({len(reel.clips)} clips)")
+        print(f"  {str(reel.name)}  ({len(reel.clips)} clips)")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -461,9 +496,9 @@ else:
             continue
         found = True
         clips = list(reel.clips)
-        print(f"[{{lib.name}}] / [{{reel.name}}] — {{len(clips)}} clip(s)")
+        print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{len(clips)}} clip(s)")
         for c in clips:
-            print(f"  {{c.name}}")
+            print(f"  {{str(c.name)}}")
     if not found:
         print(f"No reels matched filter '{reel_name}'.")
 """
@@ -474,13 +509,14 @@ for lib in ws.libraries:
     for reel in lib.reels:
         clips = list(reel.clips)
         if clips:
-            print(f"[{lib.name}] / [{reel.name}] — {len(clips)} clip(s)")
+            print(f"[{str(lib.name)}] / [{str(reel.name)}] — {len(clips)} clip(s)")
             for c in clips:
-                print(f"  {c.name}")
+                print(f"  {str(c.name)}")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -494,13 +530,14 @@ def list_desktop_reels() -> str:
 ws = flame.projects.current_project.current_workspace
 desktop = ws.desktop
 for rg in desktop.reel_groups:
-    print(f"[{rg.name}]")
+    print(f"[{str(rg.name)}]")
     for reel in rg.reels:
-        print(f"  {reel.name}  ({len(reel.clips)} clips)")
+        print(f"  {str(reel.name)}  ({len(reel.clips)} clips)")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -511,6 +548,7 @@ def get_flame_version() -> str:
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
     return _fmt(result) + _stats_footer()
 
 
@@ -648,28 +686,44 @@ def session_stats() -> str:
     Return a summary of token usage and RAG savings for this session.
     Call this at any time to see how efficient the current session has been.
     """
-    used  = _stats['tokens_in'] + _stats['tokens_out']
-    saved = _stats['tokens_saved']
-    total = used + saved
-    pct   = f"{saved/total*100:.0f}%" if total > 0 else "—"
-    learned = _stats['patterns_learned']
+    used        = _stats['tokens_in'] + _stats['tokens_out']
+    saved_rag   = _stats['tokens_saved']
+    saved_tools = _stats['tokens_saved_tools']
+    saved_total = saved_rag + saved_tools
+    total       = used + saved_total
+    pct         = f"{saved_total/total*100:.0f}%" if total > 0 else "—"
+    learned     = _stats['patterns_learned']
+    exec_calls  = _stats['exec_calls']
+    rag_calls   = _stats['rag_calls']
+
+    # Warn only when execute_python was called more times than search_flame_docs
+    unguarded = max(0, exec_calls - rag_calls)
+    if saved_total > used:
+        efficiency = "  ✅ Efficient — total savings exceed token cost"
+    elif exec_calls == 0 and _stats['dedicated_calls'] > 0:
+        efficiency = "  ✅ Efficient — all queries handled by dedicated tools"
+    elif unguarded > 0:
+        efficiency = f"  ⚠️  {unguarded} execute_python call(s) without prior search_flame_docs"
+    else:
+        efficiency = "  ✅ All execute_python calls preceded by search_flame_docs"
+
     return (
         f"📊 Session summary\n"
         f"{'─'*32}\n"
-        f"  execute_python calls      : {_stats['exec_calls']}\n"
-        f"  search_flame_docs calls   : {_stats['rag_calls']}\n"
+        f"  execute_python calls      : {exec_calls}\n"
+        f"  search_flame_docs calls   : {rag_calls}\n"
+        f"  dedicated tool calls      : {_stats['dedicated_calls']}\n"
         f"  Patterns learned          : {learned}"
         + (" 🧠 self-improved!" if learned > 0 else "") + "\n"
         f"  Tokens sent (code)        : ~{_stats['tokens_in']}\n"
         f"  Tokens received (output)  : ~{_stats['tokens_out']}\n"
         f"  Total tokens used         : ~{used}  {_rating(used)}\n"
         f"{'─'*32}\n"
-        f"  Tokens saved (RAG)        : ~{saved}\n"
-        f"  Savings vs total          : {pct}\n"
+        f"  Saved by RAG              : ~{saved_rag}\n"
+        f"  Saved by dedicated tools  : ~{saved_tools}\n"
+        f"  Total saved               : ~{saved_total}  ({pct} of total)\n"
         f"{'─'*32}\n"
-        + (f"  ✅ Efficient — RAG saved more than it cost" if saved > used
-           else f"  ℹ️  No RAG savings this session" if _stats['exec_calls'] == 0
-           else f"  ⚠️  Low RAG usage — call search_flame_docs before execute_python")
+        + efficiency
     )
 
 
