@@ -56,7 +56,7 @@ AVAILABLE_MODELS = [
     ("Sonnet 4.5",          "claude-sonnet-4-5-20250929",  "anthropic"),
     ("Haiku 4.5",           "claude-haiku-4-5-20251001",   "anthropic"),
     # ── Self-hosted Ollama  (Linux workstation, NAS, any server on the LAN) ───
-    ("qwen3-coder 30B",     "qwen3-coder:30b-a3b",         "ollama"),
+    ("qwen3-coder 30B",     "qwen3-coder:30b",              "ollama"),
     ("qwen2.5-coder 14B",   "qwen2.5-coder:14b",           "ollama"),
     # ── Ollama cloud  (free tier · needs ollama_cloud_key in config.json) ─────
     ("qwen3-coder 480B ☁",  "qwen3-coder:480b",            "ollama_cloud"),

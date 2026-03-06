@@ -55,7 +55,7 @@ echo "     RAM: ${RAM_GB} GB"
 
 # Recommend model
 if   [ "$VRAM_MB" -ge 20000 ] 2>/dev/null; then
-    RECOMMENDED="qwen3-coder:30b-a3b"
+    RECOMMENDED="qwen3-coder:30b"
     MODEL_INFO="~18 GB VRAM · ~60 tok/s · best quality for Flame scripting"
 elif [ "$VRAM_MB" -ge 10000 ] 2>/dev/null; then
     RECOMMENDED="qwen2.5-coder:14b"
