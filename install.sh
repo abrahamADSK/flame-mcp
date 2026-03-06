@@ -124,6 +124,53 @@ claude mcp remove flame 2>/dev/null || true
 claude mcp add flame -- "$PYTHON_VENV" "$SERVER_SCRIPT"
 ok "MCP server 'flame' registered with Claude Code."
 
+# ── 8. Auto-approve MCP tools in Claude Code ──────────────────────────────────
+# Dynamically extracts all @mcp.tool() functions from the server script and
+# writes them to ~/.claude/settings.json as allowedTools.
+# Any future tool added to flame_mcp_server.py is auto-approved on next install.
+info "Configuring Claude Code tool auto-approval..."
+
+SERVER_SCRIPT="$SERVER_SCRIPT" "$PYTHON_VENV" - <<'PYEOF'
+import ast, json, os
+from pathlib import Path
+
+server_script = os.environ['SERVER_SCRIPT']
+settings_file = Path.home() / '.claude' / 'settings.json'
+
+# Extract all @mcp.tool() decorated function names
+with open(server_script) as f:
+    tree = ast.parse(f.read())
+
+new_tools = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef):
+        for dec in node.decorator_list:
+            if (isinstance(dec, ast.Call)
+                    and isinstance(dec.func, ast.Attribute)
+                    and dec.func.attr == 'tool'):
+                new_tools.append(f'mcp__flame__{node.name}')
+
+# Merge with existing settings (preserves other entries)
+settings_file.parent.mkdir(parents=True, exist_ok=True)
+if settings_file.exists():
+    with open(settings_file) as f:
+        settings = json.load(f)
+else:
+    settings = {}
+
+existing = set(settings.get('allowedTools', []))
+settings['allowedTools'] = sorted(existing | set(new_tools))
+
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=2)
+
+print(f'  {len(new_tools)} flame tools auto-approved in {settings_file}')
+for t in sorted(new_tools):
+    print(f'    + {t}')
+PYEOF
+
+ok "Tool auto-approval configured — no permission prompts on first use."
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "================================================="
