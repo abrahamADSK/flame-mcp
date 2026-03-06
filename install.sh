@@ -125,17 +125,19 @@ claude mcp add flame -- "$PYTHON_VENV" "$SERVER_SCRIPT"
 ok "MCP server 'flame' registered with Claude Code."
 
 # ── 8. Auto-approve MCP tools in Claude Code ──────────────────────────────────
-# Dynamically extracts all @mcp.tool() functions from the server script and
-# writes them to ~/.claude/settings.json as allowedTools.
+# Writes tool permissions to .claude/settings.local.json (permissions.allow).
+# Claude Code reads this file for project-level tool approvals.
 # Any future tool added to flame_mcp_server.py is auto-approved on next install.
 info "Configuring Claude Code tool auto-approval..."
 
-SERVER_SCRIPT="$SERVER_SCRIPT" "$PYTHON_VENV" - <<'PYEOF'
+CLAUDE_SETTINGS="$SCRIPT_DIR/.claude/settings.local.json"
+
+SERVER_SCRIPT="$SERVER_SCRIPT" CLAUDE_SETTINGS="$CLAUDE_SETTINGS" "$PYTHON_VENV" - <<'PYEOF'
 import ast, json, os
 from pathlib import Path
 
 server_script = os.environ['SERVER_SCRIPT']
-settings_file = Path.home() / '.claude' / 'settings.json'
+settings_file = Path(os.environ['CLAUDE_SETTINGS'])
 
 # Extract all @mcp.tool() decorated function names
 with open(server_script) as f:
@@ -150,19 +152,19 @@ for node in ast.walk(tree):
                     and dec.func.attr == 'tool'):
                 new_tools.append(f'mcp__flame__{node.name}')
 
-# Merge with existing settings (preserves other entries)
+# Merge with existing settings (preserves Bash allow entries)
 settings_file.parent.mkdir(parents=True, exist_ok=True)
 if settings_file.exists():
-    with open(settings_file) as f:
-        settings = json.load(f)
+    settings = json.loads(settings_file.read_text())
 else:
     settings = {}
 
-existing = set(settings.get('allowedTools', []))
-settings['allowedTools'] = sorted(existing | set(new_tools))
+settings.setdefault('permissions', {}).setdefault('allow', [])
+existing = set(settings['permissions']['allow'])
+settings['permissions']['allow'] = sorted(existing | set(new_tools),
+    key=lambda x: (not x.startswith('mcp__'), x))
 
-with open(settings_file, 'w') as f:
-    json.dump(settings, f, indent=2)
+settings_file.write_text(json.dumps(settings, indent=2))
 
 print(f'  {len(new_tools)} flame tools auto-approved in {settings_file}')
 for t in sorted(new_tools):
