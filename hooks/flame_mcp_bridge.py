@@ -477,6 +477,34 @@ class _FlameChat:
         layout.addWidget(self._ollama_url_widget)
         # Show only when the current backend is "ollama" (self-hosted)
         self._ollama_url_widget.setVisible(self._backend == "ollama")
+
+        # ── Ollama cloud API key row (visible only when ollama_cloud is selected) ──
+        self._ollama_cloud_key_widget = Qt.QWidget()
+        cloud_key_row = Qt.QHBoxLayout(self._ollama_cloud_key_widget)
+        cloud_key_row.setContentsMargins(0, 0, 0, 0)
+        cloud_key_row.setSpacing(6)
+
+        cloud_key_lbl = Qt.QLabel("Ollama API key:")
+        cloud_key_lbl.setStyleSheet("color:#888;font-size:11px;min-width:90px;")
+        cloud_key_row.addWidget(cloud_key_lbl)
+
+        self._ollama_cloud_key_input = Qt.QLineEdit()
+        self._ollama_cloud_key_input.setText(self._ollama_cloud_key)
+        self._ollama_cloud_key_input.setPlaceholderText("ollama_…  (get it at ollama.com → API keys)")
+        self._ollama_cloud_key_input.setEchoMode(Qt.QLineEdit.Password)
+        self._ollama_cloud_key_input.setToolTip(
+            "API key from ollama.com (free tier available).\n"
+            "Go to ollama.com → account → API keys → Create key.\n"
+            "Press Enter to save.")
+        self._ollama_cloud_key_input.setStyleSheet(
+            "QLineEdit{background:#2a2a2a;color:#e0e0e0;border:1px solid #555;"
+            "border-radius:4px;padding:2px 8px;font-size:11px;}"
+            "QLineEdit:focus{border:1px solid #818cf8;}")
+        self._ollama_cloud_key_input.editingFinished.connect(self._on_ollama_cloud_key_changed)
+        cloud_key_row.addWidget(self._ollama_cloud_key_input, stretch=1)
+
+        layout.addWidget(self._ollama_cloud_key_widget)
+        self._ollama_cloud_key_widget.setVisible(self._backend == "ollama_cloud")
         # ─────────────────────────────────────────────────────────────────────
 
         self._chat = Qt.QTextEdit()
@@ -896,8 +924,9 @@ class _FlameChat:
         self._model   = model_id
         self._backend = backend
         self._save_model_config(model_id, backend)
-        # Show the Ollama URL field only when a self-hosted Ollama model is selected
+        # Show the appropriate config row for the selected backend
         self._ollama_url_widget.setVisible(backend == "ollama")
+        self._ollama_cloud_key_widget.setVisible(backend == "ollama_cloud")
         if backend == "ollama":
             suffix = f" 🖥 {self._ollama_url}"
         elif backend == "ollama_cloud":
@@ -934,6 +963,28 @@ class _FlameChat:
         self._ui_queue.append(
             lambda u=url: self._append_bubble("tool", f"⚙️  Ollama server → {u}"))
         _log(f"Ollama URL set to: {url}")
+
+    def _on_ollama_cloud_key_changed(self) -> None:
+        """Called when the user edits the Ollama cloud API key field and presses Enter."""
+        key = self._ollama_cloud_key_input.text().strip()
+        if not key:
+            return
+        self._ollama_cloud_key = key
+        # Persist to config.json
+        try:
+            cfg = {}
+            if os.path.exists(MODEL_CONFIG_FILE):
+                with open(MODEL_CONFIG_FILE) as f:
+                    cfg = json.load(f)
+            cfg['ollama_cloud_key'] = key
+            os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
+            with open(MODEL_CONFIG_FILE, 'w') as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            _log(f"Ollama cloud key save error: {e}")
+        self._ui_queue.append(
+            lambda: self._append_bubble("tool", "⚙️  Ollama cloud key saved ✓"))
+        _log("Ollama cloud key updated")
 
     # ── Ollama helpers ────────────────────────────────────────────────────────
 
