@@ -439,6 +439,35 @@ class _FlameChat:
         model_row.addWidget(self._model_combo)
         model_row.addStretch()
         layout.addLayout(model_row)
+
+        # ── Ollama server URL row (visible only when an Ollama model is selected) ──
+        # Wrapped in a QWidget so we can show/hide the whole row cleanly.
+        self._ollama_url_widget = Qt.QWidget()
+        ollama_row = Qt.QHBoxLayout(self._ollama_url_widget)
+        ollama_row.setContentsMargins(0, 0, 0, 0)
+        ollama_row.setSpacing(6)
+
+        ollama_lbl = Qt.QLabel("Ollama server:")
+        ollama_lbl.setStyleSheet("color:#888;font-size:11px;min-width:90px;")
+        ollama_row.addWidget(ollama_lbl)
+
+        self._ollama_input = Qt.QLineEdit()
+        self._ollama_input.setText(self._ollama_url)
+        self._ollama_input.setPlaceholderText("http://192.168.1.50:11434")
+        self._ollama_input.setToolTip(
+            "IP address and port of the Linux machine running Ollama.\n"
+            "Example: http://192.168.1.50:11434\n"
+            "Press Enter to save.")
+        self._ollama_input.setStyleSheet(
+            "QLineEdit{background:#2a2a2a;color:#e0e0e0;border:1px solid #555;"
+            "border-radius:4px;padding:2px 8px;font-size:11px;}"
+            "QLineEdit:focus{border:1px solid #f59e0b;}")
+        self._ollama_input.editingFinished.connect(self._on_ollama_url_changed)
+        ollama_row.addWidget(self._ollama_input, stretch=1)
+
+        layout.addWidget(self._ollama_url_widget)
+        # Show only when the current backend is "ollama" (self-hosted)
+        self._ollama_url_widget.setVisible(self._backend == "ollama")
         # ─────────────────────────────────────────────────────────────────────
 
         self._chat = Qt.QTextEdit()
@@ -853,6 +882,8 @@ class _FlameChat:
         self._model   = model_id
         self._backend = backend
         self._save_model_config(model_id, backend)
+        # Show the Ollama URL field only when a self-hosted Ollama model is selected
+        self._ollama_url_widget.setVisible(backend == "ollama")
         if backend == "ollama":
             suffix = f" 🖥 {self._ollama_url}"
         elif backend == "ollama_cloud":
@@ -863,6 +894,32 @@ class _FlameChat:
         self._ui_queue.append(
             lambda d=display: self._append_bubble("tool", f"⚙️  Model → {d}"))
         _log(f"Model changed to: {model_id or 'default'} (backend={backend})")
+
+    def _on_ollama_url_changed(self) -> None:
+        """Called when the user edits the Ollama server URL field and presses Enter."""
+        url = self._ollama_input.text().strip().rstrip('/')
+        if not url:
+            return
+        # Normalise: add http:// if missing
+        if not url.startswith('http'):
+            url = 'http://' + url
+        self._ollama_url = url
+        self._ollama_input.setText(url)
+        # Persist to config.json
+        try:
+            cfg = {}
+            if os.path.exists(MODEL_CONFIG_FILE):
+                with open(MODEL_CONFIG_FILE) as f:
+                    cfg = json.load(f)
+            cfg['ollama_url'] = url
+            os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
+            with open(MODEL_CONFIG_FILE, 'w') as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            _log(f"Ollama URL save error: {e}")
+        self._ui_queue.append(
+            lambda u=url: self._append_bubble("tool", f"⚙️  Ollama server → {u}"))
+        _log(f"Ollama URL set to: {url}")
 
     # ── Ollama helpers ────────────────────────────────────────────────────────
 
