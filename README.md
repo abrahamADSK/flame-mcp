@@ -175,7 +175,19 @@ session_stats()                   ← show token summary
 
 ## Self-improving RAG
 
-The system maintains a local semantic search index (`rag/index/`) built from `FLAME_API.md`. Before every `execute_python` call, Claude searches this index to find the correct API pattern — avoiding guesswork and saving tokens.
+The system maintains a local semantic search index (`rag/index/`) built from all documents in the `docs/` folder plus `FLAME_API.md`. Before every `execute_python` call, Claude searches this index to find the correct API pattern — avoiding guesswork and saving tokens.
+
+### Knowledge base (375 chunks total)
+
+| File | Chunks | Content |
+|---|---|---|
+| `FLAME_API.md` | 116 | Core Flame Python API — PyClip, PyReel, PyBatch, PyLibrary, connectors, markers, PyTime, import/export code samples. Auto-extended by `learn_pattern`. |
+| `docs/flame_advanced_api.md` | 74 | Action node (PyActionNode, output types, FBX import), Color Management (CDL/LUT/CTF via PyClrMgmtNode), Exporter (PyExporter), MediaHub, Conform/AAF workflow patterns, Timeline FX/BFX, Python hooks reference, operator-phrase → API lookup table. |
+| `docs/flame_api_full.md` | 71 | Extended API reference — PySequence, PyTrack, PyVersion, PyMarker, PyProject, PyWorkspace, batch nodes, render pipeline, archive. |
+| `docs/flame_segment_timeline_api.md` | 61 | Full PySegment API (trim, slip, create_effect, connected_segments), corrected PyClip.render() signature, PyBatch.create_batch_group(), PySequence methods, post-conform batch group creation patterns. |
+| `docs/flame_community_workflows.md` | 23 | Logik Forum operator terminology → API mapping. Conform jargon, batch compositing terms, render/delivery slang, 35-row operator→API lookup table. |
+| `docs/flame_cookbook_official.md` | 22 | Official Autodesk Python API code samples — clip import/reformat/render, Timeline FX create/bypass/save/load, batch group creation, node wiring, multi-pass render, Action compass nodes. |
+| `docs/flame_vocabulary.md` | 8 | Flame-specific terminology glossary — how operators refer to things vs. the Python API names. |
 
 ### How it learns
 
@@ -245,7 +257,14 @@ flame-mcp/
 │   ├── flame_mcp_bridge.log   # TCP bridge activity log
 │   └── flame_rag.log          # RAG query log with relevance scores
 └── docs/
-    └── flame-mcp-reference.pdf  # Full reference guide (this document)
+    ├── flame-mcp-reference.pdf      # Full reference guide
+    ├── FLAME_API.md                 # (root) Core API + self-learned patterns
+    ├── flame_advanced_api.md        # Action, Color Mgmt, Exporter, Conform, TL FX
+    ├── flame_api_full.md            # Extended API — sequences, tracks, projects
+    ├── flame_segment_timeline_api.md# PySegment, PyClip.render, PyBatch.create_batch_group
+    ├── flame_community_workflows.md # Logik Forum operator jargon → API
+    ├── flame_cookbook_official.md   # Official Autodesk Python code samples
+    └── flame_vocabulary.md          # Operator terminology glossary
 ```
 
 ---
