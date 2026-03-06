@@ -13,6 +13,11 @@ import datetime
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
+
+# Ensure project root is on sys.path so `from rag.config import ...` works
+# whether search.py is imported from flame_mcp_server.py or run directly.
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 LOG_FILE  = os.path.join(ROOT, 'logs', 'flame_rag.log')
 
 

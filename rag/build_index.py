@@ -31,6 +31,11 @@ import sys
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
+
+# Ensure project root is on sys.path so `from rag.config import ...` works
+# whether this script is run directly (python rag/build_index.py) or imported.
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 DOCS_DIR  = os.path.join(ROOT, 'docs')
 
 # Documents to always index
