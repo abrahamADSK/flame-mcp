@@ -45,27 +45,29 @@ MODEL_CONFIG_FILE = os.path.expanduser(
 
 # Available models shown in the chat widget dropdown.
 # Each entry: (display_label, model_id, backend)
-#   backend = "anthropic"   → Anthropic cloud (api.anthropic.com)
-#   backend = "ollama_local" → Ollama running locally (no cost, private)
-#   backend = "ollama_cloud" → Ollama cloud API (free tier, needs API key)
-# Add new entries here; install.sh auto-detects hardware and can pre-configure.
+#   backend = "anthropic"    → Anthropic cloud (api.anthropic.com)
+#   backend = "ollama"       → Self-hosted Ollama server (local LAN or remote Linux box)
+#                              URL configured in config.json → ollama_url
+#                              e.g. "http://192.168.1.50:11434"  (Linux workstation)
+#   backend = "ollama_cloud" → Ollama.com cloud API (free tier, needs ollama_cloud_key)
+# Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud ───────────────────────────────────────────────────────
     ("Sonnet 4.5",          "claude-sonnet-4-5-20250929",  "anthropic"),
     ("Haiku 4.5",           "claude-haiku-4-5-20251001",   "anthropic"),
-    # ── Ollama local  (requires Ollama running on this machine) ───────────────
-    ("qwen3-coder 30B",     "qwen3-coder:30b-a3b",         "ollama_local"),
-    ("qwen2.5-coder 14B",   "qwen2.5-coder:14b",           "ollama_local"),
+    # ── Self-hosted Ollama  (Linux workstation, NAS, any server on the LAN) ───
+    ("qwen3-coder 30B",     "qwen3-coder:30b-a3b",         "ollama"),
+    ("qwen2.5-coder 14B",   "qwen2.5-coder:14b",           "ollama"),
     # ── Ollama cloud  (free tier · needs ollama_cloud_key in config.json) ─────
     ("qwen3-coder 480B ☁",  "qwen3-coder:480b",            "ollama_cloud"),
     # ── Custom ────────────────────────────────────────────────────────────────
     ("Custom",              "",                             "anthropic"),
 ]
-DEFAULT_MODEL   = "claude-sonnet-4-5-20250929"
-DEFAULT_BACKEND = "anthropic"
+DEFAULT_MODEL    = "claude-sonnet-4-5-20250929"
+DEFAULT_BACKEND  = "anthropic"
+DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
-# Ollama endpoint URLs (Anthropic Messages API compatible since Ollama v0.14)
-OLLAMA_LOCAL_URL = "http://localhost:11434"
+# Ollama cloud endpoint (Anthropic Messages API compatible since Ollama v0.14)
 OLLAMA_CLOUD_URL = "https://api.ollama.com"
 
 # Global bridge state
@@ -390,7 +392,7 @@ class _FlameChat:
         self._busy = False
         self._session_tokens = 0     # cumulative tokens this widget session
         self._rate_limited = False   # True if last call hit a rate limit
-        self._model, self._backend, self._ollama_cloud_key = self._load_model_config()
+        self._model, self._backend, self._ollama_url, self._ollama_cloud_key = self._load_model_config()
         self._build_ui()
 
     # ── UI ───────────────────────────────────────────────────────────────────
@@ -561,15 +563,19 @@ class _FlameChat:
                     "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
-            # Apply Ollama env overrides when using a local or cloud Ollama model.
-            # Ollama implements the Anthropic Messages API natively (v0.14+),
-            # so no proxy is required — just point ANTHROPIC_BASE_URL at Ollama.
-            if self._backend == "ollama_local":
-                if not self._check_ollama_local():
+            # Apply Ollama env overrides when using a self-hosted or cloud Ollama model.
+            # Ollama implements the Anthropic Messages API natively (v0.14+):
+            # Claude Code on macOS → HTTP → Ollama server (LAN Linux box or cloud)
+            # No proxy required.
+            if self._backend == "ollama":
+                if not self._check_ollama():
                     raise RuntimeError(
-                        "Ollama is not running locally.\n\n"
-                        "Start it with:  ollama serve\n"
-                        "Then retry, or switch to an Anthropic model."
+                        f"Ollama server not reachable at {self._ollama_url}\n\n"
+                        "Check that Ollama is running on the Linux machine:\n"
+                        "  OLLAMA_HOST=0.0.0.0 ollama serve\n\n"
+                        "And that ollama_url in config.json points to it:\n"
+                        f"  {self._ollama_url}\n\n"
+                        "Or switch to an Anthropic model until it's available."
                     )
                 env = self._get_ollama_env(env)
             elif self._backend == "ollama_cloud":
@@ -798,19 +804,33 @@ class _FlameChat:
     # ── Model config ──────────────────────────────────────────────────────────
 
     def _load_model_config(self) -> tuple:
-        """Load persisted model, backend, and Ollama cloud key from config.json."""
+        """
+        Load persisted model, backend, Ollama server URL, and cloud key.
+
+        config.json keys:
+          model            – model_id string
+          backend          – "anthropic" | "ollama" | "ollama_cloud"
+                             ("ollama_local" accepted for backward compat → treated as "ollama")
+          ollama_url       – base URL of the Ollama server, e.g. "http://192.168.1.50:11434"
+                             Set this to the IP of your Linux workstation running Ollama.
+          ollama_cloud_key – API key from ollama.com (only needed for ollama_cloud backend)
+        """
         try:
             with open(MODEL_CONFIG_FILE) as f:
                 cfg = json.load(f)
-            model     = cfg.get('model',            DEFAULT_MODEL)
-            backend   = cfg.get('backend',          DEFAULT_BACKEND)
-            cloud_key = cfg.get('ollama_cloud_key', '')
-            return model, backend, cloud_key
+            model      = cfg.get('model',            DEFAULT_MODEL)
+            backend    = cfg.get('backend',          DEFAULT_BACKEND)
+            # Backward compat: old configs may have "ollama_local"
+            if backend == 'ollama_local':
+                backend = 'ollama'
+            ollama_url = cfg.get('ollama_url',       DEFAULT_OLLAMA_URL)
+            cloud_key  = cfg.get('ollama_cloud_key', '')
+            return model, backend, ollama_url, cloud_key
         except Exception:
-            return DEFAULT_MODEL, DEFAULT_BACKEND, ''
+            return DEFAULT_MODEL, DEFAULT_BACKEND, DEFAULT_OLLAMA_URL, ''
 
     def _save_model_config(self, model_id: str, backend: str) -> None:
-        """Persist model + backend to config.json, merging with existing keys."""
+        """Persist model + backend to config.json, preserving all other keys."""
         try:
             cfg = {}
             if os.path.exists(MODEL_CONFIG_FILE):
@@ -818,6 +838,9 @@ class _FlameChat:
                     cfg = json.load(f)
             cfg['model']   = model_id
             cfg['backend'] = backend
+            # Ensure ollama_url exists in config even if not yet set
+            if 'ollama_url' not in cfg:
+                cfg['ollama_url'] = DEFAULT_OLLAMA_URL
             os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
             with open(MODEL_CONFIG_FILE, 'w') as f:
                 json.dump(cfg, f, indent=2)
@@ -830,10 +853,10 @@ class _FlameChat:
         self._model   = model_id
         self._backend = backend
         self._save_model_config(model_id, backend)
-        if backend == "ollama_local":
-            suffix = " 🖥 local"
+        if backend == "ollama":
+            suffix = f" 🖥 {self._ollama_url}"
         elif backend == "ollama_cloud":
-            suffix = " ☁ cloud"
+            suffix = " ☁ ollama.com"
         else:
             suffix = ""
         display = f"{label}{suffix}" if model_id else f"{label} (set model in config.json)"
@@ -843,33 +866,39 @@ class _FlameChat:
 
     # ── Ollama helpers ────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _check_ollama_local() -> bool:
-        """Return True if a local Ollama server is reachable at OLLAMA_LOCAL_URL."""
+    def _check_ollama(self) -> bool:
+        """
+        Return True if the configured Ollama server is reachable.
+        Pings self._ollama_url (set in config.json → ollama_url).
+        Works whether Ollama runs on localhost, a LAN Linux box, etc.
+        """
         try:
             import urllib.request
-            urllib.request.urlopen(f"{OLLAMA_LOCAL_URL}/api/version", timeout=1)
+            urllib.request.urlopen(f"{self._ollama_url}/api/version", timeout=2)
             return True
         except Exception:
             return False
 
     def _get_ollama_env(self, base_env: dict) -> dict:
         """
-        Return a copy of base_env with Anthropic API vars overridden for Ollama.
+        Return a copy of base_env with Anthropic API vars pointed at Ollama.
 
-        Ollama implements the Anthropic Messages API natively (v0.14+), so Claude
-        Code talks to it directly — no proxy required.
+        Ollama implements the Anthropic Messages API natively (v0.14+), so
+        Claude Code on macOS can talk directly to any Ollama server on the LAN —
+        no proxy required.
 
-        Local:  ANTHROPIC_BASE_URL=http://localhost:11434  ANTHROPIC_API_KEY=ollama
-        Cloud:  ANTHROPIC_BASE_URL=https://api.ollama.com  ANTHROPIC_API_KEY=<key>
-                (get a free key at ollama.com → account → API keys)
+        Self-hosted:  ANTHROPIC_BASE_URL = config.json → ollama_url
+                      ANTHROPIC_API_KEY  = "ollama"  (arbitrary, Ollama ignores it)
+        Cloud:        ANTHROPIC_BASE_URL = https://api.ollama.com
+                      ANTHROPIC_API_KEY  = config.json → ollama_cloud_key
+                      (get a free key at ollama.com → account settings → API keys)
         """
         env = base_env.copy()
-        if self._backend == "ollama_local":
-            env['ANTHROPIC_BASE_URL']   = OLLAMA_LOCAL_URL
+        if self._backend == "ollama":
+            env['ANTHROPIC_BASE_URL']   = self._ollama_url
             env['ANTHROPIC_API_KEY']    = 'ollama'
             env['ANTHROPIC_AUTH_TOKEN'] = 'ollama'
-            _log(f"Ollama local backend: {OLLAMA_LOCAL_URL} / model={self._model}")
+            _log(f"Ollama backend: {self._ollama_url} / model={self._model}")
         elif self._backend == "ollama_cloud":
             env['ANTHROPIC_BASE_URL'] = OLLAMA_CLOUD_URL
             key = self._ollama_cloud_key
@@ -878,7 +907,7 @@ class _FlameChat:
                 env['ANTHROPIC_AUTH_TOKEN'] = key
             else:
                 _log("WARNING: ollama_cloud_key not set in config.json. "
-                     "Set it to use Ollama cloud models.")
+                     "Add it to use Ollama cloud models (ollama.com → API keys).")
             _log(f"Ollama cloud backend: {OLLAMA_CLOUD_URL} / model={self._model}")
         return env
 

@@ -173,59 +173,48 @@ PYEOF
 
 ok "Tool auto-approval configured — no permission prompts on first use."
 
-# ── 9. Hardware detection + Ollama model recommendation ───────────────────────
+# ── 9. Ollama server configuration (optional) ─────────────────────────────────
+# Flame + this bridge run on THIS Mac.
+# Ollama runs on a SEPARATE Linux machine (RTX 3090 etc.) on the same LAN.
+# This step stores the Linux box's IP/port in config.json so the bridge can
+# reach it. To set up the Linux machine itself, run setup_linux.sh there.
 echo ""
-echo -e "${YELLOW}─── Step 9: Hardware detection & Ollama setup ───────────────────${NC}"
+echo -e "${YELLOW}─── Step 9: Ollama server setup (optional) ──────────────────────${NC}"
+echo "  Ollama must be installed on your Linux machine, NOT on this Mac."
+echo "  If you have (or plan to have) an Ollama server on your LAN, enter its"
+echo "  address now. Leave blank to keep using Anthropic cloud models."
+echo ""
 
-# Detect VRAM (NVIDIA only; add AMD/Metal support as needed)
-VRAM_MB=0
-if command -v nvidia-smi &>/dev/null 2>&1; then
-    VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
-              | head -1 | tr -d ' \r' || echo 0)
-fi
-
-# Detect total RAM in GB
-if command -v free &>/dev/null 2>&1; then
-    RAM_GB=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
-else
-    # macOS fallback
-    RAM_GB=$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%d", $1/1024/1024/1024}')
-fi
-RAM_GB=${RAM_GB:-0}
-
-echo "  GPU VRAM : ${VRAM_MB} MB"
-echo "  RAM      : ${RAM_GB} GB"
-
-# Determine recommended Ollama model based on VRAM
-RECOMMENDED_OLLAMA_MODEL=""
-if [ "$VRAM_MB" -ge 20000 ] 2>/dev/null; then
-    RECOMMENDED_OLLAMA_MODEL="qwen3-coder:30b-a3b"
-    echo -e "  → ${GREEN}Recommended local model: qwen3-coder:30b-a3b${NC} (~18 GB VRAM, ~60 tok/s)"
-elif [ "$VRAM_MB" -ge 10000 ] 2>/dev/null; then
-    RECOMMENDED_OLLAMA_MODEL="qwen2.5-coder:14b"
-    echo -e "  → ${GREEN}Recommended local model: qwen2.5-coder:14b${NC} (~10 GB VRAM, ~80 tok/s)"
-elif [ "$VRAM_MB" -ge 6000 ] 2>/dev/null; then
-    RECOMMENDED_OLLAMA_MODEL="qwen2.5-coder:7b"
-    echo -e "  → ${YELLOW}Recommended local model: qwen2.5-coder:7b${NC} (~6 GB VRAM, fast but lighter)"
-elif [ "$RAM_GB" -ge 32 ] 2>/dev/null; then
-    RECOMMENDED_OLLAMA_MODEL="qwen2.5-coder:7b"
-    echo -e "  → ${YELLOW}No dedicated GPU detected. CPU inference with qwen2.5-coder:7b${NC} (slow)"
-else
-    echo -e "  → ${YELLOW}Insufficient resources for local models. Using Anthropic cloud (default).${NC}"
-fi
-
-# Config file path
 CONFIG_FILE="$SCRIPT_DIR/config.json"
 
-# Only proceed if a local model is viable and Ollama is available
-if [ -n "$RECOMMENDED_OLLAMA_MODEL" ] && command -v ollama &>/dev/null 2>&1; then
-    echo ""
-    read -r -p "  Configure Ollama local backend with $RECOMMENDED_OLLAMA_MODEL? [y/N] " ans
-    if [[ "$ans" =~ ^[Yy]$ ]]; then
+read -r -p "  Linux Ollama server address [e.g. 192.168.1.50:11434] (blank to skip): " OLLAMA_ADDR
 
-        # Update config.json
-        python3 - <<PYEOF
-import json, os, sys
+if [ -n "$OLLAMA_ADDR" ]; then
+    # Normalise: strip trailing slash, add http:// if missing
+    OLLAMA_ADDR="${OLLAMA_ADDR%/}"
+    [[ "$OLLAMA_ADDR" != http* ]] && OLLAMA_ADDR="http://$OLLAMA_ADDR"
+
+    # Test reachability
+    echo "  Testing connection to $OLLAMA_ADDR …"
+    if curl -sf --max-time 2 "$OLLAMA_ADDR/api/version" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓ Ollama server reachable.${NC}"
+    else
+        echo -e "  ${YELLOW}⚠  Cannot reach $OLLAMA_ADDR right now.${NC}"
+        echo "     Saving the URL anyway — you can start Ollama on Linux later."
+        echo "     On the Linux machine:  OLLAMA_HOST=0.0.0.0 ollama serve"
+    fi
+
+    echo ""
+    echo "  Recommended models by GPU VRAM on the Linux server:"
+    echo "    ≥ 20 GB  →  qwen3-coder:30b-a3b  (~18 GB VRAM · ~60 tok/s · best quality)"
+    echo "    ≥ 10 GB  →  qwen2.5-coder:14b    (~10 GB VRAM · ~80 tok/s)"
+    echo "    ≥  6 GB  →  qwen2.5-coder:7b     ( ~5 GB VRAM · ~100 tok/s)"
+    echo ""
+    read -r -p "  Model to activate [default: qwen3-coder:30b-a3b]: " OLLAMA_MODEL
+    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3-coder:30b-a3b}"
+
+    python3 - <<PYEOF
+import json, os
 cfg_path = "$CONFIG_FILE"
 cfg = {}
 if os.path.exists(cfg_path):
@@ -234,43 +223,30 @@ if os.path.exists(cfg_path):
             cfg = json.load(f)
     except Exception:
         pass
-cfg['model']   = "$RECOMMENDED_OLLAMA_MODEL"
-cfg['backend'] = "ollama_local"
+cfg['model']            = "$OLLAMA_MODEL"
+cfg['backend']          = "ollama"
+cfg['ollama_url']       = "$OLLAMA_ADDR"
 if 'ollama_cloud_key' not in cfg:
     cfg['ollama_cloud_key'] = ""
-os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+os.makedirs(os.path.dirname(os.path.abspath(cfg_path)), exist_ok=True)
 with open(cfg_path, 'w') as f:
     json.dump(cfg, f, indent=2)
-print(f"  config.json updated: model={cfg['model']} backend={cfg['backend']}")
+print(f"  config.json → backend=ollama  model={cfg['model']}  ollama_url={cfg['ollama_url']}")
 PYEOF
 
-        ok "config.json set to Ollama local backend ($RECOMMENDED_OLLAMA_MODEL)."
-
-        # Offer to pull the model
-        echo ""
-        ESTIMATED_SIZE="~18 GB"
-        [ "$RECOMMENDED_OLLAMA_MODEL" = "qwen2.5-coder:14b" ] && ESTIMATED_SIZE="~10 GB"
-        [ "$RECOMMENDED_OLLAMA_MODEL" = "qwen2.5-coder:7b"  ] && ESTIMATED_SIZE="~5 GB"
-        read -r -p "  Pull $RECOMMENDED_OLLAMA_MODEL now? ($ESTIMATED_SIZE download) [y/N] " pull_ans
-        if [[ "$pull_ans" =~ ^[Yy]$ ]]; then
-            echo "  Running: ollama pull $RECOMMENDED_OLLAMA_MODEL"
-            ollama pull "$RECOMMENDED_OLLAMA_MODEL"
-            ok "Model pulled and ready."
-        else
-            echo "  Skipped. Pull it later with:  ollama pull $RECOMMENDED_OLLAMA_MODEL"
-        fi
-    else
-        echo "  Skipped. Default Anthropic models remain active."
-        echo "  To configure Ollama later, edit: $CONFIG_FILE"
-        echo "    Set:  \"model\": \"qwen3-coder:30b-a3b\",  \"backend\": \"ollama_local\""
-    fi
-elif [ -n "$RECOMMENDED_OLLAMA_MODEL" ] && ! command -v ollama &>/dev/null 2>&1; then
+    ok "Ollama backend configured."
     echo ""
-    echo -e "  ${YELLOW}Ollama not installed.${NC} Your GPU ($VRAM_MB MB) supports $RECOMMENDED_OLLAMA_MODEL."
-    echo "  Install Ollama from https://ollama.com, then:"
-    echo "    ollama pull $RECOMMENDED_OLLAMA_MODEL"
-    echo "  And in config.json set:"
-    echo "    \"model\": \"$RECOMMENDED_OLLAMA_MODEL\",  \"backend\": \"ollama_local\""
+    echo "  To set up the Linux machine, copy setup_linux.sh and run it there:"
+    echo "    scp $SCRIPT_DIR/setup_linux.sh user@<linux-ip>:~/"
+    echo "    ssh user@<linux-ip> 'bash setup_linux.sh'"
+
+else
+    echo "  Skipped. Anthropic cloud models remain active."
+    echo ""
+    echo "  To configure Ollama later, edit $CONFIG_FILE:"
+    echo '    "backend":    "ollama"'
+    echo '    "ollama_url": "http://<linux-ip>:11434"'
+    echo '    "model":      "qwen3-coder:30b-a3b"'
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
