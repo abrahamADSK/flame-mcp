@@ -26,6 +26,18 @@ _client     = None
 _collection = None
 
 
+def _get_embedding_fn():
+    """
+    Returns the BGE embedding function used by build_index.py.
+    MUST match rag/config.py — build and query must use the same model
+    or cosine similarity scores will be meaningless.
+    Lazy-imported so the MCP server starts fast even if model not yet cached.
+    """
+    from rag.config import EMBEDDING_MODEL
+    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+    return SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+
+
 def _get_collection():
     global _client, _collection
     if _collection is not None:
@@ -38,7 +50,10 @@ def _get_collection():
     try:
         import chromadb
         _client     = chromadb.PersistentClient(path=INDEX_DIR)
-        _collection = _client.get_collection("flame_docs")
+        _collection = _client.get_collection(
+            "flame_docs",
+            embedding_function=_get_embedding_fn(),
+        )
         _log(f"Index loaded — {_collection.count()} chunks")
         return _collection
     except Exception as e:

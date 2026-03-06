@@ -9,29 +9,27 @@ Usage:
     source .venv/bin/activate
     python rag/build_index.py
 
-    # With Ollama (much better semantic quality — recommended if Ollama is running):
-    python rag/build_index.py --ollama
-
 What it indexes:
     - FLAME_API.md              (Flame 2026 Python API cheatsheet + patterns)
     - docs/flame_vocabulary.md  (editorial terms → API mapping)
     - docs/flame_api_full.md    (full auto-generated API reference)
     - Any other .md in docs/
 
-The index is stored in rag/index/ (local only, not in git).
+The index is stored in rag/index/ and committed to git so that
+users who clone the repo get a ready-to-use index without rebuilding.
 
-Embedding models (in order of quality):
-    1. Ollama nomic-embed-text  — best, requires `ollama pull nomic-embed-text`
-    2. ChromaDB default         — all-MiniLM-L6-v2, 22M params, generic
+Rebuild the index whenever you change the docs:
+    python rag/build_index.py
+
+First run downloads the embedding model (~130 MB from HuggingFace, once).
 """
 
 import os
 import re
 import sys
-import argparse
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
 DOCS_DIR  = os.path.join(ROOT, 'docs')
 
@@ -50,7 +48,7 @@ def chunk_markdown(text: str, source: str) -> list[dict]:
     Chunks shorter than 80 chars are skipped (likely empty headers).
     """
     chunks = []
-    # Split on level-2 or level-3 headers
+    # Split on level-1, 2 or level-3 headers
     sections = re.split(r'\n(?=#{1,3} )', text)
 
     for i, section in enumerate(sections):
@@ -81,63 +79,52 @@ def collect_docs() -> list[str]:
 
     # Also pick up anything in docs/
     if os.path.isdir(DOCS_DIR):
-        for fname in os.listdir(DOCS_DIR):
+        for fname in sorted(os.listdir(DOCS_DIR)):
             if fname.endswith('.md'):
                 paths.append(os.path.join(DOCS_DIR, fname))
 
     return paths
 
 
+# ── Embedding ──────────────────────────────────────────────────────────────────
+
+def _make_embedding_fn():
+    """
+    Returns a ChromaDB-compatible embedding function using the BGE model.
+    Downloads the model on first use (~130 MB, cached in ~/.cache/huggingface/).
+    """
+    from rag.config import EMBEDDING_MODEL
+    try:
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        print(f"  Embedding model : {EMBEDDING_MODEL}")
+        print(f"  (downloading from HuggingFace on first run — cached afterwards)")
+        fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+        # Warm-up probe so any download happens now, not silently during indexing
+        fn(["probe"])
+        print(f"  Embedding model : ready ✓")
+        return fn
+    except ImportError:
+        print("  ERROR: sentence-transformers not installed.")
+        print("  Run:   pip install sentence-transformers")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  ERROR loading embedding model: {e}")
+        sys.exit(1)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def _make_ollama_embedding_fn(model: str = "nomic-embed-text"):
-    """
-    Returns a ChromaDB-compatible embedding function that calls Ollama locally.
-    Requires: ollama pull nomic-embed-text  (or any other embedding model)
-    """
-    import urllib.request
-    import json as _json
-
-    class OllamaEmbeddingFunction:
-        def __init__(self, model):
-            self.model = model
-
-        def __call__(self, input):  # input is a list of strings
-            results = []
-            for text in input:
-                body = _json.dumps({"model": self.model, "prompt": text}).encode()
-                req  = urllib.request.Request(
-                    "http://localhost:11434/api/embeddings",
-                    data=body,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    data = _json.loads(resp.read())
-                results.append(data["embedding"])
-            return results
-
-    # Verify connection
-    try:
-        fn = OllamaEmbeddingFunction(model)
-        fn(["test"])
-        print(f"  Ollama embedding model: {model} ✓")
-        return fn
-    except Exception as e:
-        print(f"  Ollama not available ({e}). Falling back to ChromaDB default.")
-        return None
-
-
-def build(use_ollama: bool = False):
+def build():
     try:
         import chromadb
     except ImportError:
-        print("ERROR: chromadb not installed.\n"
-              "Run: pip install chromadb")
+        print("ERROR: chromadb not installed.\nRun: pip install chromadb")
         sys.exit(1)
 
     print(f"Building RAG index in: {INDEX_DIR}")
     os.makedirs(INDEX_DIR, exist_ok=True)
+
+    embedding_fn = _make_embedding_fn()
 
     client = chromadb.PersistentClient(path=INDEX_DIR)
 
@@ -148,32 +135,18 @@ def build(use_ollama: bool = False):
     except Exception:
         pass
 
-    # Choose embedding function
-    embedding_fn = None
-    if use_ollama:
-        embedding_fn = _make_ollama_embedding_fn("nomic-embed-text")
-
-    collection_kwargs = dict(
+    collection = client.create_collection(
         name="flame_docs",
+        embedding_function=embedding_fn,
         metadata={"hnsw:space": "cosine"},
     )
-    if embedding_fn:
-        collection_kwargs["embedding_function"] = embedding_fn
-    else:
-        if use_ollama:
-            print("  Using ChromaDB default embedding (all-MiniLM-L6-v2)")
-        else:
-            print("  Using ChromaDB default embedding (all-MiniLM-L6-v2)")
-            print("  Tip: run with --ollama for better semantic quality")
-
-    collection = client.create_collection(**collection_kwargs)
 
     all_chunks: list[dict] = []
     for doc_path in collect_docs():
         with open(doc_path, 'r', encoding='utf-8') as f:
             text = f.read()
-        source  = os.path.basename(doc_path)
-        chunks  = chunk_markdown(text, source)
+        source = os.path.basename(doc_path)
+        chunks = chunk_markdown(text, source)
         all_chunks.extend(chunks)
         print(f"  {source}: {len(chunks)} chunks")
 
@@ -189,12 +162,12 @@ def build(use_ollama: bool = False):
 
     print(f"\nDone. {len(all_chunks)} chunks indexed.")
     print(f"Index location: {INDEX_DIR}")
+    print()
+    print("Next step: commit the index to git so other users don't need to rebuild:")
+    print("  git add rag/index/")
+    print("  git commit -m 'rag: update pre-built index'")
+    print("  git push")
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Build RAG index for flame-mcp')
-    parser.add_argument('--ollama', action='store_true',
-                        help='Use Ollama nomic-embed-text for better semantic quality '
-                             '(requires: ollama pull nomic-embed-text)')
-    args = parser.parse_args()
-    build(use_ollama=args.ollama)
+    build()

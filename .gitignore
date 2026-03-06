@@ -31,8 +31,9 @@ logs/*.log
 *.tar.gz
 *.zip
 
-# RAG vector index (built locally, not committed)
-rag/index/
+# RAG vector index — committed to git after first build so users get it pre-built.
+# Only ignored temporarily if you need to force a clean rebuild.
+# rag/index/
 
 # Claude Code local settings (user-specific paths)
 .claude/

@@ -78,7 +78,7 @@ PIP_VENV="$SCRIPT_DIR/.venv/bin/pip"
 # ── 4. Install dependencies ───────────────────────────────────────────────────
 info "Installing Python dependencies..."
 "$PIP_VENV" install --quiet --no-user -r "$SCRIPT_DIR/requirements.txt"
-ok "Dependencies installed (mcp)"
+ok "Dependencies installed (mcp, chromadb, sentence-transformers)"
 
 # ── 5. Install Flame hook ─────────────────────────────────────────────────────
 HOOK_SRC="$SCRIPT_DIR/hooks/flame_mcp_bridge.py"
@@ -98,7 +98,23 @@ else
     fi
 fi
 
-# ── 6. Register MCP server with Claude Code ───────────────────────────────────
+# ── 6. Build RAG index ────────────────────────────────────────────────────────
+RAG_INDEX="$SCRIPT_DIR/rag/index"
+if [ -d "$RAG_INDEX" ] && [ "$(ls -A "$RAG_INDEX" 2>/dev/null)" ]; then
+    ok "RAG index already present (pre-built). Skipping rebuild."
+    info "To force a rebuild: python rag/build_index.py"
+else
+    info "Building RAG documentation index..."
+    info "(Downloads embedding model ~130 MB from HuggingFace on first run)"
+    if "$PYTHON_VENV" "$SCRIPT_DIR/rag/build_index.py"; then
+        ok "RAG index built."
+    else
+        warn "RAG index build failed — search_flame_docs will show an error."
+        warn "Fix with: source .venv/bin/activate && python rag/build_index.py"
+    fi
+fi
+
+# ── 7. Register MCP server with Claude Code ───────────────────────────────────
 info "Registering MCP server with Claude Code..."
 
 SERVER_SCRIPT="$SCRIPT_DIR/flame_mcp_server.py"
