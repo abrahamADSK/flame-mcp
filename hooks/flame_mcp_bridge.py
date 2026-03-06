@@ -77,7 +77,8 @@ OLLAMA_CLOUD_URL = "https://api.ollama.com"
 # options.num_ctx before running the claude CLI subprocess.  Ollama reuses
 # the already-loaded runner, so the subsequent Anthropic-API call gets the
 # correct 16 K context window.
-OLLAMA_NUM_CTX = 32768   # 32 K fits comfortably on RTX 3090 (18 GB model + ~3.5 GB KV cache ≈ 21.5 GB)
+OLLAMA_NUM_CTX = 24576   # 24 K: ~18.5 GB (model) + ~2.6 GB (KV cache) ≈ 21 GB < 24 GB VRAM
+                         # 32 K pushed total to ~21.5 GB + CUDA overhead → OOM → full CPU fallback
 
 # Global bridge state
 _bridge_active = False
