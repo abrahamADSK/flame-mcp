@@ -220,33 +220,40 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 ## MANDATORY WORKFLOW — follow this for every task
 
-1. ALWAYS call search_flame_docs FIRST before writing any execute_python code.
-   No exceptions — even for seemingly simple tasks like listing clips, reels,
-   or project names. Use a short query describing what you need, e.g.
-   "list clips in library", "get selected clips", "create batch group".
-   The RAG has verified patterns; guessing the API wastes tokens and fails.
+1. PREFER DEDICATED TOOLS for standard read operations — they require zero RAG
+   and zero execute_python calls:
+   - Project info          → get_project_info()
+   - Flame version         → get_flame_version()
+   - List libraries        → list_libraries()
+   - List reels            → list_reels(library_name)
+   - List clips            → list_clips(library_name, reel_name)
+   - Desktop structure     → list_desktop_reels()
+   Use these before falling back to search_flame_docs + execute_python.
 
-2. Use the correct object hierarchy:
+2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
+   FIRST before writing any execute_python code. No exceptions.
+
+3. Use the correct object hierarchy:
    - Libraries → flame.projects.current_project.current_workspace.libraries
    - Desktop   → flame.projects.current_project.current_workspace.desktop
    - Never use flame.projects.current_project.libraries (returns None)
 
-3. Never call flame.batch.render() directly — it crashes Flame.
+4. Never call flame.batch.render() directly — it crashes Flame.
    Schedule renders via flame.schedule_idle_event(render_fn).
 
-4. Always print output in execute_python — every call must end with print().
+5. Always print output in execute_python — every call must end with print().
    The result is only visible through stdout capture.
 
-5. Keep code minimal. Flame's Python environment is sensitive to long loops
+6. Keep code minimal. Flame's Python environment is sensitive to long loops
    or anything that blocks the main thread.
 
-6. On success, remember the working pattern for future calls in this session.
+7. On success, remember the working pattern for future calls in this session.
    On failure, do NOT retry the same approach — try a different method.
 
-7. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
+8. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
    This shows the user token usage and RAG savings for the session.
 
-8. NEVER use these patterns — they crash Flame (execute_python will block them):
+9. NEVER use these patterns — they crash Flame (execute_python will block them):
    - len(flame.projects) or for x in flame.projects  → PyProjectSelector is not iterable
    - flame.projects.current_project.libraries         → returns None, use ws.libraries
    - flame.batch.render()                             → blocks main thread
@@ -254,7 +261,7 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - dir(flame...)                                    → use search_flame_docs instead
    To list all Flame projects: os.listdir("/opt/Autodesk/project")
 
-9. SELF-IMPROVEMENT — after execute_python succeeds:
+10. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern
      was NOT in the docs. Call learn_pattern(description, code) immediately after
      the successful execute_python, BEFORE session_stats.
@@ -424,6 +431,71 @@ ws = flame.projects.current_project.current_workspace
 for lib in ws.libraries:
     print(f"[{lib.name}]")
     for reel in lib.reels:
+        print(f"  {reel.name}  ({len(reel.clips)} clips)")
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
+
+
+@mcp.tool()
+def list_clips(library_name: str = "", reel_name: str = "") -> str:
+    """
+    List clips inside a library, optionally filtered by reel name.
+    If library_name is empty, lists clips across all libraries.
+    If reel_name is also given, shows only that reel's clips.
+    Use this instead of execute_python for any 'show/list clips' request.
+    """
+    if library_name:
+        code = f"""
+ws = flame.projects.current_project.current_workspace
+lib = next((l for l in ws.libraries if str(l.name) == "{library_name}"), None)
+if lib is None:
+    print(f"Library '{library_name}' not found.")
+else:
+    reel_filter = "{reel_name}"
+    found = False
+    for reel in lib.reels:
+        if reel_filter and str(reel.name) != reel_filter:
+            continue
+        found = True
+        clips = list(reel.clips)
+        print(f"[{{lib.name}}] / [{{reel.name}}] — {{len(clips)}} clip(s)")
+        for c in clips:
+            print(f"  {{c.name}}")
+    if not found:
+        print(f"No reels matched filter '{reel_name}'.")
+"""
+    else:
+        code = """
+ws = flame.projects.current_project.current_workspace
+for lib in ws.libraries:
+    for reel in lib.reels:
+        clips = list(reel.clips)
+        if clips:
+            print(f"[{lib.name}] / [{reel.name}] — {len(clips)} clip(s)")
+            for c in clips:
+                print(f"  {c.name}")
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    return _fmt(result) + _stats_footer()
+
+
+@mcp.tool()
+def list_desktop_reels() -> str:
+    """
+    List the desktop structure: reel groups and their reels with clip counts.
+    Use this instead of execute_python for any 'show desktop / reel groups' request.
+    """
+    code = """
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+for rg in desktop.reel_groups:
+    print(f"[{rg.name}]")
+    for reel in rg.reels:
         print(f"  {reel.name}  ({len(reel.clips)} clips)")
 """
     result = _call_flame(code)
