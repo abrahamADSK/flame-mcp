@@ -77,7 +77,7 @@ OLLAMA_CLOUD_URL = "https://api.ollama.com"
 # options.num_ctx before running the claude CLI subprocess.  Ollama reuses
 # the already-loaded runner, so the subsequent Anthropic-API call gets the
 # correct 16 K context window.
-OLLAMA_NUM_CTX = 16384
+OLLAMA_NUM_CTX = 32768   # 32 K fits comfortably on RTX 3090 (18 GB model + ~3.5 GB KV cache ≈ 21.5 GB)
 
 # Global bridge state
 _bridge_active = False
@@ -681,7 +681,11 @@ class _FlameChat:
             stderr_t = threading.Thread(target=_read_stderr, daemon=True)
             stderr_t.start()
 
-            # Watchdog — kill process after 180 s
+            # Watchdog — kill process after timeout.
+            # Anthropic models: 180 s is plenty.
+            # Local Ollama models (30 B+ on a single GPU) can take 5–10 min on
+            # the first turn after loading; allow 600 s (10 min) for them.
+            _watchdog_secs = 600 if self._backend == "ollama" else 180
             _timed_out = [False]
             def _kill():
                 _timed_out[0] = True
@@ -689,7 +693,7 @@ class _FlameChat:
                     proc.kill()
                 except Exception:
                     pass
-            watchdog = threading.Timer(180, _kill)
+            watchdog = threading.Timer(_watchdog_secs, _kill)
             watchdog.start()
 
             assistant_parts = []    # text blocks from assistant messages
@@ -714,7 +718,11 @@ class _FlameChat:
                 stderr_t.join(timeout=5)
 
             if _timed_out[0]:
-                raise RuntimeError("Claude timed out (180 s). Try a simpler request.")
+                raise RuntimeError(
+                    f"Request timed out ({_watchdog_secs} s). "
+                    "Try a simpler request, or check that the Ollama server "
+                    "is not overloaded (nvidia-smi on the Linux machine)."
+                )
 
             # ── Rate-limit detection ──────────────────────────────────────────
             # Look for 429 / "rate limit" / "quota" in stderr output
