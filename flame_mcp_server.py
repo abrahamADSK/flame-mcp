@@ -221,10 +221,10 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 ## MANDATORY WORKFLOW — follow this for every task
 
 1. ALWAYS call search_flame_docs FIRST before writing any execute_python code.
-   Use a short query describing what you need, e.g. "import clip to reel",
-   "create batch group", "get selected clips". This saves tokens and finds
-   the correct API patterns. Only skip this if the task is trivially simple
-   (e.g. print project name).
+   No exceptions — even for seemingly simple tasks like listing clips, reels,
+   or project names. Use a short query describing what you need, e.g.
+   "list clips in library", "get selected clips", "create batch group".
+   The RAG has verified patterns; guessing the API wastes tokens and fails.
 
 2. Use the correct object hierarchy:
    - Libraries → flame.projects.current_project.current_workspace.libraries
@@ -332,8 +332,8 @@ def execute_python(code: str) -> str:
     Use this to inspect or modify projects, libraries, reels, clips,
     sequences, batch setups, nodes, and anything else exposed by Flame.
 
-    IMPORTANT: Call search_flame_docs BEFORE using this tool whenever you
-    need to look up API methods, class names, or patterns. Do not guess.
+    IMPORTANT: ALWAYS call search_flame_docs BEFORE using this tool, no
+    exceptions. Never guess API methods, class names, or object hierarchy.
 
     Key rules:
     - Libraries: use ws = flame.projects.current_project.current_workspace,
