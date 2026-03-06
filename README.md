@@ -45,6 +45,11 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** �
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) 2.x (`npm install -g @anthropic-ai/claude-code`)
 - A Claude account ([claude.ai](https://claude.ai)) — Pro, Max, or API key
 
+**Optional — local / free inference with Ollama:**
+- A Linux machine (same LAN or localhost) running [Ollama](https://ollama.com) 0.14+ with GPU
+- Or a free [ollama.com](https://ollama.com) cloud account (no GPU required)
+- See [Ollama setup](#ollama-setup-optional) below
+
 > **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5).
 
 ---
@@ -125,6 +130,16 @@ The status indicator updates every time you open the menu:
 - Executes Flame code via the TCP bridge (thread-safe, non-blocking)
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
+
+**Model selector dropdown** — switch model without leaving Flame:
+
+| Backend | Examples | Notes |
+|---------|----------|-------|
+| Anthropic cloud | Sonnet 4.5, Haiku 4.5 | Requires API key / Pro account |
+| Self-hosted Ollama | qwen3-coder 30B | Linux box on the LAN with GPU; URL configured in the widget |
+| Ollama cloud ☁ | qwen3-coder 480B | Free tier at ollama.com; API key configured in the widget |
+
+Selection is persisted to `~/Projects/flame-mcp/config.json` between sessions. The widget shows the configured server hostname or masked API key next to each model name.
 
 ### 3. Claude Code (terminal)
 
@@ -221,10 +236,10 @@ Every tool call appends a compact stats footer:
 
 ```
 ─────────────────────────────
-🔍 RAG · max relevance 72% · ~210 tokens · ~1290 saved vs full doc
+🔍 RAG · max relevance 72% · ~210 tokens · ~1290 avoided vs full doc
 📊 Session · 3 exec · 2 RAG
-   Tokens used    : ~640  🟢 low
-   Tokens saved (RAG): ~2580  (80% of total)
+   Tokens used             : ~640  🟢 low
+   Avoided by RAG/tools    : ~2580  (80% of context)
 ```
 
 Ratings:
@@ -233,6 +248,8 @@ Ratings:
 - 🔴 high — over 400 tokens
 
 `session_stats()` gives the full session breakdown including how many patterns were auto-learned (`🧠 self-improved!`).
+
+> **Note:** Token cost warnings (🟡 🔴) are only shown when using Anthropic cloud models. For Ollama backends (local or cloud) they are suppressed — there are no rate limits or token costs involved.
 
 ---
 
@@ -269,6 +286,61 @@ flame-mcp/
 
 ---
 
+## Ollama setup (optional)
+
+Ollama lets you run inference locally for free, or use the ollama.com cloud with a free API key. The embedded chat widget supports both — just select the model in the dropdown and fill in the server URL or key.
+
+### Self-hosted (Linux workstation / server on the LAN)
+
+**On the Linux machine:**
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Allow remote connections and keep models warm
+sudo systemctl edit ollama --force --full
+# Add under [Service]:
+#   Environment="OLLAMA_HOST=0.0.0.0:11434"
+#   Environment="OLLAMA_KEEP_ALIVE=10m"
+#   Environment="OLLAMA_NEW_ENGINE=true"
+sudo systemctl restart ollama
+
+# Pull and create a custom model with the right context window
+ollama pull qwen3-coder:30b-a3b-q4_K_M
+cat > ~/Modelfile <<'EOF'
+FROM qwen3-coder:30b-a3b-q4_K_M
+PARAMETER num_ctx 24576
+PARAMETER num_keep 4
+EOF
+ollama create qwen3-flame -f ~/Modelfile
+```
+
+**In the Flame widget:**
+1. Select **qwen3-coder 30B** from the model dropdown
+2. Enter the server URL (e.g. `http://192.168.1.50:11434`) and press Enter
+3. The combo label updates to show `· <hostname>` confirming the server is saved
+
+> **GPU requirements:** qwen3-coder 30B (Q4_K_M, ~18.5 GB) fits in a 24 GB GPU (e.g. RTX 3090) with a 24K context window. Reduce `num_ctx` if you have less VRAM.
+
+### Ollama cloud (free tier)
+
+1. Create a free account at [ollama.com](https://ollama.com)
+2. Go to **Account → API keys → Create key**
+3. In the Flame widget, select **qwen3-coder 480B ☁**
+4. Paste the key into the **Ollama API key** field and press Enter
+5. The combo label updates to show `· ollama_ab…` confirming the key is saved
+
+No GPU or server required — inference runs on Ollama's cloud infrastructure.
+
+### How Ollama backend works internally
+
+Ollama implements the [Anthropic Messages API](https://ollama.com/blog/claude) natively (v0.14+). The bridge sets `ANTHROPIC_BASE_URL` to point at the Ollama server before launching the `claude` CLI subprocess — no proxy required.
+
+For self-hosted models, the bridge also sends a pre-flight request to Ollama's native `/api/generate` endpoint to force-load the model with the correct context window (`num_ctx`). This is necessary because Ollama's Anthropic-compatible endpoint ignores the `num_ctx` set in a Modelfile — the native API honours it.
+
+---
+
 ## Flame hook locations
 
 Flame loads Python hooks at startup from these paths (in order of priority):
@@ -300,6 +372,22 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Check `logs/flame_mcp_bridge.log` for error details
 - Ensure `ANTHROPIC_API_KEY` is set in your environment or in `~/Projects/flame-mcp/.env`
 - Flame 2026+ uses PySide6; older versions use PySide2 (both supported)
+
+**Ollama model runs on CPU instead of GPU**
+- Check `journalctl -u ollama -n 50` for `library=cpu` or `offloaded 0/N layers`
+- Ensure CUDA is initialised: `python3 -c "import ctypes; print(ctypes.CDLL('libcuda.so.1').cuInit(0))"`  — should return `0`; if `999`, reboot the Linux machine
+- Add Ollama's CUDA libs to ldconfig: create `/etc/ld.so.conf.d/ollama-cuda.conf` with `/usr/local/lib/ollama/cuda_v12` and run `sudo ldconfig`
+- Set `OLLAMA_NEW_ENGINE=true` in the systemd override
+
+**Ollama model truncates context (`truncating input prompt: limit=4096`)**
+- The Anthropic-compatible endpoint ignores Modelfile `num_ctx` — this is expected
+- The bridge fixes it automatically via a pre-flight `/api/generate` request; check the bridge log for `Ollama pre-load OK`
+- If the issue persists, verify the Modelfile has `PARAMETER num_ctx 24576` and the model was created with `ollama create`
+
+**Ollama cloud returns an error despite API key being set**
+- Verify the key is saved: the combo label should show `· ollama_ab…`
+- Test the key directly: `curl https://ollama.com/v1/models -H "Authorization: Bearer <key>"`
+- The 480B model may take up to 5 minutes on first inference — the widget has a 5-minute watchdog
 
 **Port 4444 is already in use**
 Edit both `flame_mcp_bridge.py` and `flame_mcp_server.py`, change `BRIDGE_PORT = 4444` to an unused port. Values must match.
