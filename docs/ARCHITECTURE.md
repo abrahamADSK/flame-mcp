@@ -23,16 +23,16 @@
 
 ```mermaid
 flowchart TD
-    A(["User request<br/>Claude Code · Desktop · Cowork · Chat"])
-    B["search_flame_docs(query)<br/>RAG · ChromaDB · 375 chunks"]
+    A(["User request"])
+    B["search_flame_docs()"]
     C{"score ≥ 60%?"}
-    D["Pattern found<br/>use chunk as reference"]
-    E["Pattern missing ⚠<br/>best effort + warn"]
-    F["execute_python(code)<br/>TCP 4444 → Flame bridge"]
-    G{"Execution<br/>succeeded?"}
-    H["learn_pattern()<br/>append to FLAME_API.md<br/>rebuild index 🧠"]
-    I["Retry max 3x<br/>read traceback, modify code"]
-    J(["Answer + stats footer to user"])
+    D["Pattern found"]
+    E["Pattern missing ⚠"]
+    F["execute_python(code)"]
+    G{"Execution OK?"}
+    H["learn_pattern()<br/>rebuild index 🧠"]
+    I["Retry · max 3x"]
+    J(["Answer + stats to user"])
 
     A --> B
     B --> C
@@ -41,8 +41,8 @@ flowchart TD
     D --> F
     E --> F
     F --> G
-    G -->|YES · score was low| H
-    G -->|YES · already known| J
+    G -->|YES, low score| H
+    G -->|YES, known| J
     G -->|NO| I
     H --> J
     I --> F
