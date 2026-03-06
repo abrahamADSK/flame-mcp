@@ -9,16 +9,26 @@ Usage:
     source .venv/bin/activate
     python rag/build_index.py
 
+    # With Ollama (much better semantic quality — recommended if Ollama is running):
+    python rag/build_index.py --ollama
+
 What it indexes:
-    - FLAME_API.md  (Flame 2026 Python API cheatsheet)
-    - Any .md files placed in the docs/ folder
+    - FLAME_API.md              (Flame 2026 Python API cheatsheet + patterns)
+    - docs/flame_vocabulary.md  (editorial terms → API mapping)
+    - docs/flame_api_full.md    (full auto-generated API reference)
+    - Any other .md in docs/
 
 The index is stored in rag/index/ (local only, not in git).
+
+Embedding models (in order of quality):
+    1. Ollama nomic-embed-text  — best, requires `ollama pull nomic-embed-text`
+    2. ChromaDB default         — all-MiniLM-L6-v2, 22M params, generic
 """
 
 import os
 import re
 import sys
+import argparse
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,7 +90,45 @@ def collect_docs() -> list[str]:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def build():
+def _make_ollama_embedding_fn(model: str = "nomic-embed-text"):
+    """
+    Returns a ChromaDB-compatible embedding function that calls Ollama locally.
+    Requires: ollama pull nomic-embed-text  (or any other embedding model)
+    """
+    import urllib.request
+    import json as _json
+
+    class OllamaEmbeddingFunction:
+        def __init__(self, model):
+            self.model = model
+
+        def __call__(self, input):  # input is a list of strings
+            results = []
+            for text in input:
+                body = _json.dumps({"model": self.model, "prompt": text}).encode()
+                req  = urllib.request.Request(
+                    "http://localhost:11434/api/embeddings",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = _json.loads(resp.read())
+                results.append(data["embedding"])
+            return results
+
+    # Verify connection
+    try:
+        fn = OllamaEmbeddingFunction(model)
+        fn(["test"])
+        print(f"  Ollama embedding model: {model} ✓")
+        return fn
+    except Exception as e:
+        print(f"  Ollama not available ({e}). Falling back to ChromaDB default.")
+        return None
+
+
+def build(use_ollama: bool = False):
     try:
         import chromadb
     except ImportError:
@@ -100,10 +148,25 @@ def build():
     except Exception:
         pass
 
-    collection = client.create_collection(
+    # Choose embedding function
+    embedding_fn = None
+    if use_ollama:
+        embedding_fn = _make_ollama_embedding_fn("nomic-embed-text")
+
+    collection_kwargs = dict(
         name="flame_docs",
         metadata={"hnsw:space": "cosine"},
     )
+    if embedding_fn:
+        collection_kwargs["embedding_function"] = embedding_fn
+    else:
+        if use_ollama:
+            print("  Using ChromaDB default embedding (all-MiniLM-L6-v2)")
+        else:
+            print("  Using ChromaDB default embedding (all-MiniLM-L6-v2)")
+            print("  Tip: run with --ollama for better semantic quality")
+
+    collection = client.create_collection(**collection_kwargs)
 
     all_chunks: list[dict] = []
     for doc_path in collect_docs():
@@ -129,4 +192,9 @@ def build():
 
 
 if __name__ == '__main__':
-    build()
+    parser = argparse.ArgumentParser(description='Build RAG index for flame-mcp')
+    parser.add_argument('--ollama', action='store_true',
+                        help='Use Ollama nomic-embed-text for better semantic quality '
+                             '(requires: ollama pull nomic-embed-text)')
+    args = parser.parse_args()
+    build(use_ollama=args.ollama)

@@ -582,59 +582,93 @@ else:
 
 ---
 
-## Timeline / Sequence Editing — NOT supported via Python API
+## Timeline / Sequence Editing — what works and what crashes
 
-> 🚫 **Flame's Python API has NO public methods for timeline editing.**
-> Operations like removing gaps, ripple delete, trimming segments, moving clips
-> on the timeline — **none of these exist in the Python API**. Attempting them
-> crashes Flame.
+> ⚠️ Flame 2026 has NO direct segment-manipulation methods (delete, ripple, trim).
+> BUT gaps can be closed by **rebuilding the sequence** placing only non-gap
+> segments back-to-back — this IS supported and has worked in practice.
 
-The following timeline properties exist but are **read-only** — writing to them
-or calling methods on their children crashes Flame:
+### What you CAN read (inspection is safe)
 
 ```python
-seq.versions          # → [PyVersion]  (read-only inspection only)
-ver.tracks            # → NoneType in Flame 2026 — DO NOT ACCESS
-track.segments        # → [PySegment]  (read-only)
-seg.record_in         # → PyTime       (read-only)
-seg.record_out        # → PyTime       (read-only)
-seg.source_in         # → PyTime       (read-only)
-
-# ❌ CRASH: these methods do NOT exist or crash Flame
-seg.delete()          # AttributeError / crash
-track.remove_gap()    # does not exist
-track.ripple()        # does not exist
-flame.timeline.delete_gap()   # does not exist
-```
-
-**What you CAN do with sequences:**
-
-```python
-# ✅ Inspect sequence structure (read-only)
 import flame
 ws   = flame.projects.current_project.current_workspace
 desk = ws.desktop
+
+# Navigate to sequence
+seq = None
 for rg in desk.reel_groups:
     for reel in rg.reels:
-        for seq in reel.sequences:
-            print(f"Seq: {str(seq.name)}, duration: {seq.duration.frame}")
-            for ver in seq.versions:
-                for track in ver.tracks:
-                    for seg in track.segments:
-                        print(f"  seg type={seg.type} "
-                              f"rec_in={seg.record_in} rec_out={seg.record_out}")
+        if reel.sequences:
+            seq = reel.sequences[0]
+            break
 
-# ✅ Create a new sequence (does NOT edit existing)
-rg.create_sequence("NEW_SEQ")
-
-# ✅ Duplicate a sequence (then manually edit via Flame UI)
-flame.duplicate(seq)
+# Inspect version → tracks → segments
+for ver in seq.versions:
+    for track in ver.tracks:
+        print(f"Track: {str(track.name)}, segments: {len(track.segments)}")
+        for seg in track.segments:
+            print(f"  type={seg.type} rec_in={seg.record_in} rec_out={seg.record_out}")
 ```
 
-**For gap removal — use Flame UI:**
-- Select the gap in the timeline
-- Press `Delete` or use the Timeline menu → Remove Gap
-- The Python API cannot automate this safely
+> **Note:** `ver.tracks` may return `None` in some Flame 2026 contexts.
+> Always check: `if ver.tracks is not None:`
+
+### Close Gap / Ripple Delete — rebuild approach
+
+Gap removal works by creating a new sequence containing only the non-gap
+segments placed back-to-back. Never call `seg.delete()` or `track.remove_gap()`.
+
+```python
+import flame
+from flame import PyTime
+
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+# Find target reel and sequence
+target_reel = next(
+    (r for rg in desk.reel_groups for r in rg.reels
+     if str(r.name) == "Sequences"), None)
+if target_reel is None:
+    print("Sequences reel not found"); raise SystemExit
+
+old_seq = next((s for s in target_reel.sequences
+                if str(s.name) == "SEQ_MASTER"), None)
+if old_seq is None:
+    print("Sequence not found"); raise SystemExit
+
+# Collect non-gap segments from first video track
+non_gap_segs = []
+for ver in old_seq.versions:
+    if ver.tracks is None:
+        continue
+    for track in ver.tracks:
+        for seg in track.segments:
+            if seg.type != "Gap":   # skip gaps
+                non_gap_segs.append(seg)
+    break  # first version only
+
+# Create new sequence and overwrite clips back-to-back
+new_seq = target_reel.create_sequence(str(old_seq.name) + "_NOGAP")
+cursor = PyTime(0)
+for seg in non_gap_segs:
+    clip = seg.clip          # source clip
+    if clip is not None:
+        new_seq.overwrite(clip, cursor)
+        cursor = PyTime(cursor.frame + seg.record_duration.frame)
+
+print(f"Done: {len(non_gap_segs)} segments, new duration {cursor.frame} frames")
+```
+
+### ❌ Methods that DO NOT EXIST / crash Flame
+
+```python
+seg.delete()              # AttributeError → crash
+track.remove_gap()        # does not exist
+track.ripple()            # does not exist
+flame.timeline.delete_gap()  # does not exist
+```
 
 ---
 

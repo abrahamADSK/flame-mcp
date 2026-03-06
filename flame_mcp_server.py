@@ -133,16 +133,12 @@ _DANGEROUS_PATTERNS = [
         "and check for None before using the result."
     ),
     (
-        r'\.tracks\b|seg\.delete\s*\(|\.remove_gap\s*\(|\.ripple\s*\('
-        r'|flame\.timeline\.',
-        "Flame 2026 Python API has NO public methods for timeline editing. "
-        "ver.tracks returns NoneType in Flame 2026. "
-        "seg.delete(), track.remove_gap(), track.ripple(), and flame.timeline "
-        "methods do not exist and crash Flame when called.",
-        "Timeline editing (gap removal, ripple delete, segment trimming) must be "
-        "done via Flame's UI — it cannot be automated via Python in Flame 2026. "
-        "You CAN read seq.versions and iterate segments read-only for inspection. "
-        "See FLAME_API.md 'Timeline / Sequence Editing' for what IS and IS NOT possible."
+        r'seg\.delete\s*\(|\.remove_gap\s*\(|\.ripple\s*\(|flame\.timeline\.',
+        "These timeline edit methods do not exist in Flame 2026 and crash Flame: "
+        "seg.delete(), track.remove_gap(), track.ripple(), flame.timeline.*",
+        "To close gaps / ripple delete: rebuild the sequence by iterating "
+        "non-gap segments and overwriting them back-to-back into a new sequence. "
+        "See FLAME_API.md 'Timeline / Sequence Editing — Close Gap' for the working pattern."
     ),
 ]
 
