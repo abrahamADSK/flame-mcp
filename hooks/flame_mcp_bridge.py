@@ -70,6 +70,15 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → 
 # Ollama cloud endpoint (Anthropic Messages API compatible since Ollama v0.14)
 OLLAMA_CLOUD_URL = "https://api.ollama.com"
 
+# Context window forced when pre-loading a self-hosted Ollama model.
+# Ollama's /v1/messages (Anthropic-compat) endpoint ignores the model's
+# Modelfile num_ctx at inference time and falls back to 4096.  We fix this by
+# sending a pre-flight POST to /api/generate (native API) with
+# options.num_ctx before running the claude CLI subprocess.  Ollama reuses
+# the already-loaded runner, so the subsequent Anthropic-API call gets the
+# correct 16 K context window.
+OLLAMA_NUM_CTX = 16384
+
 # Global bridge state
 _bridge_active = False
 _server_socket = None
@@ -606,6 +615,11 @@ class _FlameChat:
                         f"  {self._ollama_url}\n\n"
                         "Or switch to an Anthropic model until it's available."
                     )
+                # Force-load the model with the correct context window via the
+                # native Ollama API before the claude CLI subprocess calls the
+                # Anthropic-compatible endpoint.  Ollama's /v1/messages endpoint
+                # ignores Modelfile num_ctx; /api/generate honours it.
+                self._preload_ollama_model()
                 env = self._get_ollama_env(env)
             elif self._backend == "ollama_cloud":
                 env = self._get_ollama_env(env)
@@ -935,6 +949,47 @@ class _FlameChat:
             return True
         except Exception:
             return False
+
+    def _preload_ollama_model(self) -> None:
+        """
+        Pre-load the Ollama model with the correct num_ctx via the native API.
+
+        Ollama's Anthropic-compatible endpoint (/v1/messages) does not honour
+        the num_ctx set in a model's Modelfile — it always falls back to the
+        global default of 4096 tokens.  The native /api/generate endpoint DOES
+        respect options.num_ctx.  By making an empty-prompt request there first,
+        we load (or reload) the model's runner with OLLAMA_NUM_CTX tokens.
+        Ollama will then reuse that runner for the subsequent Anthropic-API call
+        made by the claude CLI subprocess.
+
+        Called automatically from _agent_loop() when backend == "ollama".
+        Safe to call even if the model is already loaded — Ollama is a no-op
+        if num_ctx matches the current runner.
+        """
+        import urllib.request as _urllib_req
+        import json as _json
+
+        payload = _json.dumps({
+            "model":      self._model,
+            "prompt":     "",          # empty — we only want to load the runner
+            "options":    {"num_ctx": OLLAMA_NUM_CTX},
+            "keep_alive": "10m",
+            "stream":     False,
+        }).encode()
+
+        url = f"{self._ollama_url}/api/generate"
+        req = _urllib_req.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with _urllib_req.urlopen(req, timeout=120) as resp:
+                resp.read()
+            _log(f"Ollama pre-load OK: {self._model} num_ctx={OLLAMA_NUM_CTX}")
+        except Exception as exc:
+            # Non-fatal — log and continue; the main call may still work
+            _log(f"Ollama pre-load warning (non-fatal): {exc}")
 
     def _get_ollama_env(self, base_env: dict) -> dict:
         """
