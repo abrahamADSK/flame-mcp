@@ -39,6 +39,21 @@ BRIDGE_PORT = 4444
 CRASH_RECOVERY_FILE = os.path.expanduser(
     '~/Projects/flame-mcp/logs/crash_recovery.json')
 
+# Model config — persists the selected model across widget sessions.
+MODEL_CONFIG_FILE = os.path.expanduser(
+    '~/Projects/flame-mcp/config.json')
+
+# Available models shown in the chat widget dropdown.
+# label       → displayed in UI
+# model_id    → passed to 'claude --model'. Empty string = use Claude Code default.
+# Add new entries here to expose them in the UI (Qwen, Ollama proxy, etc.)
+AVAILABLE_MODELS = [
+    ("Sonnet 4.5",  "claude-sonnet-4-5-20250929"),
+    ("Haiku 4.5",   "claude-haiku-4-5-20251001"),
+    ("Custom",      ""),   # edit config.json model_custom_id to use a proxy/Qwen
+]
+DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+
 # Global bridge state
 _bridge_active = False
 _server_socket = None
@@ -361,6 +376,7 @@ class _FlameChat:
         self._busy = False
         self._session_tokens = 0     # cumulative tokens this widget session
         self._rate_limited = False   # True if last call hit a rate limit
+        self._model = self._load_model_config()
         self._build_ui()
 
     # ── UI ───────────────────────────────────────────────────────────────────
@@ -381,6 +397,33 @@ class _FlameChat:
         title = Qt.QLabel("🔥  Claude — Flame Assistant")
         title.setStyleSheet("color:#f59e0b;font-size:14px;font-weight:bold;padding:4px 0;")
         layout.addWidget(title)
+
+        # ── Model selector ────────────────────────────────────────────────────
+        model_row = Qt.QHBoxLayout()
+        model_row.setSpacing(6)
+
+        model_lbl = Qt.QLabel("Model:")
+        model_lbl.setStyleSheet("color:#888;font-size:11px;min-width:42px;")
+        model_row.addWidget(model_lbl)
+
+        self._model_combo = Qt.QComboBox()
+        for label, _ in AVAILABLE_MODELS:
+            self._model_combo.addItem(label)
+        # Restore persisted selection
+        ids = [m[1] for m in AVAILABLE_MODELS]
+        idx = ids.index(self._model) if self._model in ids else 0
+        self._model_combo.setCurrentIndex(idx)
+        self._model_combo.setStyleSheet(
+            "QComboBox{background:#2a2a2a;color:#e0e0e0;border:1px solid #444;"
+            "border-radius:4px;padding:2px 8px;font-size:11px;}"
+            "QComboBox::drop-down{border:none;}"
+            "QComboBox QAbstractItemView{background:#2a2a2a;color:#e0e0e0;"
+            "selection-background-color:#444;}")
+        self._model_combo.currentIndexChanged.connect(self._on_model_changed)
+        model_row.addWidget(self._model_combo)
+        model_row.addStretch()
+        layout.addLayout(model_row)
+        # ─────────────────────────────────────────────────────────────────────
 
         self._chat = Qt.QTextEdit()
         self._chat.setReadOnly(True)
@@ -507,8 +550,13 @@ class _FlameChat:
             prompt = self._build_prompt()
             cwd = os.path.expanduser('~/Projects/flame-mcp')
 
+            cmd = [claude_path, '-p', '--verbose', '--output-format', 'stream-json']
+            if self._model:
+                cmd.extend(['--model', self._model])
+            cmd.append(prompt)
+
             proc = subprocess.Popen(
-                [claude_path, '-p', '--verbose', '--output-format', 'stream-json', prompt],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -718,6 +766,40 @@ class _FlameChat:
             return text[idx:].strip()
         # No separator — return whole thing if it contains stats emoji
         return text.strip()
+
+    # ── Model config ──────────────────────────────────────────────────────────
+
+    def _load_model_config(self) -> str:
+        """Load persisted model from config.json. Falls back to DEFAULT_MODEL."""
+        try:
+            with open(MODEL_CONFIG_FILE) as f:
+                return json.load(f).get('model', DEFAULT_MODEL)
+        except Exception:
+            return DEFAULT_MODEL
+
+    def _save_model_config(self, model_id: str) -> None:
+        """Persist selected model to config.json, merging with existing keys."""
+        try:
+            cfg = {}
+            if os.path.exists(MODEL_CONFIG_FILE):
+                with open(MODEL_CONFIG_FILE) as f:
+                    cfg = json.load(f)
+            cfg['model'] = model_id
+            os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
+            with open(MODEL_CONFIG_FILE, 'w') as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            _log(f"Model config save error: {e}")
+
+    def _on_model_changed(self, index: int) -> None:
+        """Called when the user picks a different model in the combo."""
+        label, model_id = AVAILABLE_MODELS[index]
+        self._model = model_id
+        self._save_model_config(model_id)
+        display = label if model_id else f"{label} (set model_custom_id in config.json)"
+        self._ui_queue.append(
+            lambda d=display: self._append_bubble("tool", f"⚙️  Model → {d}"))
+        _log(f"Model changed to: {model_id or 'default'}")
 
     # ── Claude Code subprocess helpers ────────────────────────────────────────
 
