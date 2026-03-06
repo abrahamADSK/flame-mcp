@@ -68,7 +68,9 @@ DEFAULT_BACKEND  = "anthropic"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
 # Ollama cloud endpoint (Anthropic Messages API compatible since Ollama v0.14)
-OLLAMA_CLOUD_URL = "https://api.ollama.com"
+# The base URL must be https://ollama.com — the SDK appends /v1/messages.
+# (https://api.ollama.com is the raw REST gateway; cloud Anthropic-compat lives at ollama.com)
+OLLAMA_CLOUD_URL = "https://ollama.com"
 
 # Context window forced when pre-loading a self-hosted Ollama model.
 # Ollama's /v1/messages (Anthropic-compat) endpoint ignores the model's
@@ -508,6 +510,9 @@ class _FlameChat:
         self._ollama_cloud_key_widget.setVisible(self._backend == "ollama_cloud")
         # ─────────────────────────────────────────────────────────────────────
 
+        # Populate combo labels with currently-configured server / key info
+        self._update_combo_labels()
+
         self._chat = Qt.QTextEdit()
         self._chat.setReadOnly(True)
         self._chat.setStyleSheet(
@@ -686,7 +691,15 @@ class _FlameChat:
             # Anthropic models: 180 s is plenty.
             # Local Ollama models (30 B+ on a single GPU) can take 5–10 min on
             # the first turn after loading; allow 600 s (10 min) for them.
-            _watchdog_secs = 600 if self._backend == "ollama" else 180
+            # Local Ollama: 600 s (model loading on GPU can take a few minutes)
+            # Cloud Ollama: 300 s (network + large 480B model inference)
+            # Anthropic:    180 s
+            if self._backend == "ollama":
+                _watchdog_secs = 600
+            elif self._backend == "ollama_cloud":
+                _watchdog_secs = 300
+            else:
+                _watchdog_secs = 180
             _timed_out = [False]
             def _kill():
                 _timed_out[0] = True
@@ -969,6 +982,7 @@ class _FlameChat:
                 json.dump(cfg, f, indent=2)
         except Exception as e:
             _log(f"Ollama URL save error: {e}")
+        self._update_combo_labels()
         self._ui_queue.append(
             lambda u=url: self._append_bubble("tool", f"⚙️  Ollama server → {u}"))
         _log(f"Ollama URL set to: {url}")
@@ -991,9 +1005,42 @@ class _FlameChat:
                 json.dump(cfg, f, indent=2)
         except Exception as e:
             _log(f"Ollama cloud key save error: {e}")
+        self._update_combo_labels()
         self._ui_queue.append(
             lambda: self._append_bubble("tool", "⚙️  Ollama cloud key saved ✓"))
         _log("Ollama cloud key updated")
+
+    def _update_combo_labels(self) -> None:
+        """
+        Update combo box item text to show the currently-configured
+        server hostname (ollama backend) or masked API key (ollama_cloud).
+
+        Examples:
+          "qwen3-coder 30B"       → "qwen3-coder 30B  · glorfindel"
+          "qwen3-coder 480B ☁"   → "qwen3-coder 480B ☁  · ollama_ab…"
+        Called at startup and whenever the URL or cloud key changes.
+        """
+        try:
+            from urllib.parse import urlparse as _urlparse
+            parsed = _urlparse(self._ollama_url)
+            host = parsed.hostname or self._ollama_url
+        except Exception:
+            host = self._ollama_url
+
+        key = self._ollama_cloud_key
+        if key:
+            masked = key[:8] + "…" if len(key) > 8 else key[:4] + "…"
+        else:
+            masked = None
+
+        for i, (label, _model_id, backend) in enumerate(AVAILABLE_MODELS):
+            if backend == "ollama":
+                new_label = f"{label}  · {host}"
+            elif backend == "ollama_cloud" and masked:
+                new_label = f"{label}  · {masked}"
+            else:
+                new_label = label
+            self._model_combo.setItemText(i, new_label)
 
     # ── Ollama helpers ────────────────────────────────────────────────────────
 
