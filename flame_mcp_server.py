@@ -450,8 +450,8 @@ def search_flame_docs(query: str) -> str:
     Search the local Flame API documentation index for content relevant to the query.
     Uses semantic (vector) search — understands meaning, not just keywords.
 
-    Call this tool BEFORE writing any execute_python code when you are unsure
-    about the correct API method, class name, or pattern to use.
+    Call this tool ALWAYS, before every execute_python call, no exceptions.
+    Never assume you know the correct API method, class name, or pattern.
 
     Examples:
         search_flame_docs("how to import media into a reel")
