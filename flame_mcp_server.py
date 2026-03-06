@@ -245,6 +245,7 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 1. PREFER DEDICATED TOOLS for standard read operations — they require zero RAG
    and zero execute_python calls:
+   - Bridge connected?     → ping()
    - Project info          → get_project_info()
    - Flame version         → get_flame_version()
    - List libraries        → list_libraries()
@@ -550,6 +551,22 @@ def get_flame_version() -> str:
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
     return _fmt(result) + _stats_footer()
+
+
+@mcp.tool()
+def ping() -> str:
+    """
+    Check whether the TCP bridge to Autodesk Flame is reachable.
+    Use this to answer any question about bridge/connection status.
+    Returns 'connected' with Flame version, or a clear error message.
+    No Flame state is modified. Safe to call at any time.
+    """
+    result = _call_flame("print(flame.get_version())")
+    if result.get('status') == 'error':
+        return f"🔴 Bridge not connected — {result.get('error', 'unknown error')}"
+    version = result.get('output', '').strip()
+    _track_dedicated()
+    return f"🟢 Bridge connected — Flame {version}"
 
 
 # ─── RAG: documentation search ────────────────────────────────────────────────
