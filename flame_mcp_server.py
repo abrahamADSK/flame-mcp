@@ -220,9 +220,9 @@ def _tok(text: str) -> int:
 
 def _rating(tokens: int) -> str:
     """Return an emoji rating based on token count for a single call."""
-    if tokens < 100:
+    if tokens < 500:
         return "🟢 low"
-    elif tokens < 400:
+    elif tokens < 2000:
         return "🟡 medium"
     else:
         return "🔴 high"
