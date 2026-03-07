@@ -131,6 +131,19 @@ The status indicator updates every time you open the menu:
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
 
+#### Chat commands
+
+In addition to natural language, the chat input accepts these special commands:
+
+| Command | Description |
+|---------|-------------|
+| `/undo` | Undo the last Flame action. Triggers `flame.execute_shortcut("Undo")` directly — bypasses Claude, instant. |
+| `/undo N` | Undo the last **N** Flame actions (e.g. `/undo 3`). After each Claude response the chat shows how many actions were performed, so you know the right N. |
+| `/wrong` | Tell Claude the last response was incorrect. Injects a correction message into the conversation so Claude re-analyses and tries again without learning the wrong pattern. |
+| `/wrong <reason>` | Same as `/wrong` but with context (e.g. `/wrong me diste el desktop en vez de la librería`). Claude uses the reason to understand exactly what to correct. |
+
+> **Tip:** `/undo` and `/wrong` can be combined. If Claude deleted something it shouldn't have, type `/undo N` first to reverse the Flame action, then `/wrong <reason>` so it doesn't repeat the mistake.
+
 **Model selector dropdown** — four backends, switch without leaving Flame:
 
 | Backend | Model | Requires | Works offline? |
