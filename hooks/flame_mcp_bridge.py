@@ -593,7 +593,7 @@ class _FlameChat:
         if self._backend == "ollama_mac":
             self._append_bubble(
                 "warn",
-                "Modelo offline (7B): capacidad de tool use limitada.\n"
+                "⚠️  Modelo offline (7B): capacidad de tool use limitada.\n"
                 "Puede imprimir JSON en lugar de ejecutar herramientas.\n"
                 "Recomendado solo para consultas de texto. Usa anthropic u ollama para controlar Flame.")
 
@@ -1059,7 +1059,7 @@ class _FlameChat:
         if backend == "ollama_mac":
             self._ui_queue.append(lambda: self._append_bubble(
                 "warn",
-                "Modelo offline (7B): capacidad de tool use limitada.\n"
+                "⚠️  Modelo offline (7B): capacidad de tool use limitada.\n"
                 "Puede imprimir JSON en lugar de ejecutar herramientas.\n"
                 "Recomendado solo para consultas de texto. Usa anthropic u ollama para controlar Flame."))
         _log(f"Model changed to: {model_id or 'default'} (backend={backend})")
@@ -1364,7 +1364,7 @@ class _FlameChat:
             "user":      ("#60a5fa", "You"),
             "assistant": ("#34d399", "Claude"),
             "tool":      ("#a78bfa", ""),
-            "warn":      ("#f59e0b", "⚠️"),
+            "warn":      ("#f59e0b", ""),
             "error":     ("#f87171", "Error"),
         }
         color, label = colors.get(role, ("#aaa", ""))
