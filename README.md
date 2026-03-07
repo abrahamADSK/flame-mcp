@@ -131,15 +131,16 @@ The status indicator updates every time you open the menu:
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
 
-**Model selector dropdown** — switch model without leaving Flame:
+**Model selector dropdown** — four backends, switch without leaving Flame:
 
-| Backend | Examples | Notes |
-|---------|----------|-------|
-| Anthropic cloud | Sonnet 4.5, Haiku 4.5 | Requires API key / Pro account |
-| Self-hosted Ollama | qwen3-coder 30B | Linux box on the LAN with GPU; URL configured in the widget |
-| Ollama cloud ☁ | qwen3-coder 480B | Free tier at ollama.com; API key configured in the widget |
+| Backend | Model | Requires | Works offline? |
+|---------|-------|----------|----------------|
+| `anthropic` | Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
+| `ollama` | qwen3-coder 30B | glorfindel on LAN + GPU | ✗ |
+| `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
+| `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ |
 
-Selection is persisted to `~/Projects/flame-mcp/config.json` between sessions. The widget shows the configured server hostname or masked API key next to each model name.
+Selection is persisted to `~/Projects/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost → ☁` / `localhost` for the Mac backends.
 
 ### 3. Claude Code (terminal)
 
@@ -288,11 +289,27 @@ flame-mcp/
 
 ## Ollama setup (optional)
 
-Ollama lets you run inference locally for free, or use the ollama.com cloud with a free API key. The embedded chat widget supports both — just select the model in the dropdown and fill in the server URL or key.
+Three Ollama-based backends are available, covering every scenario:
 
-### Self-hosted (Linux workstation / server on the LAN)
+```
+┌─────────────────┬──────────────────────┬────────────────────────────────────┐
+│ Backend         │ Physical path        │ Use case                           │
+├─────────────────┼──────────────────────┼────────────────────────────────────┤
+│ ollama          │ Mac → glorfindel LAN │ Best quality, big GPU model        │
+│ ollama_cloud ☁  │ Mac localhost → ☁    │ Anywhere with internet, no GPU     │
+│ ollama_mac  🍎  │ Mac localhost        │ Offline emergency, no internet     │
+└─────────────────┴──────────────────────┴────────────────────────────────────┘
+```
 
-**On the Linux machine:**
+`ollama_cloud` and `ollama_mac` both require **Ollama installed on the Mac** — a lightweight daemon (~50 MB, no models bundled) that listens at `localhost:11434` and implements the Anthropic Messages API. For cloud models it acts as a transparent proxy to ollama.com; for local models it runs them directly using Mac CPU/GPU.
+
+> Ollama was **not** previously required on the Mac — it only ran on glorfindel. This is a new requirement for the two Mac-based backends.
+
+### Option 1 — Self-hosted GPU (ollama backend)
+
+Best quality. Runs on the Linux workstation (glorfindel) with a dedicated GPU.
+
+**On the Linux machine (glorfindel):**
 
 ```bash
 # Install Ollama
@@ -306,7 +323,7 @@ sudo systemctl edit ollama --force --full
 #   Environment="OLLAMA_NEW_ENGINE=true"
 sudo systemctl restart ollama
 
-# Pull and create a custom model with the right context window
+# Pull and create a custom model with the correct context window
 ollama pull qwen3-coder:30b-a3b-q4_K_M
 cat > ~/Modelfile <<'EOF'
 FROM qwen3-coder:30b-a3b-q4_K_M
@@ -319,25 +336,58 @@ ollama create qwen3-flame -f ~/Modelfile
 **In the Flame widget:**
 1. Select **qwen3-coder 30B** from the model dropdown
 2. Enter the server URL (e.g. `http://192.168.1.50:11434`) and press Enter
-3. The combo label updates to show `· <hostname>` confirming the server is saved
+3. The combo label updates to show `· glorfindel` confirming the server is saved
 
 > **GPU requirements:** qwen3-coder 30B (Q4_K_M, ~18.5 GB) fits in a 24 GB GPU (e.g. RTX 3090) with a 24K context window. Reduce `num_ctx` if you have less VRAM.
 
-### Ollama cloud (free tier)
+### Option 2 — Ollama cloud proxy (ollama_cloud backend)
 
-1. Create a free account at [ollama.com](https://ollama.com)
-2. Go to **Account → API keys → Create key**
-3. In the Flame widget, select **qwen3-coder 480B ☁**
-4. Paste the key into the **Ollama API key** field and press Enter
-5. The combo label updates to show `· ollama_ab…` confirming the key is saved
+Free 480B parameter model running on ollama.com's infrastructure. Works anywhere with internet, no GPU required. Requires Ollama on the Mac.
 
-No GPU or server required — inference runs on Ollama's cloud infrastructure.
+**On the Mac (one-time setup):**
 
-### How Ollama backend works internally
+```bash
+brew install ollama
+# Start the daemon (add to login items if you want it always running)
+ollama serve
+```
 
-Ollama implements the [Anthropic Messages API](https://ollama.com/blog/claude) natively (v0.14+). The bridge sets `ANTHROPIC_BASE_URL` to point at the Ollama server before launching the `claude` CLI subprocess — no proxy required.
+**In the Flame widget:**
+1. Select **qwen3-coder 480B ☁** from the model dropdown
+2. The combo shows `· localhost → ☁` — no further configuration needed
+3. On first use the model tag `qwen3-coder:480b-cloud` is downloaded automatically
 
-For self-hosted models, the bridge also sends a pre-flight request to Ollama's native `/api/generate` endpoint to force-load the model with the correct context window (`num_ctx`). This is necessary because Ollama's Anthropic-compatible endpoint ignores the `num_ctx` set in a Modelfile — the native API honours it.
+The Mac daemon forwards the request to ollama.com's servers. Authentication with ollama.com is handled by the daemon using your logged-in account — no API key needed in the widget.
+
+> To log in to ollama.com from the Mac: `ollama login` in Terminal.
+
+### Option 3 — Mac offline fallback (ollama_mac backend)
+
+Small model stored locally on the Mac. Works with no internet and no glorfindel — useful when working remotely on a laptop.
+
+**On the Mac (one-time setup, ~4 GB download):**
+
+```bash
+brew install ollama
+ollama serve
+ollama pull qwen2.5-coder:7b
+```
+
+**In the Flame widget:**
+1. Select **qwen2.5-coder 7B 🍎** from the model dropdown
+2. The combo shows `· localhost` — ready to use offline
+
+Quality is lower than the 30B or 480B models but it handles most Flame API tasks correctly. Runs on Mac CPU (no GPU required); response time is slower than GPU backends.
+
+### How the backends work internally
+
+Ollama implements the [Anthropic Messages API](https://ollama.com/blog/claude) natively (v0.14+). The bridge sets `ANTHROPIC_BASE_URL` before launching the `claude` CLI subprocess:
+
+- `ollama` → `http://<ollama_url>` (glorfindel LAN address)
+- `ollama_cloud` → `http://localhost:11434` (Mac daemon → cloud proxy)
+- `ollama_mac` → `http://localhost:11434` (Mac daemon → local model)
+
+For the `ollama` (LAN GPU) backend only, the bridge also sends a pre-flight request to Ollama's native `/api/generate` endpoint to force-load the model with the correct context window. This is necessary because Ollama's Anthropic-compatible endpoint ignores the `num_ctx` set in a Modelfile.
 
 ---
 
@@ -384,10 +434,15 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - The bridge fixes it automatically via a pre-flight `/api/generate` request; check the bridge log for `Ollama pre-load OK`
 - If the issue persists, verify the Modelfile has `PARAMETER num_ctx 24576` and the model was created with `ollama create`
 
-**Ollama cloud returns an error despite API key being set**
-- Verify the key is saved: the combo label should show `· ollama_ab…`
-- Test the key directly: `curl https://ollama.com/v1/models -H "Authorization: Bearer <key>"`
-- The 480B model may take up to 5 minutes on first inference — the widget has a 5-minute watchdog
+**Ollama cloud / mac-local: "Ollama not found on this Mac"**
+- Install and start the Mac daemon: `brew install ollama && ollama serve`
+- Verify it's running: `curl http://localhost:11434/api/version`
+- For `ollama_mac` only, also pull the model: `ollama pull qwen2.5-coder:7b`
+- For `ollama_cloud`, log in so the daemon can authenticate: `ollama login`
+
+**Ollama cloud model not responding**
+- The 480B model may take 2–5 minutes on first inference — the widget has a 5-minute watchdog
+- Check daemon logs: `journalctl --user -u ollama` (Linux) or `ollama serve` output (Mac)
 
 **Port 4444 is already in use**
 Edit both `flame_mcp_bridge.py` and `flame_mcp_server.py`, change `BRIDGE_PORT = 4444` to an unused port. Values must match.
