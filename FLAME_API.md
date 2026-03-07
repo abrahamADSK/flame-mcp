@@ -504,8 +504,9 @@ print(f"Imported {len(clips)} clip(s) into folder '{folder.name}'")
 
 ```python
 # ── flame.delete() — remove any Media Panel object ────────────────────────
-# Works on: clips, reels, folders, libraries, sequences, batch groups
-# Always wrap in a list, even for a single object
+# Works on: clips, reels, folders, LIBRARIES, sequences, batch groups
+# flame.delete(lib) IS supported — libraries CAN be deleted via the API.
+# Always wrap in a list, even for a single object.
 flame.delete(obj)          # delete one object
 flame.delete([obj1, obj2]) # delete multiple at once
 
@@ -531,10 +532,19 @@ flame.delete(to_del)
 print(f"Deleted: {names}")
 
 # ── Pattern: delete a library by name ─────────────────────────────────────
+# NOTE: flame.delete(lib) DOES work on user libraries — confirmed.
+# CRITICAL: l.name is PyAttribute — MUST use str() or comparison always fails.
+# CRITICAL: always provide a None default to next() to avoid StopIteration.
 ws  = flame.projects.current_project.current_workspace
-lib = next(l for l in ws.libraries if l.name == "OLD_LIB")
-flame.delete(lib)
-print("Deleted library")
+HIDDEN = {"Timeline FX", "Grabbed References"}
+lib = next((l for l in ws.libraries
+            if str(l.name) == "OLD_LIB" and str(l.name) not in HIDDEN), None)
+if lib is None:
+    available = [str(l.name) for l in ws.libraries if str(l.name) not in HIDDEN]
+    print(f"Library not found. Available: {available}")
+else:
+    flame.delete(lib)
+    print(f"Deleted library: OLD_LIB")
 
 # ── Pattern: delete a folder inside a library ─────────────────────────────
 # NOTE: lib.folders can return None — always use `or []` guard
