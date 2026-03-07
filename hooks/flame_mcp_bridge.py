@@ -53,27 +53,31 @@ MODEL_CONFIG_FILE = os.path.expanduser(
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud ───────────────────────────────────────────────────────
-    ("Sonnet 4.5",          "claude-sonnet-4-5-20250929",  "anthropic"),
-    ("Haiku 4.5",           "claude-haiku-4-5-20251001",   "anthropic"),
-    # ── Self-hosted Ollama  (Linux workstation, NAS, any server on the LAN) ───
-    ("qwen3-coder 30B",     "qwen3-flame",                   "ollama"),
-    ("qwen2.5-coder 14B",   "qwen2.5-coder:14b",           "ollama"),
-    # ── Ollama cloud  (free tier · routed through local Ollama server with :cloud tag) ─
-    ("qwen3-coder 480B ☁",  "qwen3-coder:480b-cloud",      "ollama_cloud"),
+    ("Sonnet 4.5",           "claude-sonnet-4-5-20250929",  "anthropic"),
+    ("Haiku 4.5",            "claude-haiku-4-5-20251001",   "anthropic"),
+    # ── Self-hosted Ollama  (Linux workstation / NAS on the LAN, needs GPU) ──
+    ("qwen3-coder 30B",      "qwen3-flame",                 "ollama"),
+    ("qwen2.5-coder 14B",    "qwen2.5-coder:14b",           "ollama"),
+    # ── Ollama cloud ☁  (ollama.com free tier, needs Ollama on Mac) ──────────
+    #   Requires: brew install ollama && ollama serve   (Mac daemon as proxy)
+    #   Cloud inference runs on ollama.com — no GPU, works anywhere with internet
+    ("qwen3-coder 480B ☁",   "qwen3-coder:480b-cloud",      "ollama_cloud"),
+    # ── Mac-local offline  (small model downloaded on the Mac, no internet) ──
+    #   Requires: brew install ollama && ollama pull qwen2.5-coder:7b
+    #   ~4 GB download, works with no internet and no glorfindel
+    ("qwen2.5-coder 7B 🍎",  "qwen2.5-coder:7b",            "ollama_mac"),
     # ── Custom ────────────────────────────────────────────────────────────────
-    ("Custom",              "",                             "anthropic"),
+    ("Custom",               "",                             "anthropic"),
 ]
 DEFAULT_MODEL    = "claude-sonnet-4-5-20250929"
 DEFAULT_BACKEND  = "anthropic"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
-# Ollama cloud models are accessed through the local/LAN Ollama server,
-# NOT via api.ollama.com or ollama.com directly.
-# The model name carries the ":cloud" / "-cloud" tag (e.g. qwen3-coder:480b-cloud)
-# and the local Ollama daemon proxies the request to Ollama's cloud infrastructure.
-# OLLAMA_CLOUD_URL is therefore the same as the self-hosted URL (self._ollama_url).
-# The constant is kept for backward-compat but is no longer used in _get_ollama_env.
-OLLAMA_CLOUD_URL = ""  # unused — cloud routes through self._ollama_url
+# URL for backends that use the Mac's own Ollama daemon (cloud proxy + offline models).
+# ollama_cloud:  localhost Ollama forwards the :cloud model to ollama.com servers.
+# ollama_mac:    localhost Ollama runs the model directly (offline, no GPU needed).
+# Neither requires glorfindel — Ollama must be installed on the Mac (brew install ollama).
+OLLAMA_MAC_URL = "http://localhost:11434"
 
 # Context window forced when pre-loading a self-hosted Ollama model.
 # Ollama's /v1/messages (Anthropic-compat) endpoint ignores the model's
@@ -510,7 +514,8 @@ class _FlameChat:
         cloud_key_row.addWidget(self._ollama_cloud_key_input, stretch=1)
 
         layout.addWidget(self._ollama_cloud_key_widget)
-        self._ollama_cloud_key_widget.setVisible(self._backend == "ollama_cloud")
+        # Cloud key no longer used — auth handled by Mac Ollama daemon internally
+        self._ollama_cloud_key_widget.setVisible(False)
         # ─────────────────────────────────────────────────────────────────────
 
         # Populate combo labels with currently-configured server / key info
@@ -638,27 +643,44 @@ class _FlameChat:
                     "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
-            # Apply Ollama env overrides when using a self-hosted or cloud Ollama model.
-            # Ollama implements the Anthropic Messages API natively (v0.14+):
-            # Claude Code on macOS → HTTP → Ollama server (LAN Linux box or cloud)
-            # No proxy required.
+            # ── Ollama backend routing ────────────────────────────────────────
+            # Four backends, two physical paths:
+            #
+            #  anthropic    → api.anthropic.com  (default, no extra setup)
+            #  ollama       → glorfindel:11434   (LAN GPU server, big models)
+            #  ollama_cloud → localhost:11434    (Mac Ollama daemon → ollama.com cloud)
+            #  ollama_mac   → localhost:11434    (Mac Ollama daemon, local model, offline)
+            #
+            # ollama_cloud and ollama_mac both require Ollama installed on this Mac:
+            #   brew install ollama && ollama serve
             if self._backend == "ollama":
-                if not self._check_ollama():
+                if not self._check_ollama(self._ollama_url):
                     raise RuntimeError(
-                        f"Ollama server not reachable at {self._ollama_url}\n\n"
+                        f"Ollama LAN server not reachable at {self._ollama_url}\n\n"
                         "Check that Ollama is running on the Linux machine:\n"
                         "  OLLAMA_HOST=0.0.0.0 ollama serve\n\n"
                         "And that ollama_url in config.json points to it:\n"
                         f"  {self._ollama_url}\n\n"
                         "Or switch to an Anthropic model until it's available."
                     )
-                # Force-load the model with the correct context window via the
-                # native Ollama API before the claude CLI subprocess calls the
-                # Anthropic-compatible endpoint.  Ollama's /v1/messages endpoint
-                # ignores Modelfile num_ctx; /api/generate honours it.
+                # Force-load with correct context window (Anthropic endpoint ignores Modelfile num_ctx)
                 self._preload_ollama_model()
                 env = self._get_ollama_env(env)
-            elif self._backend == "ollama_cloud":
+            elif self._backend in ("ollama_cloud", "ollama_mac"):
+                if not self._check_ollama(OLLAMA_MAC_URL):
+                    raise RuntimeError(
+                        f"Ollama not found on this Mac ({OLLAMA_MAC_URL}).\n\n"
+                        "Install and start Ollama:\n"
+                        "  brew install ollama\n"
+                        "  ollama serve\n\n"
+                        + (
+                            "Then the cloud model will be downloaded on first use.\n"
+                            "No GPU required — inference runs on ollama.com."
+                            if self._backend == "ollama_cloud" else
+                            f"Then pull the model:\n  ollama pull {self._model}\n\n"
+                            "Works offline once downloaded (~4 GB)."
+                        )
+                    )
                 env = self._get_ollama_env(env)
 
             prompt = self._build_prompt()
@@ -691,16 +713,16 @@ class _FlameChat:
             stderr_t.start()
 
             # Watchdog — kill process after timeout.
-            # Anthropic models: 180 s is plenty.
-            # Local Ollama models (30 B+ on a single GPU) can take 5–10 min on
-            # the first turn after loading; allow 600 s (10 min) for them.
-            # Local Ollama: 600 s (model loading on GPU can take a few minutes)
-            # Cloud Ollama: 300 s (network + large 480B model inference)
-            # Anthropic:    180 s
+            # ollama       (LAN GPU): 600 s — first load of a 30B model can take minutes
+            # ollama_cloud (Mac→☁):   300 s — 480B inference on ollama.com
+            # ollama_mac   (Mac CPU): 240 s — small 7B model, slower without GPU
+            # anthropic:              180 s
             if self._backend == "ollama":
                 _watchdog_secs = 600
             elif self._backend == "ollama_cloud":
                 _watchdog_secs = 300
+            elif self._backend == "ollama_mac":
+                _watchdog_secs = 240
             else:
                 _watchdog_secs = 180
             _timed_out = [False]
@@ -949,13 +971,16 @@ class _FlameChat:
         self._model   = model_id
         self._backend = backend
         self._save_model_config(model_id, backend)
-        # Show the appropriate config row for the selected backend
+        # URL widget only needed for LAN Ollama (glorfindel) — cloud/mac use localhost
         self._ollama_url_widget.setVisible(backend == "ollama")
-        self._ollama_cloud_key_widget.setVisible(backend == "ollama_cloud")
+        # Cloud key widget hidden — Ollama Mac daemon handles cloud auth internally
+        self._ollama_cloud_key_widget.setVisible(False)
         if backend == "ollama":
-            suffix = f" 🖥 {self._ollama_url}"
+            suffix = f" · {self._ollama_url}"
         elif backend == "ollama_cloud":
-            suffix = " ☁ ollama.com"
+            suffix = " · localhost → ☁ ollama.com"
+        elif backend == "ollama_mac":
+            suffix = " · localhost (offline)"
         else:
             suffix = ""
         display = f"{label}{suffix}" if model_id else f"{label} (set model in config.json)"
@@ -1037,23 +1062,28 @@ class _FlameChat:
             masked = None
 
         for i, (label, _model_id, backend) in enumerate(AVAILABLE_MODELS):
-            if backend in ("ollama", "ollama_cloud"):
+            if backend == "ollama":
                 new_label = f"{label}  · {host}"
+            elif backend == "ollama_cloud":
+                new_label = f"{label}  · localhost → ☁"
+            elif backend == "ollama_mac":
+                new_label = f"{label}  · localhost"
             else:
                 new_label = label
             self._model_combo.setItemText(i, new_label)
 
     # ── Ollama helpers ────────────────────────────────────────────────────────
 
-    def _check_ollama(self) -> bool:
+    def _check_ollama(self, url: str = None) -> bool:
         """
-        Return True if the configured Ollama server is reachable.
-        Pings self._ollama_url (set in config.json → ollama_url).
-        Works whether Ollama runs on localhost, a LAN Linux box, etc.
+        Return True if an Ollama server is reachable at the given URL.
+        Defaults to self._ollama_url (LAN server).
+        Pass OLLAMA_MAC_URL to check the Mac-local daemon.
         """
+        target = url or self._ollama_url
         try:
             import urllib.request
-            urllib.request.urlopen(f"{self._ollama_url}/api/version", timeout=2)
+            urllib.request.urlopen(f"{target}/api/version", timeout=2)
             return True
         except Exception:
             return False
@@ -1107,26 +1137,29 @@ class _FlameChat:
         Claude Code on macOS can talk directly to any Ollama server on the LAN —
         no proxy required.
 
-        Self-hosted:  ANTHROPIC_BASE_URL = config.json → ollama_url
+        Self-hosted:  ANTHROPIC_BASE_URL = config.json → ollama_url  (e.g. glorfindel)
                       ANTHROPIC_API_KEY  = "ollama"  (arbitrary, Ollama ignores it)
-        Cloud:        ANTHROPIC_BASE_URL = https://api.ollama.com
-                      ANTHROPIC_API_KEY  = config.json → ollama_cloud_key
-                      (get a free key at ollama.com → account settings → API keys)
+        Cloud ☁:      ANTHROPIC_BASE_URL = http://localhost:11434  (Mac Ollama daemon)
+                      Model tag = qwen3-coder:480b-cloud  (daemon proxies to ollama.com)
+                      Requires: brew install ollama && ollama serve on the Mac
+        Mac offline:  ANTHROPIC_BASE_URL = http://localhost:11434  (Mac Ollama daemon)
+                      Model = small local model, no internet needed
         """
         env = base_env.copy()
         if self._backend == "ollama":
             env['ANTHROPIC_BASE_URL']   = self._ollama_url
             env['ANTHROPIC_API_KEY']    = 'ollama'
             env['ANTHROPIC_AUTH_TOKEN'] = 'ollama'
-            _log(f"Ollama backend: {self._ollama_url} / model={self._model}")
-        elif self._backend == "ollama_cloud":
-            # Cloud models (e.g. qwen3-coder:480b-cloud) are proxied by the local
-            # Ollama daemon — same base URL as the self-hosted backend.
-            # The daemon routes the request to Ollama's cloud infrastructure.
-            env['ANTHROPIC_BASE_URL']   = self._ollama_url
+            _log(f"Ollama LAN backend: {self._ollama_url} / model={self._model}")
+        elif self._backend in ("ollama_cloud", "ollama_mac"):
+            # Both cloud-proxy and mac-local models run through the Mac's own
+            # Ollama daemon at localhost:11434.
+            # ollama_cloud: model tag ends in -cloud → daemon forwards to ollama.com
+            # ollama_mac:   model is stored locally on the Mac → works offline
+            env['ANTHROPIC_BASE_URL']   = OLLAMA_MAC_URL
             env['ANTHROPIC_API_KEY']    = 'ollama'
             env['ANTHROPIC_AUTH_TOKEN'] = 'ollama'
-            _log(f"Ollama cloud backend via {self._ollama_url} / model={self._model}")
+            _log(f"Ollama Mac backend ({self._backend}): {OLLAMA_MAC_URL} / model={self._model}")
         return env
 
     # ── Claude Code subprocess helpers ────────────────────────────────────────
