@@ -881,8 +881,9 @@ ws.replace_desktop(new_desktop) # internal method, not safe from Python hooks
 flame.clear_desktop()           # AttributeError / crash
 # ✅ Instead: see "Clear Desktop" pattern above
 
-# ❌ CRASH: Wiretap bridge is not safe for general scripting
-import wiretap                  # complex, crash-prone, not needed for normal ops
+# ❌ CRASH: importing the Wiretap Python SDK inside Flame's execute_python
+import libwiretapPythonClientAPI  # NOT safe inside Flame hooks — use CLI tools via subprocess instead
+# ✅ Safe alternative: call wiretap CLI tools via subprocess (see "Wiretap SDK" section)
 
 # ❌ BAD PRACTICE: do NOT use dir() to discover the API
 dir(flame.projects)             # never do this — use search_flame_docs instead
@@ -1214,6 +1215,358 @@ ws = flame.projects.current_project.current_workspace
 default_lib = ws.libraries[0]  # Default Library
 new_reel = default_lib.create_reel("KK")
 ```
+
+---
+
+## Wiretap SDK — IFFFS Server Access
+<!-- Keywords: wiretap ifffs project create metadata cross-project node hierarchy cli tools subprocess -->
+
+Wiretap is Autodesk's content-management server that underlies every Flame installation.
+It exposes the full project/library/clip database as a navigable node tree.
+
+**Two usage modes:**
+- **CLI tools** (`/opt/Autodesk/wiretap/tools/current/`) — call via `subprocess` from
+  inside Flame Python. Safe, no import required.
+- **Python SDK** (`libwiretapPythonClientAPI`) — for EXTERNAL scripts that run *outside*
+  Flame. Do NOT import inside Flame's `execute_python` — crashes Flame.
+
+---
+
+### IFFFS Node Hierarchy
+
+The complete tree structure exposed by `localhost:IFFFS`:
+
+```
+/projects                        ← PROJECTS (root)
+  /<project-uuid>                ← PROJECT  (one per project)
+    /<workspace-uuid>            ← WORKSPACE
+      /...                       ← DESKTOP
+        /...                     ← REEL_GROUP  (≥1, user reel groups on Desktop)
+          /...                   ← REEL  → CLIP*
+        /...                     ← BATCH_CONTAINER  (one per batch group)
+          /...                   ← SAVED_BATCH
+          /...                   ← REEL_LIST  (shelf reels)
+          /...                   ← SAVED_BATCH_LIST  (saved iterations)
+      /Libraries                 ← LIBRARY_LIST (workspace-specific)
+        /...                     ← LIBRARY
+          /...                   ← REEL → CLIP*
+          /...                   ← FOLDER
+          /...                   ← CLIP  (directly in lib, no reel)
+    /Shared Libraries            ← LIBRARY_LIST (shared across all workspaces)
+      /...                       ← LIBRARY → REEL / FOLDER / CLIP
+    /setups/...                  ← NODE → SETUP (per VFX module: Paint, CC, Keyer…)
+```
+
+**Node type rules:**
+- `DESKTOP` → save to library or restore from library via Wiretap copy/duplicate
+- `LIBRARY` can only be destroyed when empty (delete clips/reels first)
+- `PROJECT` can be destroyed even with libraries present (libraries are deleted too)
+- Moving a `REEL_LIST` out of a `BATCH_CONTAINER` converts it to `REEL_GROUP`
+- Only one `DESKTOP` and one `LIBRARY_LIST` node per `WORKSPACE`
+
+---
+
+### Wiretap CLI Tools — Reference
+<!-- Keywords: wiretap_print_tree wiretap_create_node wiretap_destroy_node wiretap_get_children wiretap_duplicate_node -->
+
+All tools live in `/opt/Autodesk/wiretap/tools/current/`.
+Call from inside Flame Python using `subprocess`.
+
+```python
+import subprocess, json
+
+WTAP = "/opt/Autodesk/wiretap/tools/current"
+
+def _wt(*args):
+    """Run a wiretap CLI tool, return stdout as string."""
+    result = subprocess.run([f"{WTAP}/{args[0]}"] + list(args[1:]),
+                            capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError(f"wiretap error: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+# ── List all projects (names) ────────────────────────────────────────────────
+output = _wt("wiretap_get_children", "-h", "localhost:IFFFS", "-n", "/projects", "-N")
+print(output)
+# MyProject
+# MyOtherProject
+
+# ── Print full node tree (depth 3) from /projects ───────────────────────────
+output = _wt("wiretap_print_tree", "-h", "localhost:IFFFS", "-n", "/projects", "-d", "3", "-k")
+print(output)
+
+# ── Get node ID for a project by display name ────────────────────────────────
+# wiretap_get_children without -N returns node IDs
+children = _wt("wiretap_get_children", "-h", "localhost:IFFFS", "-n", "/projects")
+# Returns lines of: <node_id>  <display_name>
+# Parse to find UUID for "MyProject"
+
+# ── Get project XML metadata ─────────────────────────────────────────────────
+project_uuid = "080f2228-89cb-47c6-ac10-5c434df570da"  # from wiretap_get_children
+xml = _wt("wiretap_get_metadata",
+          "-h", "localhost:IFFFS",
+          "-n", f"/projects/{project_uuid}",
+          "-s", "XML")
+print(xml)   # full <Project>…</Project> XML
+
+# ── Get clip SourceData metadata (MIO XML, similar to Open Clip) ─────────────
+clip_node_id = "/projects/uuid/workspace-uuid/library-uuid/reel-uuid/clip-uuid"
+mio_xml = _wt("wiretap_get_metadata",
+              "-h", "localhost:IFFFS",
+              "-n", clip_node_id,
+              "-s", "SourceData")
+
+# ── Create a new workspace under an existing project ─────────────────────────
+new_node = _wt("wiretap_create_node",
+               "-h", "localhost:IFFFS",
+               "-n", f"/projects/{project_uuid}",
+               "-t", "WORKSPACE",
+               "-d", "NewWorkspace")
+print(f"Created: {new_node}")
+
+# ── Create a library under a workspace Libraries list ────────────────────────
+# First find the Libraries node ID (child of workspace named "Libraries")
+lib_list_id = "0036dc7f_67deac7c_000c5228"  # from wiretap_print_tree
+_wt("wiretap_create_node",
+    "-h", "localhost:IFFFS",
+    "-n", f"/projects/{project_uuid}/{lib_list_id}",
+    "-t", "LIBRARY",
+    "-d", "MyNewLib")
+
+# ── Duplicate a node (copy clip/reel to another location) ────────────────────
+_wt("wiretap_duplicate_node",
+    "-h", "localhost:IFFFS",
+    "-s", source_clip_node_id,
+    "-n", dest_library_node_id,
+    "-d", "CopiedClip")
+
+# ── Destroy (delete) a node ───────────────────────────────────────────────────
+_wt("wiretap_destroy_node",
+    "-h", "localhost:IFFFS",
+    "-n", node_id_to_delete)
+
+# ── Rename a node ─────────────────────────────────────────────────────────────
+_wt("wiretap_rename_node",
+    "-h", "localhost:IFFFS",
+    "-n", node_id,
+    "-d", "NewDisplayName")
+
+# ── Check node type ───────────────────────────────────────────────────────────
+node_type = _wt("wiretap_get_node_type", "-h", "localhost:IFFFS", "-n", node_id)
+# Returns: PROJECT / WORKSPACE / LIBRARY / REEL / CLIP / DESKTOP / …
+
+# ── Ping Wiretap server (health check) ───────────────────────────────────────
+_wt("wiretap_ping", "-h", "localhost:IFFFS")
+```
+
+> **Note (Autodesk):** CLI tools are for testing/prototyping. For mission-critical
+> automation use the Python SDK (`libwiretapPythonClientAPI`) in external scripts.
+
+---
+
+### Create a Project via Wiretap CLI
+
+```python
+import subprocess, textwrap, tempfile, os
+
+WTAP = "/opt/Autodesk/wiretap/tools/current"
+
+project_xml = textwrap.dedent("""\
+    <Project>
+      <Name>MyNewProject</Name>
+      <FrameWidth>1920</FrameWidth>
+      <FrameHeight>1080</FrameHeight>
+      <FrameDepth>10-bit</FrameDepth>
+      <AspectRatio>1.77778</AspectRatio>
+      <FieldDominance>PROGRESSIVE</FieldDominance>
+      <FrameRate>25 fps</FrameRate>
+      <DefaultStartFrame>1001</DefaultStartFrame>
+      <IntermediatesProfile>65796:596088</IntermediatesProfile>
+    </Project>
+""")
+
+# Write XML to temp file
+with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as f:
+    f.write(project_xml)
+    xml_path = f.name
+
+try:
+    result = subprocess.run(
+        [f"{WTAP}/wiretap_create_node", "-h", "localhost:IFFFS",
+         "-n", "/projects", "-d", "MyNewProject",
+         "-s", "XML", "-f", xml_path],
+        capture_output=True, text=True, timeout=30
+    )
+    print(result.stdout)
+finally:
+    os.unlink(xml_path)
+```
+
+---
+
+### Project XML — IntermediatesProfile Codec Codes
+<!-- Keywords: intermediates profile codec prores dnxhr dnxhd openexr quicktime apple prores -->
+
+The `<IntermediatesProfile>` element uses the format `<integer>:<integer>`.
+First integer = container/codec, second integer = float pixel format.
+
+**Common combinations:**
+
+| Codec | `<IntermediatesProfile>` |
+|---|---|
+| Apple ProRes 4444 XQ + OpenEXR (PIZ) | `65541:596088` |
+| Apple ProRes 4444 + OpenEXR (PIZ) | `65540:596088` |
+| Apple ProRes 422 HQ + OpenEXR (PIZ) | `65539:596088` |
+| Apple ProRes 422 + OpenEXR (PIZ) | `65538:596088` |
+| Apple ProRes 4444 XQ Raw | `65797:596088` |
+| Apple ProRes 4444 Raw | `65796:596088` |
+| Apple ProRes 422 HQ Raw | `65795:596088` |
+| Apple ProRes 422 Raw | `65794:596088` |
+| DNxHR/DNxHD 444 Raw | `512:596088` |
+| DNxHR/DNxHD HQ Raw | `513:596088` |
+| DNxHR/DNxHD SQ Raw | `514:596088` |
+| Uncompressed OpenEXR (PIZ) | `0:596088` |
+| Uncompressed Raw | `2:596088` |
+
+**Float pixel format second values (common):**
+
+| Format | Second integer |
+|---|---|
+| OpenEXR (PIZ) | `596088` |
+| OpenEXR (DWAA) | `1120376` |
+| OpenEXR (uncompressed) | `6264` |
+| Raw | `64704` |
+
+**Project XML editable fields:**
+
+| XML Element | Type | Editable | Description |
+|---|---|---|---|
+| `<Name>` | string | No (creation only) | Project name |
+| `<Description>` | string | Yes | Free-form description |
+| `<FrameWidth>` | integer 24–16384 | Yes | Default resolution width (multiple of 2) |
+| `<FrameHeight>` | integer 24–16384 | Yes | Default resolution height |
+| `<FrameDepth>` | string | Yes | `8-bit` / `10-bit` / `12-bit` / `16-bit fp` / `32-bit fp` |
+| `<AspectRatio>` | decimal 0.001–100 | Yes | Pixel aspect ratio |
+| `<FieldDominance>` | string | Yes | `PROGRESSIVE` / `FIELD_1` / `FIELD_2` |
+| `<FrameRate>` | string | Yes | `23.976 fps` / `24 fps` / `25 fps` / `29.97 fps DF` / `29.97 fps NDF` / `30 fps` / `50 fps` / `59.94 fps DF` / `59.94 fps NDF` / `60 fps` |
+| `<IntermediatesProfile>` | int:int | Yes | Codec (see table above) |
+| `<ProxyWidth>` | integer | Yes | Proxy width (multiple of 4) |
+| `<ProxyWidthHint>` | decimal 0–1 | Yes | Ratio proxy/full width |
+| `<ProxyQuality>` | string | Yes | `lanczos` / `draft` / `bicubic` / `mitchell` / `gaussian` |
+| `<OCIOConfigFile>` | string | Yes | Absolute path to OCIO config file |
+| `<ColourPolicyName>` | string | Yes | Named OCIO policy (mutually exclusive with OCIOConfigFile) |
+| `<DefaultStartFrame>` | integer ≥0 | Yes | Start frame (e.g. `1001`) |
+| `<HdrMode>` | string | Yes | `Dolby Vision 2.9` / `Dolby Vision 4.0` |
+| `<ProjectDir>` | string | Creation only | Path for project home dir (use `&lt;project name&gt;` token) |
+| `<MediaDir>` | string | Creation only | Path for media cache |
+| `<Template>` | string | Creation only | Project template name |
+
+---
+
+### Force Save to Disk (Commit)
+
+Changes made via Wiretap are auto-committed 2 seconds after the last operation.
+To force immediate save:
+
+```python
+# Python SDK (external scripts only — NOT inside Flame execute_python)
+import libwiretapPythonClientAPI as wiretap
+
+server  = wiretap.WireTapServerHandle("localhost:IFFFS")
+project_node = wiretap.WireTapNodeHandle(server, f"/projects/{project_uuid}")
+project_node.setMetaData("COMMIT", "")   # forces flush to disk for project + all children
+
+# Or commit at library level (affects that library's clips only)
+lib_node = wiretap.WireTapNodeHandle(server, lib_node_id)
+lib_node.setMetaData("COMMIT", "")
+```
+
+> Committing a clip node actually commits its parent library/workspace.
+> Committing a project node commits everything.
+
+---
+
+### Cross-Project Copy via Wiretap CLI
+
+The Flame Python API only operates on the active project. Wiretap can read/write
+any project by node ID regardless of which project Flame has open.
+
+```python
+import subprocess
+
+WTAP = "/opt/Autodesk/wiretap/tools/current"
+
+# Copy a reel from ProjectA to a library in ProjectB (both can be inactive)
+subprocess.run([
+    f"{WTAP}/wiretap_duplicate_node",
+    "-h", "localhost:IFFFS",
+    "-s", "/projects/<projectA-uuid>/<ws-uuid>/<reel-uuid>",  # source
+    "-n", "/projects/<projectB-uuid>/<ws-uuid>/<lib-list-uuid>/<lib-uuid>",  # dest
+    "-d", "CopiedReel"
+], check=True)
+```
+
+> **Limitation:** Wiretap requires exclusive access to modify a library or workspace.
+> If Flame has that library open for read/write, the operation will fail with an error.
+> Close the library in Flame first, or run the operation when Flame is idle.
+
+---
+
+### Wiretap Python SDK — External Scripts
+
+For Python scripts that run **outside** Flame (e.g. from Terminal, render farm, CI):
+
+```python
+# Python interpreter with Wiretap bundled: /opt/Autodesk/python/<version>/bin/python
+import libwiretapPythonClientAPI as wiretap
+
+# Connect to IFFFS server on localhost
+server = wiretap.WireTapServerHandle("localhost:IFFFS")
+
+# Get root node
+root   = wiretap.WireTapNodeHandle(server, "/projects")
+
+# List children
+num    = wiretap.WireTapInt()
+root.getNumChildren(num)
+for i in range(int(num)):
+    child = wiretap.WireTapNodeHandle()
+    root.getChild(i, child)
+    node_id = wiretap.WireTapNodeId()
+    child.getNodeId(node_id)
+    print(node_id.id())
+
+# Get project XML metadata
+project_node = wiretap.WireTapNodeHandle(server, f"/projects/{project_uuid}")
+metadata     = wiretap.WireTapStr()
+project_node.getMetaData("XML", "", 1, metadata)
+print(str(metadata))   # <Project>…</Project>
+
+# Set project description
+project_node.setMetaData("XML", wiretap.WireTapStr("<Project><Description>My desc</Description></Project>"))
+
+# Create a LIBRARY under a LIBRARY_LIST node
+lib_list_node = wiretap.WireTapNodeHandle(server, lib_list_node_id)
+new_lib_node  = wiretap.WireTapNodeHandle()
+lib_list_node.createNode("MyLib", "LIBRARY", new_lib_node)
+
+# Duplicate a node (cross-reel copy)
+dest_node = wiretap.WireTapNodeHandle()
+source_node.duplicateNode(dest_parent_node, "ClipCopy", dest_node)
+
+# Discover available metadata stream IDs on a node
+n_streams = wiretap.WireTapInt()
+project_node.getNumAvailableMetaDataStreams(n_streams)
+for i in range(int(n_streams)):
+    stream_id = wiretap.WireTapStr()
+    project_node.getAvailableMetaDataStream(i, stream_id)
+    print(str(stream_id))   # "XML", "COMMIT", "ProjectLocator", …
+```
+
+> **⚠️ Do NOT** `import libwiretapPythonClientAPI` inside Flame's `execute_python`.
+> Use the CLI tools via `subprocess` instead (see section above).
+
+---
 
 ## Notes & Gotchas
 
