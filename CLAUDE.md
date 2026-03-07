@@ -15,28 +15,79 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
    section from the local index (~200 tokens vs 1500 for the full file). Only fall
    back to reading `FLAME_API.md` directly if the search returns nothing useful.
 
-2. **Check Learned Patterns second.** After reading the API reference, check
+2. **Use low-relevance RAG results — do NOT discard them.** If `search_flame_docs`
+   returns results below 60% relevance, still read and use the best match. Low
+   relevance means the terminology differs, not that the API doesn't cover it.
+   Try 2–3 alternate queries before concluding a pattern is undocumented:
+   - "save desktop to library" → also try "copy reel group", "media panel copy"
+   - "delete folder" → also try "remove folder", "library folders"
+   - "ripple delete" → also try "close gap", "remove segment", "timeline gap"
+   If all searches return < 30%, proceed with the best match and call `learn_pattern`
+   after success.
+
+3. **Dry-run before EVERY delete — no exceptions.** Never call `flame.delete()`
+   without first doing a separate `execute_python` inspection that prints exactly
+   what WOULD be deleted (names, types, counts). Then present that list to the user
+   and say "Confirma para proceder / Confirm to proceed." Do NOT execute the actual
+   delete until the user replies "confirm", "sí", "yes", "ok" or equivalent.
+   This rule applies even when the user's request sounds unambiguous.
+
+   Example flow:
+   ```
+   User: "delete all empty reels"
+   Claude: [execute_python] → prints list of candidate reels
+   Claude: "I would delete: Reel 2 (0 clips), Reel 4 (0 clips). Confirm?"
+   User: "confirm"
+   Claude: [execute_python] → actually deletes
+   ```
+
+4. **Inspect before acting.** Before any destructive or structural operation
+   (delete, move, copy, rename), run one `execute_python` inspection first to
+   confirm the hierarchy: list libraries, reel groups, folders, or clips.
+   Confirm the target object EXISTS before trying to delete or modify it.
+   Example inspection:
+   ```python
+   import flame
+   ws = flame.projects.current_project.current_workspace
+   lib = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+   if lib:
+       print("folders:", [str(f.name) for f in (lib.folders or [])])
+       print("reels:", [str(r.name) for r in lib.reels])
+   ```
+
+4. **Check Learned Patterns second.** After reading the API reference, check
    `## Learned Patterns` below. If a matching pattern exists, use it directly.
    Do not improvise if a known-good solution is documented.
 
-3. **Self-update on success.** When a Flame task completes successfully, immediately
-   append the working code to `## Learned Patterns` with a short description and date.
-   Use the format defined in that section.
+5. **STOP after 2 failures — do not keep trying.** If the same sub-task fails
+   twice (two `execute_python` calls return errors for the same goal), STOP
+   immediately. Do NOT generate a third variation. Instead, report to the user:
+   - What was attempted (code + error)
+   - What is unclear or missing
+   - What information would help proceed
+   Never make more than 3 `execute_python` calls for the same sub-task.
+   Repeated silent retries with variations waste the user's time and risk
+   destabilising Flame.
 
-4. **Mark failures.** If a pattern causes a timeout, crash, or wrong result, add a ❌
+6. **Self-update on success.** When a Flame task completes successfully, immediately
+   append the working code to `## Learned Patterns` with a short description and date.
+   Use the format defined in that section. Also call `learn_pattern()` when RAG
+   coverage was low (< 60%) so the index is updated for future sessions.
+
+7. **Mark failures.** If a pattern causes a timeout, crash, or wrong result, add a ❌
    note next to it explaining why, so it is not retried.
 
-5. **Keep code minimal.** Flame's Python environment is sensitive. Prefer short, direct
+8. **Keep code minimal.** Flame's Python environment is sensitive. Prefer short, direct
    API calls. Avoid long loops or anything that could block Flame's main thread.
 
-6. **Always return output.** Every `execute_python` call should end with a `print()` or
+9. **Always return output.** Every `execute_python` call should end with a `print()` or
    return value so Claude can confirm success or failure.
 
-7. **Use Background Reactor for renders.** Long renders block Flame's UI. Always use
-   `render_option="Background Reactor"` unless the user explicitly requests Foreground.
+10. **Use Background Reactor for renders.** Long renders block Flame's UI. Always use
+    `render_option="Background Reactor"` unless the user explicitly requests Foreground.
 
-8. **Always call `session_stats` last.** After every response that uses any Flame tool,
-   call `session_stats` as the final tool call to display token usage and RAG savings.
+11. **Always call `session_stats` last.** After every response that uses any Flame tool,
+    call `session_stats` as the final tool call to display token usage and RAG savings.
 
 ---
 
