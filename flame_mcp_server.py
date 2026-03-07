@@ -450,24 +450,67 @@ def _track_dedicated() -> None:
 @mcp.tool(annotations=_RO)
 def get_project_info() -> str:
     """
-    Return basic information about the active Flame project:
-    name, frame rate, resolution, and bit depth.
+    Return information about the active Flame project: name, frame rate,
+    resolution, bit depth, description, and workspace count.
+
+    Uses wiretap_get_metadata (XML) for frame rate / resolution — these are
+    NOT attributes of PyProject and cannot be read via the Python API alone.
     """
-    code = """
+    WTAP = "/opt/Autodesk/wiretap/tools/current"
+
+    # Step 1 — get name + workspace count from Python API (always works)
+    result = _call_flame("""
 p = flame.projects.current_project
-def _v(attr):
-    v = getattr(p, attr, None)
-    return str(v) if v is not None else "—"
 print(f"Name: {str(p.name)}")
-print(f"Frame rate: {_v('frame_rate')}")
-print(f"Resolution: {_v('width')}x{_v('height')}")
-print(f"Bit depth: {_v('bit_depth')}")
-"""
-    result = _call_flame(code)
-    output = result.get('output', '') + result.get('error', '')
+print(f"Description: {str(p.description) if p.description else '—'}")
+print(f"Workspaces: {str(p.workspaces_count)}")
+try:
+    print(f"WiretapID: {str(p.get_wiretap_node_id())}")
+except Exception as e:
+    print(f"WiretapID: ERROR {e}")
+""")
+    py_out = result.get('output', '').strip()
+
+    # Parse wiretap node id from Python output
+    wtap_id = None
+    for line in py_out.splitlines():
+        if line.startswith("WiretapID:"):
+            val = line.split(":", 1)[1].strip()
+            if not val.startswith("ERROR"):
+                wtap_id = val
+
+    # Step 2 — get frame rate / resolution / bit depth from Wiretap XML metadata
+    meta_lines = []
+    if wtap_id:
+        try:
+            proc = subprocess.run(
+                [f"{WTAP}/wiretap_get_metadata", "-h", "localhost:IFFFS",
+                 "-n", wtap_id, "-s", "XML"],
+                capture_output=True, text=True, timeout=10
+            )
+            xml = proc.stdout
+            import re as _re
+            def _xml(tag):
+                m = _re.search(rf"<{tag}[^>]*>([^<]+)</{tag}>", xml, _re.IGNORECASE)
+                return m.group(1).strip() if m else "—"
+            meta_lines = [
+                f"Frame rate: {_xml('FrameRate')}",
+                f"Resolution: {_xml('Width')}x{_xml('Height')}",
+                f"Bit depth: {_xml('BitDepth')}",
+                f"Scan mode: {_xml('ScanMode')}",
+                f"Colour space: {_xml('ColourSpace')}",
+            ]
+        except Exception as e:
+            meta_lines = [f"Wiretap metadata: unavailable ({e})"]
+    else:
+        meta_lines = ["Frame rate: — (PyProject.get_wiretap_node_id() failed)"]
+
+    # Merge outputs (skip the WiretapID line from display)
+    display = [l for l in py_out.splitlines() if not l.startswith("WiretapID:")]
+    output = "\n".join(display + meta_lines)
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result)
+    return output
 
 
 @mcp.tool(annotations=_RO)
