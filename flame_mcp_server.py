@@ -259,23 +259,24 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    Use the most specific dedicated tool and stop. Do NOT run ping + get_project_info
    + list_libraries as a warmup sequence; go directly to the tool that answers the question.
 
-   Dedicated tools (zero RAG, zero execute_python):
-   - Bridge connected?          → ping()
-   - Project info               → get_project_info()
-   - Flame version              → get_flame_version()
-   - Libraries                  → list_libraries()
-   - Reels in a library         → list_reels(library_name)
-   - Clips in library/reel      → list_clips(library_name, reel_name, limit)
-   - Desktop reels + clips      → list_desktop_reels()   ← includes clip names
-   - Batch groups               → list_batch_groups()
-   - All projects on disk       → list_all_projects()
-   - Single clip metadata       → get_clip_metadata(library, reel, clip)
-   - Currently selected items   → get_selected_clips()
-   - Wiretap IFFFS tree         → flame_wiretap_tree(path)
-   - Available log files        → list_flame_logs()
-   - Read / debug a log         → read_flame_log(name, lines, grep)
+   QUERY → TOOL LOOKUP (use exactly this tool, nothing else):
+   "project name / frame rate / resolution"  → get_project_info()
+   "is the bridge connected / is Flame up"   → ping()
+   "what version of Flame"                   → get_flame_version()
+   "list libraries / show libraries"         → list_libraries()
+   "reels in library X"                      → list_reels(library_name)
+   "clips in reel / library"                 → list_clips(library_name, reel_name)
+   "desktop reels / desktop clips"           → list_desktop_reels()
+   "batch groups"                            → list_batch_groups()
+   "all projects / other projects on disk"   → list_all_projects()
+   "metadata for clip X"                     → get_clip_metadata(library, reel, clip)
+   "what is selected / selected clips"       → get_selected_clips()
+   "wiretap tree / ifffs"                    → flame_wiretap_tree(path)
+   "available logs / log files"              → list_flame_logs()
+   "read log / debug log"                    → read_flame_log(name, lines, grep)
 
-   Only fall back to search_flame_docs + execute_python for operations not covered above.
+   One question = one tool. Do NOT call ping() or get_project_info() before other tools.
+   Only fall back to search_flame_docs + execute_python for operations not in this list.
 
 2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
    FIRST before writing any execute_python code. No exceptions.
