@@ -32,8 +32,12 @@ proj = flame.projects.current_project
 ws   = proj.current_workspace
 desk = ws.desktop
 
-# Find a library by name
-lib = next((l for l in ws.libraries if l.name == "MyLib"), None)
+# Find a library by name (user-visible only — exclude system libraries)
+# System/hidden libraries: "Timeline FX", "Grabbed References"
+# These appear in ws.libraries but are NOT shown in the Flame interface.
+HIDDEN_LIBS = {"Timeline FX", "Grabbed References"}
+visible_libs = [l for l in ws.libraries if str(l.name) not in HIDDEN_LIBS]
+lib = next((l for l in visible_libs if str(l.name) == "MyLib"), None)
 
 # Find a reel inside a library
 reel = next((r for r in lib.reels if r.name == "MyReel"), None)

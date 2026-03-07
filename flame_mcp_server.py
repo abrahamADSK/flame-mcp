@@ -429,13 +429,31 @@ print(f"Bit depth: {_v('bit_depth')}")
 @mcp.tool()
 def list_libraries() -> str:
     """
-    List all libraries in the active Flame project,
-    including the reel count for each library.
+    List all user-visible libraries in the active Flame project.
+    Excludes hidden system libraries ("Timeline FX", "Grabbed References")
+    which are not shown in the Flame interface.
+    Reports reels, folders, and reel_groups per library.
     """
     code = """
 ws = flame.projects.current_project.current_workspace
-for lib in ws.libraries:
-    print(f"  {str(lib.name)}  ({len(lib.reels)} reels)")
+HIDDEN = {"Timeline FX", "Grabbed References"}
+visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
+if not visible:
+    print("No libraries found.")
+for lib in visible:
+    name    = str(lib.name)
+    reels   = len(lib.reels)
+    folders = len(list(lib.folders or []))
+    try:
+        reel_groups = len(lib.reel_groups)
+    except Exception:
+        reel_groups = 0
+    parts = []
+    if reels:       parts.append(f"{reels} reel{'s' if reels != 1 else ''}")
+    if folders:     parts.append(f"{folders} folder{'s' if folders != 1 else ''}")
+    if reel_groups: parts.append(f"{reel_groups} reel group{'s' if reel_groups != 1 else ''}")
+    summary = ", ".join(parts) if parts else "empty"
+    print(f"  {name}  ({summary})")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
@@ -448,7 +466,8 @@ for lib in ws.libraries:
 def list_reels(library_name: str = "") -> str:
     """
     List reels in a library. If no library name is given,
-    shows reels across all libraries in the project.
+    shows reels across all user-visible libraries.
+    Excludes hidden system libraries ("Timeline FX", "Grabbed References").
     """
     if library_name:
         code = f"""
@@ -463,7 +482,10 @@ else:
     else:
         code = """
 ws = flame.projects.current_project.current_workspace
+HIDDEN = {"Timeline FX", "Grabbed References"}
 for lib in ws.libraries:
+    if str(lib.name) in HIDDEN:
+        continue
     print(f"[{str(lib.name)}]")
     for reel in lib.reels:
         print(f"  {str(reel.name)}  ({len(reel.clips)} clips)")
@@ -479,8 +501,9 @@ for lib in ws.libraries:
 def list_clips(library_name: str = "", reel_name: str = "") -> str:
     """
     List clips inside a library, optionally filtered by reel name.
-    If library_name is empty, lists clips across all libraries.
+    If library_name is empty, lists clips across all user-visible libraries.
     If reel_name is also given, shows only that reel's clips.
+    Excludes hidden system libraries ("Timeline FX", "Grabbed References").
     Use this instead of execute_python for any 'show/list clips' request.
     """
     if library_name:
@@ -499,14 +522,19 @@ else:
         clips = list(reel.clips)
         print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{len(clips)}} clip(s)")
         for c in clips:
-            print(f"  {{str(c.name)}}")
+            dur = getattr(c, 'duration', None)
+            dur_str = f"  {{dur}}" if dur else ""
+            print(f"  {{str(c.name)}}{{dur_str}}")
     if not found:
         print(f"No reels matched filter '{reel_name}'.")
 """
     else:
         code = """
 ws = flame.projects.current_project.current_workspace
+HIDDEN = {"Timeline FX", "Grabbed References"}
 for lib in ws.libraries:
+    if str(lib.name) in HIDDEN:
+        continue
     for reel in lib.reels:
         clips = list(reel.clips)
         if clips:
