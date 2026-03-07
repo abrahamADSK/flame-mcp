@@ -22,7 +22,10 @@ import os
 import re
 import sys
 import subprocess
+import datetime
 from pathlib import Path
+from typing import Annotated
+from pydantic import Field
 from mcp.server.fastmcp import FastMCP
 
 _SERVER_DIR = Path(__file__).parent
@@ -33,9 +36,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # ─── Tool annotations (MCP ≥ 1.x) ────────────────────────────────────────────
 try:
     from mcp.types import ToolAnnotations
-    _RO  = ToolAnnotations(readOnlyHint=True,  destructiveHint=False)  # read-only
-    _RW  = ToolAnnotations(readOnlyHint=False, destructiveHint=False)  # writes, not destructive
-    _DST = ToolAnnotations(readOnlyHint=False, destructiveHint=True)   # potentially destructive
+    _RO  = ToolAnnotations(readOnlyHint=True,  destructiveHint=False, openWorldHint=False)  # read-only local
+    _RW  = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)  # write, not destructive
+    _DST = ToolAnnotations(readOnlyHint=False, destructiveHint=True,  openWorldHint=False)  # potentially destructive
 except ImportError:
     _RO = _RW = _DST = None  # older mcp versions — gracefully ignored by FastMCP
 
@@ -252,23 +255,27 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 ## MANDATORY WORKFLOW — follow this for every task
 
-1. PREFER DEDICATED TOOLS for standard read operations — they require zero RAG
-   and zero execute_python calls:
-   - Bridge connected?     → ping()
-   - Project info          → get_project_info()
-   - Flame version         → get_flame_version()
-   - List libraries        → list_libraries()
-   - List reels            → list_reels(library_name)
-   - List clips            → list_clips(library_name, reel_name, limit)
-   - Desktop structure     → list_desktop_reels()
-   - Batch groups          → list_batch_groups()
-   - All projects on disk  → list_all_projects()
-   - Clip metadata         → get_clip_metadata(library, reel, clip)
-   - Selected items        → get_selected_clips()
-   - IFFFS Wiretap tree    → flame_wiretap_tree(path)
-   - Available log files   → list_flame_logs()
-   - Read / debug logs     → read_flame_log(name, lines, grep)
-   Use these before falling back to search_flame_docs + execute_python.
+1. PICK THE SINGLE RIGHT TOOL — do not chain multiple read tools when one suffices.
+   Use the most specific dedicated tool and stop. Do NOT run ping + get_project_info
+   + list_libraries as a warmup sequence; go directly to the tool that answers the question.
+
+   Dedicated tools (zero RAG, zero execute_python):
+   - Bridge connected?          → ping()
+   - Project info               → get_project_info()
+   - Flame version              → get_flame_version()
+   - Libraries                  → list_libraries()
+   - Reels in a library         → list_reels(library_name)
+   - Clips in library/reel      → list_clips(library_name, reel_name, limit)
+   - Desktop reels + clips      → list_desktop_reels()   ← includes clip names
+   - Batch groups               → list_batch_groups()
+   - All projects on disk       → list_all_projects()
+   - Single clip metadata       → get_clip_metadata(library, reel, clip)
+   - Currently selected items   → get_selected_clips()
+   - Wiretap IFFFS tree         → flame_wiretap_tree(path)
+   - Available log files        → list_flame_logs()
+   - Read / debug a log         → read_flame_log(name, lines, grep)
+
+   Only fall back to search_flame_docs + execute_python for operations not covered above.
 
 2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
    FIRST before writing any execute_python code. No exceptions.
@@ -383,7 +390,10 @@ def _fmt(result: dict) -> str:
 # ─── MCP tools ────────────────────────────────────────────────────────────────
 
 @mcp.tool(annotations=_DST)
-def execute_python(code: str, timeout: int = 15) -> str:
+def execute_python(
+    code: str,
+    timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+) -> str:
     """
     Execute arbitrary Python code inside Autodesk Flame.
     Has full access to the flame module and its entire Python API.
@@ -535,7 +545,11 @@ for lib in ws.libraries:
 
 
 @mcp.tool(annotations=_RO)
-def list_clips(library_name: str = "", reel_name: str = "", limit: int = 50) -> str:
+def list_clips(
+    library_name: str = "",
+    reel_name: str = "",
+    limit: Annotated[int, Field(ge=0, le=5000, description="Max clips per reel (0 = unlimited, default 50)")] = 50,
+) -> str:
     """
     List clips inside a library, optionally filtered by reel name.
     If library_name is empty, lists clips across all user-visible libraries.
@@ -607,8 +621,10 @@ for lib in ws.libraries:
 @mcp.tool(annotations=_RO)
 def list_desktop_reels() -> str:
     """
-    List the desktop structure: reel groups and their reels with clip counts.
-    Use this instead of execute_python for any 'show desktop / reel groups' request.
+    List the full desktop structure: reel groups, reels, and clip names.
+    Use this for ANY request about desktop contents, clips in desktop, or
+    'what's on the desktop' — it returns everything in one call.
+    Includes clip names so no follow-up execute_python call is needed.
     """
     code = """
 ws = flame.projects.current_project.current_workspace
@@ -616,7 +632,10 @@ desktop = ws.desktop
 for rg in desktop.reel_groups:
     print(f"[{str(rg.name)}]")
     for reel in rg.reels:
-        print(f"  {str(reel.name)}  ({len(reel.clips)} clips)")
+        clips = list(reel.clips)
+        print(f"  {str(reel.name)}  ({len(clips)} clips)")
+        for c in clips:
+            print(f"    {str(c.name)}")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
@@ -1031,15 +1050,6 @@ def session_stats() -> str:
 
 _LOGS_DIR = Path("/opt/Autodesk/logs")
 
-# Known log categories and their typical filename prefixes
-_LOG_CATEGORIES = {
-    "application": ["flame",  "flame2", "logik"],
-    "wiretap":     ["wiretap", "WireTap"],
-    "ifffs":       ["IFFFS", "ifffs", "stone"],
-    "backburner":  ["backburner", "Backburner", "bb_"],
-    "python":      ["python", "Python"],
-}
-
 
 @mcp.tool(annotations=_RO)
 def list_flame_logs() -> str:
@@ -1068,7 +1078,6 @@ def list_flame_logs() -> str:
             stat = p.stat()
             size  = stat.st_size
             mtime = stat.st_mtime
-            import datetime
             ts = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
             if size >= 1_048_576:
                 sz = f"{size/1_048_576:.1f} MB"
@@ -1085,7 +1094,12 @@ def list_flame_logs() -> str:
 
 
 @mcp.tool(annotations=_RO)
-def read_flame_log(log_name: str, lines: int = 100, grep: str = "") -> str:
+def read_flame_log(
+    log_name: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[^/\\]+$',
+                                   description="Log filename only, no path separators")],
+    lines: Annotated[int, Field(ge=0, le=50000, description="Lines from end (0 = all, default 100)")] = 100,
+    grep: str = "",
+) -> str:
     """
     Read the last N lines of a Flame log file from /opt/Autodesk/logs.
     Optionally filter lines by a keyword or regex pattern.

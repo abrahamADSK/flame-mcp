@@ -395,8 +395,11 @@ class _FlameChat:
     - No terminal / no shell — pure GUI
     - Uses 'claude -p' subprocess (Claude Code) — no API key needed,
       works with your existing Claude Pro / Max subscription
-    - All 8 MCP tools available: execute_python, search_flame_docs,
-      learn_pattern, session_stats, list_libraries, list_reels, etc.
+    - All 18 MCP tools available: execute_python, search_flame_docs,
+      list_libraries, list_reels, list_clips, list_desktop_reels,
+      list_batch_groups, list_all_projects, get_clip_metadata,
+      get_selected_clips, flame_wiretap_tree, list_flame_logs,
+      read_flame_log, learn_pattern, session_stats, and more.
     - Token tracking and self-improving RAG work identically to the terminal
     """
 

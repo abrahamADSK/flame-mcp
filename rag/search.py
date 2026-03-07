@@ -9,6 +9,7 @@ The index must be built first:
 """
 
 import os
+import sys
 import datetime
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
