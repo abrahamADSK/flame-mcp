@@ -218,6 +218,42 @@ def _tok(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _validate(output: str, required: list[str]) -> str:
+    """
+    Check that required fields in a dedicated tool's output are not '—' or empty.
+    If any are missing, append a self-healing hint so the model can investigate
+    and teach the correct pattern via learn_pattern().
+
+    Args:
+        output:   The string output of a dedicated tool.
+        required: List of field names that must have real values, e.g. ["Frame rate", "Resolution"].
+
+    Returns:
+        The original output, optionally with a warning appended.
+    """
+    missing = []
+    for field in required:
+        for line in output.splitlines():
+            if line.lower().startswith(field.lower()):
+                # Field found — check if value is empty or placeholder
+                value = line.split(":", 1)[-1].strip()
+                if not value or value in ("—", "—x—", "None", "null", ""):
+                    missing.append(field)
+                break
+        else:
+            missing.append(field)  # field not present at all
+
+    if missing:
+        fields = ", ".join(missing)
+        output += (
+            f"\n\n⚠️  SELF-HEAL: [{fields}] returned no value from the dedicated tool. "
+            "This means the API path used is wrong or incomplete. "
+            "Use execute_python to find the correct way to read these values, "
+            "then call learn_pattern(description, code) so future sessions get it right."
+        )
+    return output
+
+
 def _rating(tokens: int) -> str:
     """Return an emoji rating based on token count for a single call."""
     if tokens < 500:
@@ -508,6 +544,7 @@ except Exception as e:
     # Merge outputs (skip the WiretapID line from display)
     display = [l for l in py_out.splitlines() if not l.startswith("WiretapID:")]
     output = "\n".join(display + meta_lines)
+    output = _validate(output, ["Frame rate", "Resolution"])
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
     return output
@@ -547,6 +584,7 @@ for lib in visible:
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
+    output = _validate(output, ["Libraries"])
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
     return _fmt(result)
@@ -807,6 +845,7 @@ else:
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
+    output = _validate(output, ["frame_rate", "width", "duration"])
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
     return _fmt(result)
