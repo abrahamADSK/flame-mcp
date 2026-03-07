@@ -589,6 +589,13 @@ class _FlameChat:
         self._window.raise_()
         self._window.activateWindow()
         self._input.setFocus()
+        # Warn immediately if the persisted backend is ollama_mac
+        if self._backend == "ollama_mac":
+            self._append_bubble(
+                "error",
+                "⚠️  Modelo offline (7B): capacidad de tool use limitada.\n"
+                "Puede imprimir JSON en lugar de ejecutar herramientas.\n"
+                "Recomendado solo para consultas de texto. Usa anthropic u ollama para controlar Flame.")
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
@@ -1049,6 +1056,12 @@ class _FlameChat:
         display = f"{label}{suffix}" if model_id else f"{label} (set model in config.json)"
         self._ui_queue.append(
             lambda d=display: self._append_bubble("tool", f"⚙️  Model → {d}"))
+        if backend == "ollama_mac":
+            self._ui_queue.append(lambda: self._append_bubble(
+                "error",
+                "⚠️  Modelo offline (7B): capacidad de tool use limitada.\n"
+                "Puede imprimir JSON en lugar de ejecutar herramientas.\n"
+                "Recomendado solo para consultas de texto. Usa anthropic u ollama para controlar Flame."))
         _log(f"Model changed to: {model_id or 'default'} (backend={backend})")
 
     def _on_ollama_url_changed(self) -> None:
