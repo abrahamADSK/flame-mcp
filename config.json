@@ -1,0 +1,5 @@
+{
+  "model": "qwen3-flame",
+  "backend": "ollama",
+  "ollama_url": "http://glorfindel:11434"
+}

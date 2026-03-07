@@ -411,6 +411,7 @@ class _FlameChat:
         self._busy = False
         self._session_tokens = 0     # cumulative tokens this widget session
         self._rate_limited = False   # True if last call hit a rate limit
+        self._last_exec_count = 0    # execute_python calls in last agent turn
         self._model, self._backend, self._ollama_url, self._ollama_cloud_key = self._load_model_config()
         self._build_ui()
 
@@ -597,6 +598,25 @@ class _FlameChat:
         text = self._input.toPlainText().strip()
         if not text:
             return
+
+        # ── /undo [N] — undo last N Flame actions without going through Claude ──
+        import re as _re
+        m = _re.match(r'^/?undo\s*(\d*)$', text, _re.IGNORECASE)
+        if m:
+            self._input.clear()
+            n = int(m.group(1)) if m.group(1) else 1
+            self._append_bubble("user", text)
+            try:
+                import flame as _flame
+                for _ in range(n):
+                    _flame.execute_shortcut("Undo")
+                label = "acción" if n == 1 else "acciones"
+                msg = f"↩ {n} {label} deshecha{'s' if n > 1 else ''}."
+            except Exception as e:
+                msg = f"⚠️ Undo falló: {e}"
+            self._append_bubble("assistant", msg)
+            return
+
         self._input.clear()
         self._messages.append({"role": "user", "content": text})
         self._append_bubble("user", text)
@@ -737,6 +757,7 @@ class _FlameChat:
 
             assistant_parts = []    # text blocks from assistant messages
             tool_summaries  = []    # extracted stats footers from tool results
+            self._last_exec_count = 0  # reset counter for this turn
 
             try:
                 for raw_line in proc.stdout:
@@ -805,6 +826,13 @@ class _FlameChat:
                     self._ui_queue.append(
                         lambda s=last: self._append_bubble("tool", s))
 
+            # ── Undo hint — show how many Flame actions were made ─────────────
+            n = self._last_exec_count
+            if n > 0:
+                hint = f"↩  {n} acción{'es' if n > 1 else ''} en Flame · escribe /undo {n} para revertir"
+                self._ui_queue.append(
+                    lambda h=hint: self._append_bubble("tool", h))
+
         except Exception as e:
             err = str(e)
             self._ui_queue.append(lambda e=err: self._append_bubble("error", e))
@@ -832,6 +860,8 @@ class _FlameChat:
                 elif btype == 'tool_use':
                     # Live status update while tool executes
                     name = block.get('name', '')
+                    if name == 'execute_python':
+                        self._last_exec_count += 1
                     _TOOL_STATUS = {
                         'search_flame_docs': "🔍  Searching docs…",
                         'execute_python':    "⚡  Executing in Flame…",

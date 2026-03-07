@@ -326,11 +326,17 @@ flame.set_current_tab("Batch")        # switch to tab
 flame.find_by_name("clip_name")       # search Media Panel
 flame.find_by_uid("uid_string")       # find by UID
 flame.execute_shortcut("Save")        # trigger Flame shortcut by description
+flame.execute_shortcut("Undo")        # undo last action (call N times for N undos)
+flame.execute_shortcut("Redo")        # redo
 flame.schedule_idle_event(fn, delay=1) # run fn when Flame is idle (non-blocking)
 
 # Run system command via Flame daemon (preferred over subprocess)
 flame.execute_command("/usr/bin/cmd arg1 arg2", blocking=True, capture_stdout=True)
 ```
+
+> **Undo from the chat widget:** type `/undo` or `/undo 3` directly in the chat
+> input — it triggers Flame's undo stack N times immediately, without going
+> through Claude. No confirmation needed.
 
 ---
 
@@ -396,6 +402,100 @@ print(f"Batch group created: {bg.name}")
 
 ---
 
+## Save / Copy Desktop Content to Library
+
+"Save desktop to library" means copying a reel group (or its reels/clips) from
+the **Desktop** into a **Library** using `flame.media_panel.copy()`.
+
+```python
+# ── Pattern: copy entire desktop reel group to library ─────────────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+lib  = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+if lib is None:
+    print("Library not found"); raise SystemExit
+
+# Copy the first reel group (use index or name to pick the right one)
+rg     = desk.reel_groups[0]
+result = flame.media_panel.copy([rg], lib)
+print(f"Copied '{rg.name}' to library '{lib.name}': {result}")
+
+# ── Pattern: copy a specific reel from desktop to library ───────────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+lib  = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+
+src_reel = next(
+    (r for rg in desk.reel_groups for r in rg.reels if str(r.name) == "Sequences"),
+    None)
+if src_reel is None:
+    print("Source reel not found"); raise SystemExit
+
+result = flame.media_panel.copy([src_reel], lib)
+print(f"Copied reel '{src_reel.name}' to '{lib.name}': {result}")
+
+# ── Pattern: move (not copy) reel group from desktop to library ─────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+lib  = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+rg   = desk.reel_groups[0]
+flame.media_panel.move([rg], lib)
+print(f"Moved '{rg.name}' to library '{lib.name}'")
+```
+
+> **Note:** After `copy()` or `move()`, the library gains a `reel_groups` attribute
+> with the copied content. Check with `lib.reel_groups` (not `lib.reels`).
+
+---
+
+## Folder Operations in Libraries
+
+```python
+# ── Inspect: list all folders in a library ─────────────────────────────────
+import flame
+ws  = flame.projects.current_project.current_workspace
+lib = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+
+# lib.folders may be None if no folders exist — always guard with `or []`
+folders = list(lib.folders or [])
+print(f"Folders in '{lib.name}': {[str(f.name) for f in folders]}")
+
+# ── Create folder in library ────────────────────────────────────────────────
+folder = lib.create_folder("MyFolder")
+print(f"Created folder: {folder.name}")
+
+# ── Delete folder from library ─────────────────────────────────────────────
+# IMPORTANT: lib.folders may return None — always guard
+import flame
+ws     = flame.projects.current_project.current_workspace
+lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+folders = list(lib.folders or [])
+folder  = next((f for f in folders if str(f.name) == "OLD_FOLDER"), None)
+if folder is None:
+    print("Folder not found — available:", [str(f.name) for f in folders])
+else:
+    flame.delete(folder)
+    print(f"Deleted folder: OLD_FOLDER")
+
+# ── Import clips INTO a folder (not a reel) ─────────────────────────────────
+import flame
+ws     = flame.projects.current_project.current_workspace
+lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+folder = next((f for f in (lib.folders or []) if str(f.name) == "source"), None)
+if folder is None:
+    folder = lib.create_folder("source")   # create if missing
+clips  = flame.import_clips("/path/to/file.mov", folder)
+print(f"Imported {len(clips)} clip(s) into folder '{folder.name}'")
+```
+
+> **Gotcha:** `lib.folders` can return `None` (not an empty list) when no folders
+> exist. Always use `lib.folders or []` before iterating.
+
+---
+
 ## Delete / Remove Objects
 
 ```python
@@ -433,11 +533,16 @@ flame.delete(lib)
 print("Deleted library")
 
 # ── Pattern: delete a folder inside a library ─────────────────────────────
+# NOTE: lib.folders can return None — always use `or []` guard
 ws     = flame.projects.current_project.current_workspace
-lib    = next(l for l in ws.libraries if l.name == "Default Library")
-folder = next(f for f in lib.folders if f.name == "OLD_FOLDER")
-flame.delete(folder)
-print("Deleted folder")
+lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
+folders = list(lib.folders or [])
+folder  = next((f for f in folders if str(f.name) == "OLD_FOLDER"), None)
+if folder is None:
+    print("Folder not found. Available:", [str(f.name) for f in folders])
+else:
+    flame.delete(folder)
+    print("Deleted folder: OLD_FOLDER")
 
 # ── Pattern: delete all clips in a reel ───────────────────────────────────
 ws   = flame.projects.current_project.current_workspace
@@ -582,7 +687,10 @@ else:
 
 ---
 
-## Timeline / Sequence Editing — what works and what crashes
+## Timeline / Sequence Editing — Segment Delete, Ripple, Gap Close
+
+> **Keywords:** ripple delete, remove segment, delete segment from timeline,
+> close gap, remove gap, trim segment, gap fill, sequence gap, timeline edit
 
 > ⚠️ Flame 2026 has NO direct segment-manipulation methods (delete, ripple, trim).
 > BUT gaps can be closed by **rebuilding the sequence** placing only non-gap
@@ -660,6 +768,41 @@ for seg in non_gap_segs:
 
 print(f"Done: {len(non_gap_segs)} segments, new duration {cursor.frame} frames")
 ```
+
+### PySegment — read segment properties from timeline
+
+```python
+# ── Inspect all segments in a sequence ─────────────────────────────────────
+import flame
+ws   = flame.projects.current_project.current_workspace
+desk = ws.desktop
+
+# Find sequence
+seq = None
+for rg in desk.reel_groups:
+    for reel in rg.reels:
+        for s in reel.sequences:
+            seq = s
+            break
+
+# Read segment data — iterate versions → tracks → segments
+for ver in (seq.versions or []):
+    if ver.tracks is None:
+        continue
+    for track in ver.tracks:
+        print(f"Track: {track.name}")
+        for seg in track.segments:
+            print(f"  seg.type={seg.type} "
+                  f"rec_in={seg.record_in} rec_out={seg.record_out} "
+                  f"src_in={seg.source_in} src_out={seg.source_out} "
+                  f"duration={seg.record_duration}")
+```
+
+> **Segment types:** `"Gap"` (empty space), `"Clip"` (media), `"Effect"`.
+> Check `seg.type != "Gap"` to skip empty slots.
+>
+> **To delete a segment / close a gap:** Use the rebuild approach below.
+> There is NO `seg.delete()` method — it does not exist.
 
 ### ❌ Methods that DO NOT EXIST / crash Flame
 
@@ -1030,6 +1173,15 @@ print(f"Result: {result}")
 # Verifying: lib now has reel_groups with the copied content
 # lib.reel_groups → copied reel group with reels
 # Sequences reel: use r.sequences (not r.clips) to access sequences
+```
+
+
+# ── Auto-learned: create folder in library by creating reel ─────────────
+```python
+import flame
+ws = flame.projects.current_project.current_workspace
+default_lib = ws.libraries[0]  # Default Library
+new_reel = default_lib.create_reel("KK")
 ```
 
 ## Notes & Gotchas
