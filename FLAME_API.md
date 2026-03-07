@@ -459,24 +459,30 @@ print(f"Moved '{rg.name}' to library '{lib.name}'")
 
 ```python
 # ── Inspect: list all folders in a library ─────────────────────────────────
+# ⚠️ CRASH RISK: lib.folders can raise a C++ exception on some libraries —
+# always wrap in try/except, NEVER call bare `lib.folders or []`
 import flame
 ws  = flame.projects.current_project.current_workspace
 lib = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
 
-# lib.folders may be None if no folders exist — always guard with `or []`
-folders = list(lib.folders or [])
-print(f"Folders in '{lib.name}': {[str(f.name) for f in folders]}")
+try:
+    folders = list(lib.folders or [])
+except Exception:
+    folders = []
+print(f"Folders in '{str(lib.name)}': {[str(f.name) for f in folders]}")
 
 # ── Create folder in library ────────────────────────────────────────────────
 folder = lib.create_folder("MyFolder")
 print(f"Created folder: {folder.name}")
 
 # ── Delete folder from library ─────────────────────────────────────────────
-# IMPORTANT: lib.folders may return None — always guard
 import flame
 ws     = flame.projects.current_project.current_workspace
 lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
-folders = list(lib.folders or [])
+try:
+    folders = list(lib.folders or [])
+except Exception:
+    folders = []
 folder  = next((f for f in folders if str(f.name) == "OLD_FOLDER"), None)
 if folder is None:
     print("Folder not found — available:", [str(f.name) for f in folders])
@@ -488,15 +494,20 @@ else:
 import flame
 ws     = flame.projects.current_project.current_workspace
 lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
-folder = next((f for f in (lib.folders or []) if str(f.name) == "source"), None)
+try:
+    all_folders = list(lib.folders or [])
+except Exception:
+    all_folders = []
+folder = next((f for f in all_folders if str(f.name) == "source"), None)
 if folder is None:
     folder = lib.create_folder("source")   # create if missing
 clips  = flame.import_clips("/path/to/file.mov", folder)
 print(f"Imported {len(clips)} clip(s) into folder '{folder.name}'")
 ```
 
-> **Gotcha:** `lib.folders` can return `None` (not an empty list) when no folders
-> exist. Always use `lib.folders or []` before iterating.
+> **Gotcha — CRASH RISK:** `lib.folders` can raise a Flame C++ exception on some
+> library types (caused a confirmed Flame crash in testing). **Always wrap in
+> `try/except Exception: folders = []`** — never use bare `lib.folders or []`.
 
 ---
 
@@ -547,10 +558,13 @@ else:
     print(f"Deleted library: OLD_LIB")
 
 # ── Pattern: delete a folder inside a library ─────────────────────────────
-# NOTE: lib.folders can return None — always use `or []` guard
+# ⚠️ CRASH RISK: lib.folders raises C++ exception on some libs — use try/except
 ws     = flame.projects.current_project.current_workspace
 lib    = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
-folders = list(lib.folders or [])
+try:
+    folders = list(lib.folders or [])
+except Exception:
+    folders = []
 folder  = next((f for f in folders if str(f.name) == "OLD_FOLDER"), None)
 if folder is None:
     print("Folder not found. Available:", [str(f.name) for f in folders])
@@ -1093,7 +1107,10 @@ lib = next(l for l in ws.libraries if l.name == "Default Library")
 
 # Create folder (or find existing one)
 folder = lib.create_folder("source")
-# If folder already exists, use: folder = next(f for f in lib.folders if f.name == "source")
+# If folder already exists, use (with crash-safe guard):
+#   try: all_f = list(lib.folders or [])
+#   except Exception: all_f = []
+#   folder = next((f for f in all_f if str(f.name) == "source"), None)
 
 result_file = "/tmp/flame_import_result.txt"
 
