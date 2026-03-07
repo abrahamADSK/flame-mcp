@@ -447,7 +447,10 @@ if not visible:
 for lib in visible:
     name    = str(lib.name)
     reels   = len(lib.reels)
-    folders = len(list(lib.folders or []))
+    try:
+        folders = len(list(lib.folders or []))
+    except Exception:
+        folders = 0
     try:
         reel_groups = len(lib.reel_groups)
     except Exception:
