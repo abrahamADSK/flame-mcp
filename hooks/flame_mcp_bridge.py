@@ -859,7 +859,16 @@ class _FlameChat:
                         if isinstance(item, dict) and item.get('type') == 'text'
                     )
                 else:
-                    full_text = str(tc)
+                    # Some Claude Code versions deliver tool_result content as a
+                    # JSON-encoded string still inside its JSON envelope, e.g.:
+                    #   "actual text\"}"   ← closing quote+brace leak from stream
+                    # Try to decode it; fall back to raw string if not valid JSON.
+                    raw = str(tc)
+                    try:
+                        parsed = json.loads(raw)
+                        full_text = parsed if isinstance(parsed, str) else raw
+                    except (json.JSONDecodeError, ValueError):
+                        full_text = raw
                 # ── Flame C++ corruption warning ──────────────────────────────
                 if 'possibly_corrupted' in full_text or 'unordered_map::at' in full_text:
                     warn = ("⚠️  Excepción C++ interna de Flame detectada.\n"
@@ -908,6 +917,11 @@ class _FlameChat:
         """
         # Unescape literal \\n that some pipeline stages leave in the text
         text = text.replace('\\n', '\n')
+        # Strip trailing JSON envelope leak: closing quote+brace from stream parser
+        # e.g. '...search_flame_docs"}' → '...search_flame_docs'
+        # None of our tool outputs legitimately end with "}
+        while text.endswith('"}'):
+            text = text[:-2].rstrip()
 
         STATS_MARKERS = ('🔍', '📊', '🧠', '✅ Pattern', '─────')
         if not any(m in text for m in STATS_MARKERS):
