@@ -261,6 +261,10 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - Libraries → flame.projects.current_project.current_workspace.libraries
    - Desktop   → flame.projects.current_project.current_workspace.desktop
    - Never use flame.projects.current_project.libraries (returns None)
+   - ws.libraries includes hidden system libraries NOT visible to the user:
+     "Timeline FX" and "Grabbed References" — always filter them out:
+     HIDDEN = {"Timeline FX", "Grabbed References"}
+     visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
 
 4. Never call flame.batch.render() directly — it crashes Flame.
    Schedule renders via flame.schedule_idle_event(render_fn).

@@ -25,7 +25,16 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
    If all searches return < 30%, proceed with the best match and call `learn_pattern`
    after success.
 
-3. **Dry-run before EVERY delete — no exceptions.** Never call `flame.delete()`
+3. **Exclude hidden system libraries.** `ws.libraries` includes two internal
+   libraries that are NOT visible to the user in the Flame interface:
+   `"Timeline FX"` and `"Grabbed References"`. Always filter them out:
+   ```python
+   HIDDEN = {"Timeline FX", "Grabbed References"}
+   visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
+   ```
+   Never list, modify, or delete these libraries unless the user explicitly names them.
+
+4. **Dry-run before EVERY delete — no exceptions.** Never call `flame.delete()`
    without first doing a separate `execute_python` inspection that prints exactly
    what WOULD be deleted (names, types, counts). Then present that list to the user
    and say "Confirma para proceder / Confirm to proceed." Do NOT execute the actual
