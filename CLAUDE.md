@@ -9,24 +9,44 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 
 ## Rules — read before every task
 
-1. **Call `search_flame_docs` first.** Before writing any `execute_python` code,
-   call the `search_flame_docs` MCP tool with a short description of what you need
-   (e.g. `"import clip to reel"`, `"list libraries"`). It returns the relevant API
-   section from the local index (~200 tokens vs 1500 for the full file). Only fall
-   back to reading `FLAME_API.md` directly if the search returns nothing useful.
+1. **Pick the single right dedicated tool — don't chain reads.**
+   Use the most specific tool that answers the question and stop. Do NOT run
+   `ping → get_project_info → list_libraries` as a warm-up chain — go directly
+   to the answer. Available dedicated tools (zero RAG, zero execute_python):
+   - `ping()`                                        — bridge connected?
+   - `get_project_info()`                            — project name, fps, resolution
+   - `get_flame_version()`                           — Flame version string
+   - `list_libraries()`                              — all user-visible libraries
+   - `list_reels(library_name)`                      — reels in a library
+   - `list_clips(library_name, reel_name, limit)`    — clips in library/reel
+   - `list_desktop_reels()`                          — desktop reel groups + reels + **clip names**
+   - `list_batch_groups()`                           — batch groups on the desktop
+   - `list_all_projects()`                           — all projects on this workstation
+   - `get_clip_metadata(library, reel, clip)`        — detailed metadata for one clip
+   - `get_selected_clips()`                          — items currently selected in Flame
+   - `flame_wiretap_tree(path)`                      — IFFFS node tree via Wiretap CLI
+   - `list_flame_logs()`                             — log files in /opt/Autodesk/logs
+   - `read_flame_log(name, lines, grep)`             — read / filter a log file
 
-2. **Use low-relevance RAG results — do NOT discard them.** If `search_flame_docs`
-   returns results below 60% relevance, still read and use the best match. Low
-   relevance means the terminology differs, not that the API doesn't cover it.
-   Try 2–3 alternate queries before concluding a pattern is undocumented:
+2. **Call `search_flame_docs` before every `execute_python`.**
+   Before writing any `execute_python` code, call `search_flame_docs` with a short
+   description (e.g. `"import clip to reel"`, `"list libraries"`). It returns the
+   relevant API section (~200 tokens vs 1500 for the full file). Only fall back to
+   reading `FLAME_API.md` directly if the search returns nothing useful.
+
+3. **Use low-relevance RAG results — do NOT discard them.**
+   If `search_flame_docs` returns results below 60% relevance, still read and use
+   the best match. Low relevance means the terminology differs, not that the API
+   doesn't cover it. Try 2–3 alternate queries before concluding a pattern is
+   undocumented:
    - "save desktop to library" → also try "copy reel group", "media panel copy"
    - "delete folder" → also try "remove folder", "library folders"
    - "ripple delete" → also try "close gap", "remove segment", "timeline gap"
    If all searches return < 30%, proceed with the best match and call `learn_pattern`
    after success.
 
-3. **Exclude hidden system libraries.** `ws.libraries` includes two internal
-   libraries that are NOT visible to the user in the Flame interface:
+4. **Exclude hidden system libraries.**
+   `ws.libraries` includes two internal libraries NOT visible to the user:
    `"Timeline FX"` and `"Grabbed References"`. Always filter them out:
    ```python
    HIDDEN = {"Timeline FX", "Grabbed References"}
@@ -34,12 +54,13 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
    ```
    Never list, modify, or delete these libraries unless the user explicitly names them.
 
-4. **Dry-run before EVERY delete — no exceptions.** Never call `flame.delete()`
-   without first doing a separate `execute_python` inspection that prints exactly
-   what WOULD be deleted (names, types, counts). Then present that list to the user
-   and say "Confirma para proceder / Confirm to proceed." Do NOT execute the actual
-   delete until the user replies "confirm", "sí", "yes", "ok" or equivalent.
-   This rule applies even when the user's request sounds unambiguous.
+5. **Dry-run before EVERY delete — no exceptions.**
+   Never call `flame.delete()` without first doing a separate `execute_python`
+   inspection that prints exactly what WOULD be deleted (names, types, counts).
+   Then present that list to the user and say "Confirma para proceder / Confirm to
+   proceed." Do NOT execute the actual delete until the user replies "confirm",
+   "sí", "yes", "ok" or equivalent. This rule applies even when the user's request
+   sounds unambiguous.
 
    Example flow:
    ```
@@ -50,13 +71,11 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
    Claude: [execute_python] → actually deletes
    ```
 
-4. **Inspect before acting.** Before any destructive or structural operation
-   (delete, move, copy, rename), run one `execute_python` inspection first to
-   confirm the hierarchy: list libraries, reel groups, folders, or clips.
-   Confirm the target object EXISTS before trying to delete or modify it.
-   Example inspection:
+6. **Inspect before acting.**
+   Before any destructive or structural operation (delete, move, copy, rename),
+   run one `execute_python` inspection first to confirm the hierarchy. Confirm
+   the target object EXISTS before trying to delete or modify it.
    ```python
-   import flame
    ws = flame.projects.current_project.current_workspace
    lib = next((l for l in ws.libraries if str(l.name) == "Default Library"), None)
    if lib:
@@ -64,39 +83,48 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
        print("reels:", [str(r.name) for r in lib.reels])
    ```
 
-4. **Check Learned Patterns second.** After reading the API reference, check
-   `## Learned Patterns` below. If a matching pattern exists, use it directly.
-   Do not improvise if a known-good solution is documented.
+7. **Check Learned Patterns second.**
+   After reading the API reference, check `## Learned Patterns` below. If a
+   matching pattern exists, use it directly. Do not improvise if a known-good
+   solution is documented.
 
-5. **STOP after 2 failures — do not keep trying.** If the same sub-task fails
-   twice (two `execute_python` calls return errors for the same goal), STOP
-   immediately. Do NOT generate a third variation. Instead, report to the user:
+8. **STOP after 2 failures — do not keep trying.**
+   If the same sub-task fails twice (two `execute_python` calls return errors for
+   the same goal), STOP immediately. Do NOT generate a third variation. Instead,
+   report to the user:
    - What was attempted (code + error)
    - What is unclear or missing
    - What information would help proceed
    Never make more than 3 `execute_python` calls for the same sub-task.
-   Repeated silent retries with variations waste the user's time and risk
-   destabilising Flame.
 
-6. **Self-update on success.** When a Flame task completes successfully, immediately
-   append the working code to `## Learned Patterns` with a short description and date.
-   Use the format defined in that section. Also call `learn_pattern()` when RAG
-   coverage was low (< 60%) so the index is updated for future sessions.
+9. **Self-update on success.**
+   When a Flame task completes successfully, immediately append the working code
+   to `## Learned Patterns` with a short description and date. Also call
+   `learn_pattern()` when RAG coverage was low (< 60%) so the index is updated
+   for future sessions.
 
-7. **Mark failures.** If a pattern causes a timeout, crash, or wrong result, add a ❌
-   note next to it explaining why, so it is not retried.
+10. **Mark failures.**
+    If a pattern causes a timeout, crash, or wrong result, add a ❌ note next to
+    it explaining why, so it is not retried.
 
-8. **Keep code minimal.** Flame's Python environment is sensitive. Prefer short, direct
-   API calls. Avoid long loops or anything that could block Flame's main thread.
+11. **Keep code minimal.**
+    Flame's Python environment is sensitive. Prefer short, direct API calls.
+    Avoid long loops or anything that could block Flame's main thread.
 
-9. **Always return output.** Every `execute_python` call should end with a `print()` or
-   return value so Claude can confirm success or failure.
+12. **Always return output.**
+    Every `execute_python` call should end with a `print()` or return value so
+    Claude can confirm success or failure.
 
-10. **Use Background Reactor for renders.** Long renders block Flame's UI. Always use
-    `render_option="Background Reactor"` unless the user explicitly requests Foreground.
+13. **Use Background Reactor for renders.**
+    Long renders block Flame's UI. Always use `render_option="Background Reactor"`
+    unless the user explicitly requests Foreground.
 
-11. **Always call `session_stats` last.** After every response that uses any Flame tool,
-    call `session_stats` as the final tool call to display token usage and RAG savings.
+14. **Debug via logs when execute_python errors.**
+    When a tool returns an unexpected error or Flame crashes, call
+    `read_flame_log("flame.log", lines=50, grep="Error|Traceback|Python")` to
+    get the actual crash trace before retrying. Also check wiretap.log for IFFFS
+    errors. Call `session_stats()` when the user asks about efficiency or after
+    long multi-step tasks.
 
 ---
 
@@ -180,4 +208,3 @@ Luego leer `~/Projects/flame-mcp/logs/flame_render_result.txt` con una llamada s
 **Task:** Crear clip de ruido coloreado con nodo Substance Noise en Batch
 **Works:** ❌ — El nodo Substance Noise conectado a Render crashea Flame al hacer render (incluso via schedule_idle_event). El archivo de resultado nunca se crea.
 **Alternativa pendiente:** usar `Colour Source` + `Gradient` o generar frames externos e importarlos.
-
