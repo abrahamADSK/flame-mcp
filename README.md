@@ -151,7 +151,7 @@ In addition to natural language, the chat input accepts these special commands:
 | `anthropic` | Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
 | `ollama` | qwen3-coder 30B | glorfindel on LAN + GPU | ✗ |
 | `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
-| `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ |
+| `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ ⚠️ |
 
 Selection is persisted to `~/Projects/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost → ☁` / `localhost` for the Mac backends.
 
@@ -390,7 +390,9 @@ ollama pull qwen2.5-coder:7b
 1. Select **qwen2.5-coder 7B 🍎** from the model dropdown
 2. The combo shows `· localhost` — ready to use offline
 
-Quality is lower than the 30B or 480B models but it handles most Flame API tasks correctly. Runs on Mac CPU (no GPU required); response time is slower than GPU backends.
+Quality is significantly lower than the 30B or 480B models. Runs on Mac CPU (no GPU required); response time is slower than GPU backends.
+
+> ⚠️ **Tool use limitation:** 7B models often fail to invoke MCP tools correctly — they may print raw JSON instead of executing the tool call. This backend is best suited for text queries (API questions, code explanations) rather than live Flame control. For actual Flame operations use `anthropic`, `ollama`, or `ollama_cloud`.
 
 ### How the backends work internally
 
