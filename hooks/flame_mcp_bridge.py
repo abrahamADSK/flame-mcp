@@ -617,6 +617,25 @@ class _FlameChat:
             self._append_bubble("assistant", msg)
             return
 
+        # ── /wrong [descripción] — feedback: la última respuesta fue incorrecta ──
+        import re as _re2
+        m2 = _re2.match(r'^/?wrong\s*(.*)', text, _re2.IGNORECASE | _re2.DOTALL)
+        if m2:
+            self._input.clear()
+            detail = m2.group(1).strip()
+            correction = (
+                "⚠️ FEEDBACK DEL USUARIO: Tu última respuesta fue INCORRECTA. "
+                + (f"Motivo: {detail}. " if detail else "")
+                + "No aprendas el código anterior como patrón correcto (no llames learn_pattern). "
+                "Analiza qué salió mal y vuelve a intentarlo correctamente."
+            )
+            self._append_bubble("user", f"⚠️ /wrong{(' — ' + detail) if detail else ''}")
+            self._messages.append({"role": "user", "content": correction})
+            self._set_busy(True)
+            import threading as _threading2
+            _threading2.Thread(target=self._agent_loop, daemon=True).start()
+            return
+
         self._input.clear()
         self._messages.append({"role": "user", "content": text})
         self._append_bubble("user", text)
