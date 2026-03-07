@@ -266,6 +266,8 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - Clip metadata         → get_clip_metadata(library, reel, clip)
    - Selected items        → get_selected_clips()
    - IFFFS Wiretap tree    → flame_wiretap_tree(path)
+   - Available log files   → list_flame_logs()
+   - Read / debug logs     → read_flame_log(name, lines, grep)
    Use these before falling back to search_flame_docs + execute_python.
 
 2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
@@ -303,7 +305,14 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - dir(flame...)                                    → use search_flame_docs instead
    To list all Flame projects: use list_all_projects() or os.listdir("/opt/Autodesk/project")
 
-10. SELF-IMPROVEMENT — after execute_python succeeds:
+10. DEBUGGING — when execute_python returns an error or Flame crashes:
+   - Call read_flame_log("flame.log", lines=50, grep="Error|Traceback|Python")
+     to get the actual crash trace from the application log.
+   - For Wiretap/IFFFS errors: read_flame_log("wiretap.log", grep="ERROR|FAIL")
+   - For render issues: read_flame_log with backburner logs.
+   - Log files are read directly by the MCP server (no bridge needed).
+
+11. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern
      was NOT in the docs. Call learn_pattern(description, code) immediately after
      the successful execute_python.
@@ -1016,6 +1025,133 @@ def session_stats() -> str:
         f"{'─'*32}\n"
         + efficiency
     )
+
+
+# ─── Flame log reader ─────────────────────────────────────────────────────────
+
+_LOGS_DIR = Path("/opt/Autodesk/logs")
+
+# Known log categories and their typical filename prefixes
+_LOG_CATEGORIES = {
+    "application": ["flame",  "flame2", "logik"],
+    "wiretap":     ["wiretap", "WireTap"],
+    "ifffs":       ["IFFFS", "ifffs", "stone"],
+    "backburner":  ["backburner", "Backburner", "bb_"],
+    "python":      ["python", "Python"],
+}
+
+
+@mcp.tool(annotations=_RO)
+def list_flame_logs() -> str:
+    """
+    List all log files available in /opt/Autodesk/logs.
+    Shows file name, size, and last-modified time.
+    Use this to discover which logs exist before calling read_flame_log.
+
+    Log categories typically found:
+    - Flame application logs  (flame*.log)
+    - Wiretap / IFFFS logs    (wiretap*.log, IFFFS*.log)
+    - Backburner render logs  (backburner*.log, bb_*.log)
+    - Python hook logs        (python*.log)
+    """
+    if not _LOGS_DIR.exists():
+        return f"❌ Log directory not found: {_LOGS_DIR}"
+
+    try:
+        entries = sorted(_LOGS_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+        logs = [e for e in entries if e.is_file()]
+        if not logs:
+            return f"No log files found in {_LOGS_DIR}"
+
+        lines = [f"📁 {_LOGS_DIR}  ({len(logs)} files)\n"]
+        for p in logs:
+            stat = p.stat()
+            size  = stat.st_size
+            mtime = stat.st_mtime
+            import datetime
+            ts = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+            if size >= 1_048_576:
+                sz = f"{size/1_048_576:.1f} MB"
+            elif size >= 1024:
+                sz = f"{size/1024:.0f} KB"
+            else:
+                sz = f"{size} B"
+            lines.append(f"  {p.name:<45}  {sz:>8}  {ts}")
+
+        _track_dedicated()
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ Error listing logs: {e}"
+
+
+@mcp.tool(annotations=_RO)
+def read_flame_log(log_name: str, lines: int = 100, grep: str = "") -> str:
+    """
+    Read the last N lines of a Flame log file from /opt/Autodesk/logs.
+    Optionally filter lines by a keyword or regex pattern.
+
+    Runs directly on the MCP server — does NOT require the Flame bridge.
+    Works even when Flame is crashed or not running.
+
+    Args:
+        log_name: Log filename (e.g. "flame.log", "wiretap.log").
+                  Use list_flame_logs() first to see available files.
+        lines:    Number of lines to return from the end of the file (default 100).
+                  Use a larger value (e.g. 500) for crash analysis.
+        grep:     Optional regex/keyword to filter lines (case-insensitive).
+                  Examples: "ERROR", "traceback", "python", "IFFFS", "crash"
+
+    Typical use cases:
+        read_flame_log("flame.log", lines=50)              # last 50 lines
+        read_flame_log("flame.log", grep="ERROR")          # all error lines
+        read_flame_log("wiretap.log", grep="IFFFS")        # IFFFS operations
+        read_flame_log("flame.log", lines=200, grep="Traceback|Error|crash")
+    """
+    log_path = _LOGS_DIR / log_name
+    if not log_path.exists():
+        # Suggest close matches
+        try:
+            candidates = [p.name for p in _LOGS_DIR.iterdir()
+                          if p.is_file() and log_name.lower().split('.')[0] in p.name.lower()]
+        except Exception:
+            candidates = []
+        suggestion = f"\nDid you mean: {candidates}" if candidates else ""
+        return f"❌ Log file not found: {log_path}{suggestion}\nCall list_flame_logs() to see available files."
+
+    try:
+        # Read file — use tail approach for large files
+        with open(log_path, 'r', errors='replace') as f:
+            all_lines = f.readlines()
+
+        total_lines = len(all_lines)
+
+        # Apply grep filter first (on all lines) if specified
+        if grep:
+            try:
+                pattern = re.compile(grep, re.IGNORECASE)
+                filtered = [l for l in all_lines if pattern.search(l)]
+                source_desc = f"grep={repr(grep)} matched {len(filtered)}/{total_lines} lines"
+                tail = filtered[-lines:] if lines > 0 else filtered
+            except re.error as e:
+                return f"❌ Invalid grep pattern {repr(grep)}: {e}"
+        else:
+            filtered = all_lines
+            source_desc = f"{total_lines} lines total"
+            tail = all_lines[-lines:] if lines > 0 else all_lines
+
+        shown = len(tail)
+        header = (
+            f"📋 {log_name}  ({source_desc})"
+            + (f"  — showing last {shown}" if shown < len(filtered) else f"  — showing all {shown}")
+            + "\n" + "─" * 60 + "\n"
+        )
+
+        content = "".join(tail)
+        _track_dedicated()
+        return header + content
+
+    except Exception as e:
+        return f"❌ Error reading {log_name}: {e}"
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
