@@ -30,6 +30,15 @@ _SERVER_DIR = Path(__file__).parent
 # Make rag/ importable when running from any working directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ─── Tool annotations (MCP ≥ 1.x) ────────────────────────────────────────────
+try:
+    from mcp.types import ToolAnnotations
+    _RO  = ToolAnnotations(readOnlyHint=True,  destructiveHint=False)  # read-only
+    _RW  = ToolAnnotations(readOnlyHint=False, destructiveHint=False)  # writes, not destructive
+    _DST = ToolAnnotations(readOnlyHint=False, destructiveHint=True)   # potentially destructive
+except ImportError:
+    _RO = _RW = _DST = None  # older mcp versions — gracefully ignored by FastMCP
+
 # ─── Safety: known-crasher patterns ──────────────────────────────────────────
 # Each entry: (regex, explanation, safe_alternative)
 _DANGEROUS_PATTERNS = [
@@ -250,8 +259,13 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - Flame version         → get_flame_version()
    - List libraries        → list_libraries()
    - List reels            → list_reels(library_name)
-   - List clips            → list_clips(library_name, reel_name)
+   - List clips            → list_clips(library_name, reel_name, limit)
    - Desktop structure     → list_desktop_reels()
+   - Batch groups          → list_batch_groups()
+   - All projects on disk  → list_all_projects()
+   - Clip metadata         → get_clip_metadata(library, reel, clip)
+   - Selected items        → get_selected_clips()
+   - IFFFS Wiretap tree    → flame_wiretap_tree(path)
    Use these before falling back to search_flame_docs + execute_python.
 
 2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
@@ -278,8 +292,8 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 7. On success, remember the working pattern for future calls in this session.
    On failure, do NOT retry the same approach — try a different method.
 
-8. ALWAYS call session_stats as the LAST tool call of every response, no exceptions.
-   This shows the user token usage and RAG savings for the session.
+8. Call session_stats when the user asks about efficiency, token usage,
+   or at the end of long multi-step tasks. It is not required after every response.
 
 9. NEVER use these patterns — they crash Flame (execute_python will block them):
    - len(flame.projects) or for x in flame.projects  → PyProjectSelector is not iterable
@@ -287,12 +301,12 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - flame.batch.render()                             → blocks main thread
    - import wiretap                                   → crash-prone
    - dir(flame...)                                    → use search_flame_docs instead
-   To list all Flame projects: os.listdir("/opt/Autodesk/project")
+   To list all Flame projects: use list_all_projects() or os.listdir("/opt/Autodesk/project")
 
 10. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern
      was NOT in the docs. Call learn_pattern(description, code) immediately after
-     the successful execute_python, BEFORE session_stats.
+     the successful execute_python.
    - description: short label in English, e.g. "delete folder by name from library"
    - code: the exact working Python code that just ran
    - This teaches the system so future sessions find the pattern instantly.
@@ -303,14 +317,14 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 # ─── Bridge communication ─────────────────────────────────────────────────────
 
-def _call_flame(code: str) -> dict:
+def _call_flame(code: str, timeout: int = 15) -> dict:
     """
     Send Python code to the Flame bridge via TCP socket.
     Returns the result as a dictionary.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(15)
+            s.settimeout(timeout)
             s.connect((BRIDGE_HOST, BRIDGE_PORT))
 
             payload = json.dumps({'code': code}) + "\n"
@@ -359,8 +373,8 @@ def _fmt(result: dict) -> str:
 
 # ─── MCP tools ────────────────────────────────────────────────────────────────
 
-@mcp.tool()
-def execute_python(code: str) -> str:
+@mcp.tool(annotations=_DST)
+def execute_python(code: str, timeout: int = 15) -> str:
     """
     Execute arbitrary Python code inside Autodesk Flame.
     Has full access to the flame module and its entire Python API.
@@ -376,15 +390,21 @@ def execute_python(code: str) -> str:
     - Renders: never call flame.batch.render() directly, use schedule_idle_event
     - Always end with print() so the result is visible
 
+    Args:
+        code:    Python code to execute inside Flame.
+        timeout: TCP socket timeout in seconds (default 15). Increase for
+                 long-running operations like media imports or batch renders.
+
     Example:
         execute_python("print(flame.projects.current_project.name)")
+        execute_python(long_import_code, timeout=60)
     """
     danger = _check_dangerous(code)
     if danger:
         return danger + _stats_footer()
 
     t_in  = _tok(code)
-    result = _call_flame(code)
+    result = _call_flame(code, timeout=timeout)
     output = result.get('output', '') + result.get('error', '')
     t_out = _tok(output)
 
@@ -407,7 +427,7 @@ def _track_dedicated() -> None:
     _stats['tokens_saved_tools'] += _DEDICATED_TOOL_SAVINGS
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def get_project_info() -> str:
     """
     Return basic information about the active Flame project:
@@ -427,10 +447,10 @@ print(f"Bit depth: {_v('bit_depth')}")
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def list_libraries() -> str:
     """
     List all user-visible libraries in the active Flame project.
@@ -466,10 +486,10 @@ for lib in visible:
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def list_reels(library_name: str = "") -> str:
     """
     List reels in a library. If no library name is given,
@@ -477,11 +497,12 @@ def list_reels(library_name: str = "") -> str:
     Excludes hidden system libraries ("Timeline FX", "Grabbed References").
     """
     if library_name:
+        safe_lib = repr(library_name)
         code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if str(l.name) == "{library_name}"), None)
+lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
 if lib is None:
-    print(f"Library '{library_name}' not found.")
+    print(f"Library {safe_lib} not found.")
 else:
     for reel in lib.reels:
         print(f"  {{str(reel.name)}}  ({{len(reel.clips)}} clips)")
@@ -501,62 +522,80 @@ for lib in ws.libraries:
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
-def list_clips(library_name: str = "", reel_name: str = "") -> str:
+@mcp.tool(annotations=_RO)
+def list_clips(library_name: str = "", reel_name: str = "", limit: int = 50) -> str:
     """
     List clips inside a library, optionally filtered by reel name.
     If library_name is empty, lists clips across all user-visible libraries.
     If reel_name is also given, shows only that reel's clips.
     Excludes hidden system libraries ("Timeline FX", "Grabbed References").
     Use this instead of execute_python for any 'show/list clips' request.
+
+    Args:
+        library_name: Filter to a specific library (empty = all libraries).
+        reel_name:    Filter to a specific reel within the library.
+        limit:        Maximum clips to show per reel (default 50, 0 = unlimited).
     """
+    safe_lib  = repr(library_name)
+    safe_reel = repr(reel_name)
+
     if library_name:
         code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if str(l.name) == "{library_name}"), None)
+lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
 if lib is None:
-    print(f"Library '{library_name}' not found.")
+    print(f"Library {safe_lib} not found.")
 else:
-    reel_filter = "{reel_name}"
+    reel_filter = {safe_reel}
+    limit = {limit}
     found = False
     for reel in lib.reels:
         if reel_filter and str(reel.name) != reel_filter:
             continue
         found = True
         clips = list(reel.clips)
-        print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{len(clips)}} clip(s)")
-        for c in clips:
+        total = len(clips)
+        shown = clips if limit <= 0 else clips[:limit]
+        print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s)")
+        for c in shown:
             dur = getattr(c, 'duration', None)
             dur_str = f"  {{dur}}" if dur else ""
             print(f"  {{str(c.name)}}{{dur_str}}")
+        if limit > 0 and total > limit:
+            print(f"  … and {{total - limit}} more (use limit=0 to see all)")
     if not found:
-        print(f"No reels matched filter '{reel_name}'.")
+        print(f"No reels matched filter {safe_reel}.")
 """
     else:
-        code = """
+        code = f"""
 ws = flame.projects.current_project.current_workspace
-HIDDEN = {"Timeline FX", "Grabbed References"}
+HIDDEN = {{"Timeline FX", "Grabbed References"}}
+limit = {limit}
 for lib in ws.libraries:
     if str(lib.name) in HIDDEN:
         continue
     for reel in lib.reels:
         clips = list(reel.clips)
         if clips:
-            print(f"[{str(lib.name)}] / [{str(reel.name)}] — {len(clips)} clip(s)")
-            for c in clips:
-                print(f"  {str(c.name)}")
+            total = len(clips)
+            shown = clips if limit <= 0 else clips[:limit]
+            print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s)")
+            for c in shown:
+                print(f"  {{str(c.name)}}")
+            if limit > 0 and total > limit:
+                print(f"  … and {{total - limit}} more (use limit=0 to see all)")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def list_desktop_reels() -> str:
     """
     List the desktop structure: reel groups and their reels with clip counts.
@@ -574,10 +613,209 @@ for rg in desktop.reel_groups:
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
+def list_batch_groups() -> str:
+    """
+    List all batch groups in the active desktop with their reel counts.
+    Use this instead of execute_python for any 'show batch groups' request.
+    Batch groups live on the desktop alongside regular reel groups.
+    """
+    code = """
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+try:
+    batch_groups = list(desktop.batch_groups)
+except Exception:
+    batch_groups = []
+if not batch_groups:
+    print("No batch groups found on the desktop.")
+else:
+    print(f"{len(batch_groups)} batch group(s):")
+    for bg in batch_groups:
+        name = str(bg.name)
+        try:
+            reels = len(bg.reels)
+        except Exception:
+            reels = 0
+        try:
+            nodes = len(bg.nodes) if hasattr(bg, 'nodes') else 0
+        except Exception:
+            nodes = 0
+        parts = []
+        if reels: parts.append(f"{reels} reel(s)")
+        if nodes: parts.append(f"{nodes} node(s)")
+        summary = ", ".join(parts) if parts else "empty"
+        print(f"  {name}  ({summary})")
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def list_all_projects() -> str:
+    """
+    List all Flame projects available on this workstation.
+    Shows which project is currently active.
+    Uses the /opt/Autodesk/project directory — does not require switching projects.
+    """
+    code = """
+import os
+projects_dir = "/opt/Autodesk/project"
+try:
+    entries = sorted(os.listdir(projects_dir))
+    projects = [
+        e for e in entries
+        if os.path.isdir(os.path.join(projects_dir, e)) and not e.startswith('.')
+    ]
+    current = str(flame.projects.current_project.name)
+    print(f"Active project: {current}")
+    print(f"All projects ({len(projects)}):")
+    for p in projects:
+        marker = "  ◀ active" if p == current else ""
+        print(f"  {p}{marker}")
+except Exception as e:
+    print(f"Error listing projects: {e}")
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def get_clip_metadata(library_name: str, reel_name: str, clip_name: str) -> str:
+    """
+    Get detailed metadata for a specific clip: resolution, frame rate, duration,
+    timecode, bit depth, tape name, and other available attributes.
+
+    Args:
+        library_name: Name of the library containing the clip.
+        reel_name:    Name of the reel inside that library.
+        clip_name:    Name of the clip to inspect.
+    """
+    safe_lib  = repr(library_name)
+    safe_reel = repr(reel_name)
+    safe_clip = repr(clip_name)
+    code = f"""
+ws = flame.projects.current_project.current_workspace
+lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
+if lib is None:
+    print(f"Library {safe_lib} not found.")
+else:
+    reel = next((r for r in lib.reels if str(r.name) == {safe_reel}), None)
+    if reel is None:
+        print(f"Reel {safe_reel} not found in library {safe_lib}.")
+    else:
+        clip = next((c for c in reel.clips if str(c.name) == {safe_clip}), None)
+        if clip is None:
+            print(f"Clip {safe_clip} not found in reel {safe_reel}.")
+        else:
+            attrs = [
+                'name', 'duration', 'frame_rate', 'width', 'height',
+                'bit_depth', 'start_frame', 'end_frame', 'timecode',
+                'tape_name', 'source_timecode', 'ratio', 'scan_format',
+            ]
+            print(f"Clip: {{str(clip.name)}}")
+            for attr in attrs:
+                if attr == 'name':
+                    continue
+                v = getattr(clip, attr, None)
+                if v is not None:
+                    try:
+                        print(f"  {{attr}}: {{str(v)}}")
+                    except Exception:
+                        pass
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def get_selected_clips() -> str:
+    """
+    Return the clips or items currently selected in the Flame media panel or desktop.
+    Useful for contextual operations: 'what do I have selected right now?'
+    Returns name and type for each selected item.
+    """
+    code = """
+try:
+    sel = list(flame.selection) if flame.selection else []
+    if not sel:
+        print("No items currently selected.")
+    else:
+        print(f"{len(sel)} item(s) selected:")
+        for item in sel:
+            t = type(item).__name__
+            print(f"  {str(item.name)}  [{t}]")
+except Exception as e:
+    print(f"Could not get selection: {e}")
+"""
+    result = _call_flame(code)
+    output = result.get('output', '') + result.get('error', '')
+    _stats['tokens_out'] += _tok(output)
+    _track_dedicated()
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def flame_wiretap_tree(path: str = "/") -> str:
+    """
+    Inspect the Wiretap IFFFS node tree at the given path using the
+    wiretap_print_tree CLI tool. This exposes the underlying content
+    database that Flame uses, including inactive projects and raw node metadata.
+
+    The IFFFS hierarchy is:
+        /projects → PROJECT(UUID) → WORKSPACE → DESKTOP / LIBRARY_LIST → ...
+
+    Use this to:
+    - Explore projects without switching the active project
+    - Find UUIDs for cross-project operations
+    - Inspect raw node structure not visible in the Flame UI
+
+    Args:
+        path: IFFFS node path to inspect (default "/" = root).
+              Examples: "/projects", "/projects/<uuid>", "/projects/<uuid>/workspace"
+
+    Note: Runs the CLI tool via subprocess — does NOT execute code inside Flame.
+    """
+    wt_tool = "/opt/Autodesk/wiretap/tools/current/wiretap_print_tree"
+    try:
+        proc = subprocess.run(
+            [wt_tool, "-n", path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        output = proc.stdout.strip()
+        err    = proc.stderr.strip()
+        if output:
+            _track_dedicated()
+            return output
+        if err:
+            return f"⚠️  wiretap_print_tree stderr:\n{err}"
+        return "(no output — path may be empty or not found)"
+    except FileNotFoundError:
+        return (
+            f"❌ Wiretap CLI not found at:\n  {wt_tool}\n"
+            "Check that Flame is installed at /opt/Autodesk/."
+        )
+    except subprocess.TimeoutExpired:
+        return "❌ wiretap_print_tree timed out (>10 s) — tree may be very large."
+    except Exception as e:
+        return f"❌ Error running wiretap_print_tree: {e}"
+
+
+@mcp.tool(annotations=_RO)
 def get_flame_version() -> str:
     """Return the running Flame version string."""
     code = "print(flame.get_version())"
@@ -585,10 +823,10 @@ def get_flame_version() -> str:
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result) + _stats_footer()
+    return _fmt(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def ping() -> str:
     """
     Check whether the TCP bridge to Autodesk Flame is reachable.
@@ -600,13 +838,14 @@ def ping() -> str:
     if result.get('status') == 'error':
         return f"🔴 Bridge not connected — {result.get('error', 'unknown error')}"
     version = result.get('output', '').strip()
+    _stats['tokens_out'] += _tok(version)
     _track_dedicated()
     return f"🟢 Bridge connected — Flame {version}"
 
 
 # ─── RAG: documentation search ────────────────────────────────────────────────
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def search_flame_docs(query: str) -> str:
     """
     Search the local Flame API documentation index for content relevant to the query.
@@ -664,7 +903,7 @@ def search_flame_docs(query: str) -> str:
 
 # ─── Self-improvement: auto-learn new patterns ────────────────────────────────
 
-@mcp.tool()
+@mcp.tool(annotations=_RW)
 def learn_pattern(description: str, code: str) -> str:
     """
     Add a new working code pattern to FLAME_API.md and rebuild the RAG index.
@@ -732,7 +971,7 @@ def learn_pattern(description: str, code: str) -> str:
 
 # ─── Session stats ────────────────────────────────────────────────────────────
 
-@mcp.tool()
+@mcp.tool(annotations=_RO)
 def session_stats() -> str:
     """
     Return a summary of token usage and RAG savings for this session.
