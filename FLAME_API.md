@@ -3386,3 +3386,34 @@ else:
     # ★ STOP here — do NOT poll filesystem or call execute_python again.
     # The export runs after this call returns. A second call will deadlock Flame.
 ```
+
+## ── Auto-learned: flame.batch.go_to() requires an open batch group first ──────
+
+> ⚠️  `flame.batch.go_to()` raises AttributeError or silently fails when no batch
+> group is currently open in the Flame UI. You MUST call `bg.open()` first.
+
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+
+# Find or create a batch group, then open it before go_to()
+if not desktop.batch_groups:
+    print("ERROR: no batch groups on desktop")
+else:
+    # Search by name, or take first
+    target_name = "Mi Batch"
+    bg = next((b for b in desktop.batch_groups if str(b.name).strip("'") == target_name), None)
+    if bg is None:
+        bg = desktop.batch_groups[0]
+
+    bg.open()              # ← REQUIRED: make this the active batch group
+    flame.batch.go_to()    # now safe to call
+    print(f"Batch group '{str(bg.name)}' abierto y activo.")
+
+# If you need to create one first:
+# bg = flame.batch.create_batch_group("Mi Batch", reels=["output"])
+# bg.open()
+# flame.batch.go_to()
+```
