@@ -7,8 +7,13 @@ IMPORTANT: EMBEDDING_MODEL must be consistent across build_index.py (write)
 and search.py (read). If you change it here, delete rag/index/ and rebuild.
 """
 
-# BAAI/bge-small-en-v1.5 — state-of-the-art retrieval model, specifically
-# trained for semantic search. ~130 MB, downloaded once from HuggingFace.
-# Much better than all-MiniLM-L6-v2 for intent-based technical queries.
-# No external service required — runs locally via sentence-transformers.
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+# C6 — Embedding model selection.
+# IMPORTANT: build and query MUST use the same model. If you change this,
+# delete rag/index/ and run python rag/build_index.py to rebuild.
+#
+# Option A — bge-small-en-v1.5 (default, ~130 MB): fast, good for semantic queries
+# Option B — bge-large-en-v1.5 (~570 MB): higher accuracy on technical code queries
+# Option C — nomic-embed-text-v1.5 (~270 MB): strong code + natural language mix
+#
+# Switched to bge-large for better recall on exact Flame API method names (C6).
+EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"

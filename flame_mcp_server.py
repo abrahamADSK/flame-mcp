@@ -394,7 +394,7 @@ _BRIDGE_SOCKET = Path(os.environ.get(
 mcp = FastMCP(
     "flame",
     instructions="""
-You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
+You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
 
 ## MANDATORY WORKFLOW — follow this for every task
 
@@ -431,6 +431,11 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    - If search returns < 60% relevance, note this explicitly and proceed carefully.
    - On failure, call search_flame_docs again with a different query before retrying.
    - This rule has NO exceptions — not even for patterns you "know" from training.
+
+   C2 — MANDATORY CITATION: Before using any Flame API method, name the RAG chunk
+   that justifies it (e.g. "per FLAME_API.md § Batch Groups"). If you cannot cite
+   a source, say explicitly: "I have no verified documentation for this" and offer
+   to search before executing. NEVER invent Flame API methods.
 
 3. Use the correct object hierarchy:
    - Libraries → flame.projects.current_project.current_workspace.libraries
