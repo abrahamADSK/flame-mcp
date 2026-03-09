@@ -107,8 +107,8 @@ When Flame starts, the hook registers an **MCP Bridge** submenu in Flame's main 
 
 ```
 MCP Bridge  [● Active]
-├── Status: ● Active — port 4444   → shows current bridge status
-├── Start bridge                   → start TCP listener on port 4444
+├── Status: ● Active — unix socket  → shows current bridge status
+├── Start bridge                   → start Unix socket listener (TCP fallback)
 ├── Stop bridge                    → stop the listener
 ├── Restart bridge                 → stop + start
 ├── Claude Chat  (embedded)        → open Qt chat window inside Flame
@@ -127,7 +127,7 @@ The status indicator updates every time you open the menu:
 **Claude Chat (embedded)** opens a native Qt window directly inside Flame — no terminal required. Type natural language requests and Claude responds, controlling Flame in real time.
 
 - Reads `ANTHROPIC_API_KEY` from environment or `~/Projects/flame-mcp/.env`
-- Executes Flame code via the TCP bridge (thread-safe, non-blocking)
+- Executes Flame code via the Unix socket bridge (thread-safe, non-blocking)
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
 
@@ -206,26 +206,28 @@ session_stats()                   ← show token summary
 
 The system maintains a local semantic search index (`rag/index/`) built from all documents in the `docs/` folder plus `FLAME_API.md`. Before every `execute_python` call, Claude searches this index to find the correct API pattern — avoiding guesswork and saving tokens.
 
-### Knowledge base (375 chunks total)
+### Knowledge base (~340 chunks total)
 
 | File | Chunks | Content |
 |---|---|---|
-| `FLAME_API.md` | 116 | Core Flame Python API — PyClip, PyReel, PyBatch, PyLibrary, connectors, markers, PyTime, import/export code samples. Auto-extended by `learn_pattern`. |
-| `docs/flame_advanced_api.md` | 74 | Action node (PyActionNode, output types, FBX import), Color Management (CDL/LUT/CTF via PyClrMgmtNode), Exporter (PyExporter), MediaHub, Conform/AAF workflow patterns, Timeline FX/BFX, Python hooks reference, operator-phrase → API lookup table. |
-| `docs/flame_api_full.md` | 71 | Extended API reference — PySequence, PyTrack, PyVersion, PyMarker, PyProject, PyWorkspace, batch nodes, render pipeline, archive. |
-| `docs/flame_segment_timeline_api.md` | 61 | Full PySegment API (trim, slip, create_effect, connected_segments), corrected PyClip.render() signature, PyBatch.create_batch_group(), PySequence methods, post-conform batch group creation patterns. |
-| `docs/flame_community_workflows.md` | 23 | Logik Forum operator terminology → API mapping. Conform jargon, batch compositing terms, render/delivery slang, 35-row operator→API lookup table. |
-| `docs/flame_cookbook_official.md` | 22 | Official Autodesk Python API code samples — clip import/reformat/render, Timeline FX create/bypass/save/load, batch group creation, node wiring, multi-pass render, Action compass nodes. |
-| `docs/flame_vocabulary.md` | 8 | Flame-specific terminology glossary — how operators refer to things vs. the Python API names. |
+| `FLAME_API.md` | ~73 | Core Flame Python API — PyClip, PyReel, PyBatch, PyLibrary, connectors, markers, PyTime, import/export code samples. Auto-extended by `learn_pattern`. |
+| `docs/flame_advanced_api.md` | ~78 | Action node (PyActionNode, output types, FBX import), Color Management (CDL/LUT/CTF via PyClrMgmtNode), Exporter (safe schedule_idle_event pattern), MediaHub, Conform/AAF workflow patterns, Timeline FX/BFX, Python hooks reference, operator-phrase → API lookup table. |
+| `docs/flame_api_full.md` | ~71 | Extended API reference — PySequence, PyTrack, PyVersion, PyMarker, PyProject, PyWorkspace, batch nodes, render pipeline, archive. |
+| `docs/flame_segment_timeline_api.md` | ~61 | Full PySegment API (trim, slip, create_effect, connected_segments), corrected PyClip.render() signature, PyBatch.create_batch_group(), PySequence methods, post-conform batch group creation patterns. |
+| `docs/flame_community_workflows.md` | ~23 | Logik Forum operator terminology → API mapping. Conform jargon, batch compositing terms, render/delivery slang, 35-row operator→API lookup table. |
+| `docs/flame_cookbook_official.md` | ~22 | Official Autodesk Python API code samples — clip import/reformat/render, Timeline FX create/bypass/save/load, batch group creation, node wiring, multi-pass render, Action compass nodes. |
+| `docs/flame_vocabulary.md` | ~8 | Flame-specific terminology glossary — how operators refer to things vs. the Python API names. |
 
-### How it learns
+### How it learns (3-level system)
 
 1. `search_flame_docs` returns the **max relevance score** of the best match
 2. If **score < 60%**, the pattern is not well-documented — Claude is warned
 3. After a **successful** `execute_python`, Claude calls `learn_pattern(description, code)`
-4. `learn_pattern` appends the working code as a new pattern block in `FLAME_API.md`
-5. The RAG index is **rebuilt in the background** via subprocess
-6. Next session, the same operation finds a high-relevance match (>70%) instantly
+4. Outcome depends on the active model's trust level:
+   - **Trusted model** (Sonnet / Opus) → appended to `FLAME_API.md`, index rebuilt in background
+   - **Read-only model** (Qwen, Llama…) → staged in `rag/candidates.json` for human review
+5. On **failed** execution with low RAG score → logged to `rag/failed.json` as a knowledge gap
+6. Next session, verified patterns return >70% relevance instantly
 
 ### Manually rebuild the index
 
@@ -273,7 +275,7 @@ Ratings:
 flame-mcp/
 ├── flame_mcp_server.py         # MCP server — runs on macOS, talks to Claude
 ├── hooks/
-│   └── flame_mcp_bridge.py    # Flame hook — TCP bridge + Qt chat widget
+│   └── flame_mcp_bridge.py    # Flame hook — Unix socket bridge + Qt chat widget
 ├── rag/
 │   ├── build_index.py         # Build / rebuild the ChromaDB index
 │   ├── search.py              # Semantic search, returns (text, max_score)
@@ -285,7 +287,7 @@ flame-mcp/
 ├── install.sh
 ├── LICENSE
 ├── logs/
-│   ├── flame_mcp_bridge.log   # TCP bridge activity log
+│   ├── flame_mcp_bridge.log   # bridge activity log
 │   └── flame_rag.log          # RAG query log with relevance scores
 └── docs/
     ├── flame-mcp-reference.pdf      # Full reference guide

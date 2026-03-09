@@ -3,7 +3,7 @@
 ## What this project is
 An MCP server that lets Claude control Autodesk Flame 2026 via natural language.
 Claude runs as an external agent; the `execute_python` tool sends Python code into
-a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
+a Unix socket bridge (`run/flame_mcp.sock`, TCP 127.0.0.1:4444 fallback) that executes it live inside Flame.
 
 ---
 

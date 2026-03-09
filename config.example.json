@@ -2,6 +2,7 @@
   "model": "claude-sonnet-4-6",
   "backend": "anthropic",
   "ollama_url": "http://localhost:11434",
+  "ollama_cloud_key": "your-ollama-cloud-api-key-here",
 
   "rag_fallback_threshold": 60,
   "fallback_model": "claude-sonnet-4-6",

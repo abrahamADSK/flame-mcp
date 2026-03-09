@@ -238,13 +238,11 @@ def _check_dangerous(code: str):
 # API paths that contaminate the knowledge base and cause future failures.
 
 WRITE_ALLOWED_MODELS = {
-    "claude-opus",
-    "claude-sonnet",
-    "claude-3-5-sonnet",
-    "claude-3-7-sonnet",
-    "claude-sonnet-4",    # matches claude-sonnet-4-5-..., claude-sonnet-4-6, etc.
-    "claude-sonnet-4-6",  # explicit entry for Sonnet 4.6
-    "claude-opus-4",
+    "claude-opus",        # any Opus version (opus-4-5, opus-4-6, future…)
+    "claude-sonnet",      # any Sonnet version (sonnet-4-5, sonnet-4-6, future…)
+    "claude-sonnet-4",    # explicit prefix for Sonnet 4.x family
+    "claude-sonnet-4-6",  # explicit current release
+    "claude-opus-4-5",    # Opus 4.5
 }
 
 
