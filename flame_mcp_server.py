@@ -23,6 +23,7 @@ import re
 import sys
 import subprocess
 import datetime
+import time
 from pathlib import Path
 from typing import Annotated
 from pydantic import Field
@@ -272,10 +273,14 @@ _stats = {
 # Used by the LLM to decide whether to call learn_pattern after a success.
 _last_rag_score: int = 100  # default high so we don't nag on first call
 
+# A12 — In-session RAG cache: identical queries return the same chunks
+# without hitting ChromaDB again. Flushed when the server restarts.
+_search_cache: dict[int, tuple[str, int]] = {}
+
 
 def _tok(text: str) -> int:
-    """Rough token estimate: 1 token ≈ 4 characters."""
-    return max(1, len(text) // 4)
+    """Rough token estimate: 1 token ≈ 3 characters (corrected from //4 which underestimates ~25%)."""
+    return max(1, len(text) // 3)
 
 
 def _validate(output: str, required: list[str]) -> str:
@@ -342,7 +347,7 @@ def _stats_footer() -> str:
     )
 
 BRIDGE_HOST = '127.0.0.1'
-BRIDGE_PORT = 4444
+BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
 mcp = FastMCP(
     "flame",
@@ -395,6 +400,8 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 5. Always print output in execute_python — every call must end with print().
    The result is only visible through stdout capture.
+   Generate code as if temperature=0: prefer exact, verified API paths over creative
+   alternatives. Accuracy over brevity. Do not guess method names.
 
 6. Keep code minimal. Flame's Python environment is sensitive to long loops
    or anything that blocks the main thread.
@@ -447,8 +454,12 @@ def _call_flame(code: str, timeout: int = 15) -> dict:
             payload = json.dumps({'code': code}) + "\n"
             s.sendall(payload.encode('utf-8'))
 
+            # A5 — cumulative deadline prevents partial-response hangs
             response = b""
+            deadline = time.monotonic() + timeout
             while not response.endswith(b"\n"):
+                if time.monotonic() > deadline:
+                    raise TimeoutError("bridge response timeout")
                 chunk = s.recv(4096)
                 if not chunk:
                     break
@@ -523,6 +534,17 @@ def execute_python(
     if danger:
         return danger + _stats_footer()
 
+    # B4 — Low-confidence warning when a read-only model has weak RAG grounding
+    # Execution still proceeds; the operator sees the warning and can intervene.
+    b4_warning = ""
+    if _last_rag_score < 60 and not _model_can_write():
+        b4_warning = (
+            f"\n⚠️  LOW CONFIDENCE EXECUTION — RAG score {_last_rag_score}/100 "
+            f"with read-only model ({_get_current_model()}).\n"
+            f"   The code below may be based on hallucinated API paths. "
+            f"Switch to Sonnet if the result looks wrong.\n"
+        )
+
     t_in  = _tok(code)
     result = _call_flame(code, timeout=timeout)
     output = result.get('output', '') + result.get('error', '')
@@ -538,7 +560,7 @@ def execute_python(
         f"🔥 This call · ~{t_in + t_out} tokens  {call_rating}"
         + _stats_footer()
     )
-    return _fmt(result) + footer
+    return b4_warning + _fmt(result) + footer
 
 
 def _track_dedicated() -> None:
@@ -1044,6 +1066,14 @@ def search_flame_docs(query: str) -> str:
     global _last_rag_score
     try:
         from rag.search import search
+
+        # A12 — Return cached result for identical queries within this session
+        cache_key = hash(query)
+        if cache_key in _search_cache:
+            cached_result, cached_score = _search_cache[cache_key]
+            _last_rag_score = cached_score
+            return cached_result + "\n📎 (cached result — same query this session)"
+
         result, max_score = search(query, n_results=5)
         _last_rag_score = max_score
         result_tokens = _tok(result)
@@ -1051,13 +1081,21 @@ def search_flame_docs(query: str) -> str:
         _stats['rag_calls']    += 1
         _stats['tokens_saved'] += saved
 
-        # Warn Claude when coverage is low so it knows to call learn_pattern later
+        # B2 — Coverage note depends on model write permissions
         coverage_note = ""
         if max_score < 60:
-            coverage_note = (
-                f"\n⚠️  Low RAG coverage (max {max_score}%) — pattern may not be documented. "
-                "If execute_python succeeds, call learn_pattern(description, code) to teach the system."
-            )
+            if _model_can_write():
+                # Sonnet/Opus: offer to learn the new pattern
+                coverage_note = (
+                    f"\n⚠️  Low RAG coverage (max {max_score}%) — pattern may not be documented. "
+                    "If execute_python succeeds, call learn_pattern(description, code) to teach the system."
+                )
+            else:
+                # Read-only model: inform but don't offer to learn
+                coverage_note = (
+                    f"\n⚠️  Low RAG coverage (max {max_score}%). "
+                    f"ℹ️  Read-only mode ({_get_current_model()}) — switch to Sonnet to save new patterns."
+                )
 
         footer = (
             f"\n─────────────────────────────\n"
@@ -1065,7 +1103,9 @@ def search_flame_docs(query: str) -> str:
             f"{coverage_note}"
             + _stats_footer()
         )
-        return result + footer
+        full_result = result + footer
+        _search_cache[cache_key] = (result, max_score)   # A12 — cache for this session
+        return full_result
     except Exception as e:
         return (
             f"search_flame_docs error: {e}\n\n"
@@ -1292,24 +1332,42 @@ def read_flame_log(
         return f"❌ Log file not found: {log_path}{suggestion}\nCall list_flame_logs() to see available files."
 
     try:
-        # Read file — use tail approach for large files
-        with open(log_path, 'r', errors='replace') as f:
-            all_lines = f.readlines()
+        # A7 — Reverse-chunk tail: read only what we need from the end of the file.
+        # Avoids loading gigabyte log files into RAM.
+        def _tail_file(path: Path, max_lines: int) -> list[str]:
+            with open(path, 'rb') as f:
+                f.seek(0, 2)
+                pos, collected = f.tell(), []
+                partial = b""
+                while pos > 0 and len(collected) < max_lines:
+                    chunk_size = min(8192, pos)
+                    pos -= chunk_size
+                    f.seek(pos)
+                    chunk = f.read(chunk_size) + partial
+                    split = chunk.split(b"\n")
+                    partial = split[0]
+                    collected = split[1:] + collected
+                if partial:
+                    collected = [partial] + collected
+                return [ln.decode('utf-8', errors='replace') + "\n"
+                        for ln in collected[-max_lines:]]
 
-        total_lines = len(all_lines)
+        max_to_read = min(lines if lines > 0 else 50000, 50000)
+        all_lines = _tail_file(log_path, max_to_read)
+        total_lines = log_path.stat().st_size  # approximate via size for display
 
-        # Apply grep filter first (on all lines) if specified
+        # Apply grep filter if specified
         if grep:
             try:
                 pattern = re.compile(grep, re.IGNORECASE)
                 filtered = [l for l in all_lines if pattern.search(l)]
-                source_desc = f"grep={repr(grep)} matched {len(filtered)}/{total_lines} lines"
+                source_desc = f"grep={repr(grep)} matched {len(filtered)} lines"
                 tail = filtered[-lines:] if lines > 0 else filtered
             except re.error as e:
                 return f"❌ Invalid grep pattern {repr(grep)}: {e}"
         else:
             filtered = all_lines
-            source_desc = f"{total_lines} lines total"
+            source_desc = f"{len(all_lines)} lines read (tail)"
             tail = all_lines[-lines:] if lines > 0 else all_lines
 
         shown = len(tail)

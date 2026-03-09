@@ -31,7 +31,7 @@ import subprocess
 import datetime
 
 BRIDGE_HOST = '127.0.0.1'
-BRIDGE_PORT = 4444
+BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
 # ── Dynamic project root detection ────────────────────────────────────────────
 # When the bridge is in hooks/ (development), derive root from __file__.
@@ -128,6 +128,7 @@ def _check_crash_recovery():
     Called at Flame startup. If crash_recovery.json exists with status='running',
     Flame crashed during the previous session while executing Python code.
     Save the info so the chat widget can display it.
+    A11 — Entries older than 24 h are silently expired; stale crashes are not actionable.
     """
     global _last_crash_info
     try:
@@ -136,6 +137,17 @@ def _check_crash_recovery():
         with open(CRASH_RECOVERY_FILE) as f:
             data = json.load(f)
         if data.get('status') == 'running':
+            # A11 — Ignore crashes older than 1 day
+            try:
+                import datetime as _dt
+                crash_ts = _dt.datetime.fromisoformat(data.get('timestamp', ''))
+                age_s = (_dt.datetime.now() - crash_ts).total_seconds()
+                if age_s > 86400:
+                    _log("⚠️  CRASH RECOVERY: stale entry (>24 h) — clearing automatically.")
+                    _clear_crash_recovery()
+                    return
+            except Exception:
+                pass  # unparseable timestamp → keep the warning
             _last_crash_info = data
             _log("⚠️  CRASH RECOVERY: Flame crashed during previous session.")
             _log(f"   Last code executed: {data.get('code','')[:200].strip()}")
@@ -1224,7 +1236,7 @@ class _FlameChat:
         payload = _json.dumps({
             "model":      self._model,
             "prompt":     "",          # empty — we only want to load the runner
-            "options":    {"num_ctx": OLLAMA_NUM_CTX},
+            "options":    {"num_ctx": OLLAMA_NUM_CTX, "temperature": 0},  # C1: deterministic code gen
             "keep_alive": "10m",
             "stream":     False,
         }).encode()
