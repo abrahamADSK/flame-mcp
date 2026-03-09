@@ -1,0 +1,184 @@
+{
+  "_meta": {
+    "description": "Curated inventory of YouTube videos relevant to Flame Python scripting, for Phase D transcript extraction",
+    "last_updated": "2026-03-09",
+    "total_sources": 11,
+    "channels": ["logik_live", "flame_learning_channel"],
+    "status": "seed — run fetch_transcripts.py on Mac to populate transcripts"
+  },
+
+  "logik_live": {
+    "channel_id": "UClogiklive",
+    "channel_handle": "@logiklive",
+    "channel_url": "https://www.youtube.com/@logiklive",
+    "total_channel_videos": 223,
+    "description": "Community-run Logik.tv show covering Flame workflows, tools, and scripting.",
+    "episodes": [
+      {
+        "id": "jfxJYUnWIjY",
+        "episode": "#007",
+        "title": "Writing Python Scripts for Flame with Andy Milkis and Frederic Warren",
+        "url": "https://www.youtube.com/watch?v=jfxJYUnWIjY",
+        "relevance": "HIGH",
+        "topics": ["python_basics", "flame_api_intro", "custom_scripts", "menus"],
+        "notes": "Foundational episode — beginner to intermediate Python scripting for Flame. Covers the range of what's possible with the Flame Python API.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "wTRwYyXTosk",
+        "episode": "#130",
+        "title": "Python Scripts and the Uppercut Workflow with John Geehreng",
+        "url": "https://www.youtube.com/watch?v=wTRwYyXTosk",
+        "relevance": "HIGH",
+        "topics": ["project_creation", "shot_publishing", "clip_renaming", "frame_io_integration", "delivery_automation"],
+        "notes": "Real-world production automation — Uppercut (NYC) workflow. Project creation, shot publishing, renaming, Frame.io integration, delivery. Feb 2024.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "GA0ipgNXhnI",
+        "episode": "#131",
+        "title": "Simple Python Scripts with Bryan Bayley",
+        "url": "https://www.youtube.com/watch?v=GA0ipgNXhnI",
+        "relevance": "HIGH",
+        "topics": ["clip_naming", "timecode_manipulation", "simple_automation", "beginner_scripts"],
+        "notes": "Practical beginner scripts — append start frame to clip name, source timecode manipulation. Feb 2024.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "0SpDr3tMdPI",
+        "episode": "#144",
+        "title": "Python Fun with Andrew Miller and Erik Borzi",
+        "url": "https://www.youtube.com/watch?v=0SpDr3tMdPI",
+        "relevance": "HIGH",
+        "topics": ["python_api", "advanced_scripting", "workflow_automation"],
+        "notes": "Most recent dedicated Python episode. Andrew Miller (Autodesk) and Erik Borzi. Likely covers newer API features.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "KG51c1GStLk",
+        "episode": "demo",
+        "title": "Logik.tv - Python Script to change the color of segments in the timeline",
+        "url": "https://www.youtube.com/watch?v=KG51c1GStLk",
+        "relevance": "MEDIUM",
+        "topics": ["timeline_segments", "segment_colors", "python_api"],
+        "notes": "Short demo clip (~17s). Timeline segment color manipulation via Python.",
+        "transcript_status": "pending"
+      }
+    ]
+  },
+
+  "flame_learning_channel": {
+    "channel_id": "UCSsh51xYqNOpiDTfvnnzyww",
+    "channel_url": "https://www.youtube.com/channel/UCSsh51xYqNOpiDTfvnnzyww",
+    "description": "Official Autodesk Flame Learning Channel. Short, didactic tutorials covering Flame features per release.",
+    "episodes": [
+      {
+        "id": "hPa1OVEY_78",
+        "title": "Python Scripting - OpenClip and Watch Folders",
+        "flame_version": "2016 EXT 1",
+        "url": "https://www.youtube.com/watch?v=hPa1OVEY_78",
+        "relevance": "HIGH",
+        "topics": ["openclip", "watch_folders", "file_system_hooks", "python_hooks"],
+        "notes": "First Python scripting episode on the official channel. Covers watch folder automation and OpenClip workflow via Python.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "C5Ez4nlRvTk",
+        "title": "Python - Installing Logik Shaders in Flame",
+        "flame_version": "2016 EXT 1",
+        "url": "https://www.youtube.com/watch?v=C5Ez4nlRvTk",
+        "relevance": "MEDIUM",
+        "topics": ["matchbox_shaders", "python_install_scripts", "logik_portal"],
+        "notes": "Python script for installing Logik matchbox shaders. Demonstrates scripted asset management.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "ZDHntCBBRXM",
+        "title": "Python Scripting - Batch Iteration and Render Naming",
+        "flame_version": "2016 EXT 2",
+        "url": "https://www.youtube.com/watch?v=ZDHntCBBRXM",
+        "relevance": "HIGH",
+        "topics": ["batch_iteration", "render_naming", "python_hooks", "export_automation"],
+        "notes": "Batch automation and render output naming via Python. Directly relevant to batch group scripting patterns.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "VJFgxnCqrE0",
+        "title": "Working with Python Scripting",
+        "flame_version": "2018.2",
+        "url": "https://www.youtube.com/watch?v=VJFgxnCqrE0",
+        "relevance": "HIGH",
+        "topics": ["python_scripting_overview", "flame_api_2018", "hooks", "custom_tools"],
+        "notes": "Updated Python scripting overview for Flame 2018.2. Covers new hooks and API additions in that release cycle.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "lMRidruJDqA",
+        "title": "Adding Custom Menu Actions",
+        "flame_version": "2020",
+        "url": "https://www.youtube.com/watch?v=lMRidruJDqA",
+        "relevance": "HIGH",
+        "topics": ["custom_menus", "python_hooks", "ui_customization", "context_menus"],
+        "notes": "Creating custom menu actions via Python hooks. Core pattern for building Flame tools.",
+        "transcript_status": "pending"
+      },
+      {
+        "id": "e2ob2gNoea8",
+        "title": "Python - Browsers and Messaging",
+        "flame_version": "2023.1",
+        "url": "https://www.youtube.com/watch?v=e2ob2gNoea8",
+        "relevance": "HIGH",
+        "topics": ["mediahub_browser", "python_messaging", "ui_dialogs", "PyTransition", "flame_2023_api"],
+        "notes": "New Python features in Flame 2023.1: PyTransition for Timeline, MediaHub browser controls, messaging/dialog API.",
+        "transcript_status": "pending"
+      }
+    ]
+  },
+
+  "additional_sources": {
+    "description": "Non-YouTube sources to consider for Phase D/E knowledge extraction",
+    "sources": [
+      {
+        "name": "Logik Portal Python Scripts",
+        "url": "https://github.com/logik-portal/python",
+        "type": "github_repo",
+        "size": "643K+ lines of Python scripts",
+        "relevance": "HIGH",
+        "notes": "Community scripts repository. Real-world patterns for clip management, batch automation, delivery pipelines.",
+        "status": "pending — scrape via GitHub API"
+      },
+      {
+        "name": "pyflame.com",
+        "url": "https://www.pyflame.com/",
+        "type": "website",
+        "relevance": "HIGH",
+        "notes": "Tim Berglund's pyflame library + community scripts portal. Contains helper functions that wrap the raw Flame API.",
+        "status": "pending — fetch docs + example scripts"
+      },
+      {
+        "name": "fabiof17/flame-python-scripting",
+        "url": "https://github.com/fabiof17/flame-python-scripting",
+        "type": "github_repo",
+        "relevance": "MEDIUM",
+        "notes": "Curated collection of Flame Python scripts with documentation.",
+        "status": "pending"
+      },
+      {
+        "name": "Autodesk Flame Python API Docs (2026)",
+        "url": "https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_Family_Python_API",
+        "type": "official_docs",
+        "relevance": "HIGH",
+        "notes": "Official Python API reference. Includes Python Examples cookbook, Hooks Reference, Class Browser. Target for Phase E2.",
+        "status": "pending — Phase E2 scrape"
+      },
+      {
+        "name": "kmatchbox/PythonHooks",
+        "url": "https://github.com/kmatchbox/PythonHooks",
+        "type": "github_repo",
+        "relevance": "HIGH",
+        "notes": "Collection of Flame Python Hooks to make life easier. Practical hook patterns.",
+        "status": "pending"
+      }
+    ]
+  }
+}
