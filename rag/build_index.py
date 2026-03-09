@@ -21,7 +21,7 @@ users who clone the repo get a ready-to-use index without rebuilding.
 Rebuild the index whenever you change the docs:
     python rag/build_index.py
 
-First run downloads the embedding model (~130 MB from HuggingFace, once).
+First run downloads the embedding model (~570 MB from HuggingFace, once).
 """
 
 import os
@@ -103,7 +103,7 @@ def _make_embedding_fn() -> Any:
     try:
         from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
         print(f"  Embedding model : {EMBEDDING_MODEL}")
-        print(f"  (downloading from HuggingFace on first run — cached afterwards)")
+        print(f"  (downloading from HuggingFace on first run ~570 MB — cached afterwards)")
         fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
         # Warm-up probe so any download happens now, not silently during indexing
         fn(["probe"])
