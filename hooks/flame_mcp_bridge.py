@@ -1072,8 +1072,12 @@ class _FlameChat:
         try:
             cfg = {}
             if os.path.exists(MODEL_CONFIG_FILE):
-                with open(MODEL_CONFIG_FILE) as f:
-                    cfg = json.load(f)
+                try:
+                    with open(MODEL_CONFIG_FILE) as f:
+                        cfg = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    _log("Model config: malformed config.json — starting fresh")
+                    cfg = {}   # don't propagate parse errors; write a clean file
             cfg['model']   = model_id
             cfg['backend'] = backend
             # Ensure ollama_url exists in config even if not yet set
@@ -1124,12 +1128,15 @@ class _FlameChat:
             url = 'http://' + url
         self._ollama_url = url
         self._ollama_input.setText(url)
-        # Persist to config.json
+        # Persist to config.json (fail-safe read)
         try:
             cfg = {}
             if os.path.exists(MODEL_CONFIG_FILE):
-                with open(MODEL_CONFIG_FILE) as f:
-                    cfg = json.load(f)
+                try:
+                    with open(MODEL_CONFIG_FILE) as f:
+                        cfg = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    cfg = {}
             cfg['ollama_url'] = url
             os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
             with open(MODEL_CONFIG_FILE, 'w') as f:
@@ -1147,12 +1154,15 @@ class _FlameChat:
         if not key:
             return
         self._ollama_cloud_key = key
-        # Persist to config.json
+        # Persist to config.json (fail-safe read)
         try:
             cfg = {}
             if os.path.exists(MODEL_CONFIG_FILE):
-                with open(MODEL_CONFIG_FILE) as f:
-                    cfg = json.load(f)
+                try:
+                    with open(MODEL_CONFIG_FILE) as f:
+                        cfg = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    cfg = {}
             cfg['ollama_cloud_key'] = key
             os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
             with open(MODEL_CONFIG_FILE, 'w') as f:
