@@ -33,15 +33,26 @@ import datetime
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = 4444
 
+# ── Dynamic project root detection ────────────────────────────────────────────
+# When the bridge is in hooks/ (development), derive root from __file__.
+# When installed to /opt/Autodesk/shared/python/, set FLAME_MCP_ROOT in the env.
+_THIS_FILE    = os.path.abspath(__file__)
+_HOOKS_DIR    = os.path.dirname(_THIS_FILE)
+_AUTO_ROOT    = os.path.dirname(_HOOKS_DIR)
+if (os.path.basename(_HOOKS_DIR) == 'hooks' and
+        os.path.isfile(os.path.join(_AUTO_ROOT, 'flame_mcp_server.py'))):
+    _PROJECT_ROOT = _AUTO_ROOT
+else:
+    _PROJECT_ROOT = os.environ.get('FLAME_MCP_ROOT',
+                                   os.path.expanduser('~/Projects/flame-mcp'))
+
 # Crash recovery: written before each exec, cleared after success.
 # If Flame crashes mid-exec, this file will contain the offending code
 # on the next Flame startup so the chat widget can show a warning.
-CRASH_RECOVERY_FILE = os.path.expanduser(
-    '~/Projects/flame-mcp/logs/crash_recovery.json')
+CRASH_RECOVERY_FILE = os.path.join(_PROJECT_ROOT, 'logs', 'crash_recovery.json')
 
 # Model config — persists the selected model across widget sessions.
-MODEL_CONFIG_FILE = os.path.expanduser(
-    '~/Projects/flame-mcp/config.json')
+MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 
 # Available models shown in the chat widget dropdown.
 # Each entry: (display_label, model_id, backend)
@@ -94,6 +105,12 @@ _bridge_active = False
 _server_socket = None
 _server_thread = None
 _last_crash_info = None   # set at startup if a crash was detected
+
+# A3 — exec() timeout guard (seconds). Protects against Flame API calls that
+# hang indefinitely (e.g. UI blocking operations called from a non-main thread).
+# The hung thread continues in the background; the client gets an error response
+# so the MCP server is not left waiting for a reply that will never arrive.
+_EXEC_TIMEOUT = 30
 
 
 # ── Flame initialisation hook ─────────────────────────────────────────────────
@@ -236,44 +253,62 @@ def _handle_connection(conn):
         first_line = code.strip().splitlines()[0] if code.strip() else '(empty)'
         _log(f"EXEC: {first_line[:120]}")
 
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-
         local_ns = {'flame': flame}
-        result = {}
+        result   = {}
+        done     = threading.Event()
 
-        try:
-            _write_crash_recovery(code)   # record before exec — cleared on success
-            exec(compile(code, '<flame_mcp>', 'exec'), local_ns)
-            _clear_crash_recovery()       # exec completed — no crash
-            result['status'] = 'ok'
-            result['output'] = buf.getvalue()
-            if '_result' in local_ns:
-                result['return_value'] = str(local_ns['_result'])
-            _log(f"  → ok  output: {buf.getvalue()[:80].strip()!r}")
-        except Exception:
-            tb = traceback.format_exc()
+        # A3 — run exec in a watched thread so we can enforce _EXEC_TIMEOUT.
+        # The thread captures its own stdout to avoid races with the main bridge.
+        def _exec_target():
+            buf        = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = buf
+            try:
+                _write_crash_recovery(code)
+                exec(compile(code, '<flame_mcp>', 'exec'), local_ns)
+                _clear_crash_recovery()
+                sys.stdout = old_stdout
+                result['status'] = 'ok'
+                result['output'] = buf.getvalue()
+                if '_result' in local_ns:
+                    result['return_value'] = str(local_ns['_result'])
+                _log(f"  → ok  output: {buf.getvalue()[:80].strip()!r}")
+            except Exception:
+                sys.stdout = old_stdout
+                tb = traceback.format_exc()
+                result['status'] = 'error'
+                result['error']  = tb
+                result['output'] = buf.getvalue()
+                _log(f"  → ERROR: {tb.splitlines()[-1][:120]}")
+                # Flame C++ corruption warning ─────────────────────────────────
+                # 'unordered_map::at' means a C++ exception escaped the binding.
+                # Flame's internal state may be corrupted even though Python caught it.
+                _CPP_CRASH_MARKERS = (
+                    'unordered_map::at', 'out_of_range', 'bad_weak_ptr', 'PyFlame',
+                )
+                if any(m in tb for m in _CPP_CRASH_MARKERS):
+                    result['flame_state'] = 'possibly_corrupted'
+                    _log("  ⚠️  Flame C++ exception detected — UI may be corrupted. "
+                         "Consider restarting Flame if behaviour seems wrong.")
+            finally:
+                done.set()
+
+        exec_thread = threading.Thread(target=_exec_target, daemon=True,
+                                       name="flame_exec")
+        exec_thread.start()
+        exec_thread.join(_EXEC_TIMEOUT)
+
+        if not done.is_set():
+            # Thread is still alive — exec() hung (e.g. blocking UI call)
             result['status'] = 'error'
-            result['error'] = tb
-            result['output'] = buf.getvalue()
-            _log(f"  → ERROR: {tb.splitlines()[-1][:120]}")
-            # ── Flame C++ corruption warning ──────────────────────────────────
-            # 'unordered_map::at: key not found' means a C++ exception escaped
-            # through the Python binding. Flame's internal state may be corrupted
-            # even though Python caught the exception. Flag it clearly.
-            _CPP_CRASH_MARKERS = (
-                'unordered_map::at',
-                'out_of_range',
-                'bad_weak_ptr',
-                'PyFlame',
+            result['error']  = (
+                f"⏱ Execution timed out after {_EXEC_TIMEOUT}s. "
+                "The Flame operation may still be running in the background. "
+                "If Flame appears frozen, restart the bridge via the menu."
             )
-            if any(m in tb for m in _CPP_CRASH_MARKERS):
-                result['flame_state'] = 'possibly_corrupted'
-                _log("  ⚠️  Flame C++ exception detected — UI may be corrupted. "
-                     "Consider restarting Flame if behaviour seems wrong.")
-        finally:
-            sys.stdout = old_stdout
+            if not result.get('output'):
+                result['output'] = ''
+            _log(f"  ⏱ TIMEOUT after {_EXEC_TIMEOUT}s — exec thread still alive")
 
         conn.sendall((json.dumps(result) + "\n").encode('utf-8'))
 
@@ -289,7 +324,7 @@ def _handle_connection(conn):
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
-LOG_FILE = os.path.expanduser('~/Projects/flame-mcp/logs/flame_mcp_bridge.log')
+LOG_FILE = os.path.join(_PROJECT_ROOT, 'logs', 'flame_mcp_bridge.log')
 
 
 def _log(msg):

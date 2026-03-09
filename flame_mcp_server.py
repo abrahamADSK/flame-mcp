@@ -169,13 +169,43 @@ _DANGEROUS_PATTERNS = [
 
 def _check_dangerous(code: str):
     """
-    Scan code for patterns known to crash Flame.
+    Scan code for patterns known to crash Flame (regex + AST).
     Returns a formatted error string if any are found, else None.
     """
     hits = []
     for pattern, reason, alternative in _DANGEROUS_PATTERNS:
         if re.search(pattern, code):
             hits.append(f"  • {reason}\n    ✅ Instead: {alternative}")
+
+    # A2 — AST analysis catches obfuscated calls that bypass regex
+    # e.g. getattr(flame, 'batch').render()  or  __import__('wiretap')
+    try:
+        import ast as _ast
+        tree = _ast.parse(code)
+        for node in _ast.walk(tree):
+            # Catch:  import wiretap  /  __import__('wiretap')
+            if isinstance(node, (_ast.Import, _ast.ImportFrom)):
+                for alias in getattr(node, 'names', []):
+                    if getattr(alias, 'name', '').startswith('wiretap'):
+                        hits.append(
+                            "  • [AST] import wiretap — crash-prone module.\n"
+                            "    ✅ Instead: use the standard flame module API."
+                        )
+            # Catch:  flame.batch.render()  via any attribute access chain
+            if isinstance(node, _ast.Call):
+                func = node.func
+                if isinstance(func, _ast.Attribute) and func.attr == 'render':
+                    owner = func.value
+                    if isinstance(owner, _ast.Attribute) and owner.attr == 'batch':
+                        hits.append(
+                            "  • [AST] flame.batch.render() — blocks Flame main thread.\n"
+                            "    ✅ Instead: use schedule_idle_event(render_fn)."
+                        )
+    except SyntaxError:
+        pass  # syntax errors will be caught later by exec()
+    except Exception:
+        pass  # AST check is best-effort — never block on parse failure
+
     if not hits:
         return None
     return (
@@ -184,6 +214,36 @@ def _check_dangerous(code: str):
         + "\n\nRevise the code and try again. "
         "If unsure of the correct approach, call search_flame_docs first."
     )
+
+
+# ─── Model write permissions ──────────────────────────────────────────────────
+# Only these model families are trusted to write patterns to FLAME_API.md.
+# Lightweight models (Qwen, Llama, etc.) are read-only: they may hallucinate
+# API paths that contaminate the knowledge base and cause future failures.
+
+WRITE_ALLOWED_MODELS = {
+    "claude-opus",
+    "claude-sonnet",
+    "claude-3-5-sonnet",
+    "claude-3-7-sonnet",
+    "claude-sonnet-4",   # matches claude-sonnet-4-5-... etc.
+    "claude-opus-4",
+}
+
+
+def _get_current_model() -> str:
+    """Return the model string from config.json, or 'unknown' on failure."""
+    try:
+        cfg = json.loads((_SERVER_DIR / "config.json").read_text())
+        return cfg.get("model", "unknown")
+    except Exception:
+        return "unknown"
+
+
+def _model_can_write() -> bool:
+    """True if the active model is in the write-allowed whitelist."""
+    model = _get_current_model().lower()
+    return any(allowed in model for allowed in WRITE_ALLOWED_MODELS)
 
 # ─── Token tracking ───────────────────────────────────────────────────────────
 
@@ -314,8 +374,12 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
    One question = one tool. Do NOT call ping() or get_project_info() before other tools.
    Only fall back to search_flame_docs + execute_python for operations not in this list.
 
-2. For anything NOT covered by a dedicated tool, ALWAYS call search_flame_docs
-   FIRST before writing any execute_python code. No exceptions.
+2. GROUNDING RULE — For anything NOT covered by a dedicated tool:
+   - ALWAYS call search_flame_docs FIRST before writing any execute_python code.
+   - NEVER guess or invent API method names, attribute paths, or class names.
+   - If search returns < 60% relevance, note this explicitly and proceed carefully.
+   - On failure, call search_flame_docs again with a different query before retrying.
+   - This rule has NO exceptions — not even for patterns you "know" from training.
 
 3. Use the correct object hierarchy:
    - Libraries → flame.projects.current_project.current_workspace.libraries
@@ -1027,6 +1091,16 @@ def learn_pattern(description: str, code: str) -> str:
         description: Short English label, e.g. "delete folder by name from library"
         code:        The exact working Python code that just ran successfully.
     """
+    # B1/B3 — Write permission gate: only whitelisted models may modify FLAME_API.md.
+    # Lightweight models (Qwen, Llama, etc.) can read RAG but not write to it.
+    if not _model_can_write():
+        current_model = _get_current_model()
+        return (
+            f"⛔ Pattern NOT saved — the active model ({current_model}) "
+            f"does not have write permission to the knowledge base.\n"
+            f"ℹ️  To save this pattern, switch to Sonnet or an equivalent model."
+        )
+
     api_doc = _SERVER_DIR / "FLAME_API.md"
     build_script = _SERVER_DIR / "rag" / "build_index.py"
 
@@ -1042,10 +1116,12 @@ def learn_pattern(description: str, code: str) -> str:
             "No change made."
         )
 
-    # Build the new pattern block
+    # Build the new pattern block with traceability metadata (FASE 4)
     divider = "─" * 70
+    model_tag = f"<!-- model:{_get_current_model()} date:{datetime.datetime.now().isoformat()[:10]} -->"
     block = (
         f"\n# ── Auto-learned: {description} {divider[:max(0,70-len(description)-16)]}\n"
+        f"{model_tag}\n"
         f"```python\n{code}\n```\n"
     )
 
