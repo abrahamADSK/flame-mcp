@@ -12,7 +12,7 @@
 
 ```
 You: "Delete all reels named TEST from Default Library"
-Claude → MCP Server → TCP socket → Flame Python API → Result back to Claude
+Claude → MCP Server → Unix socket → Flame Python API → Result back to Claude
 ```
 
 ---
@@ -21,15 +21,15 @@ Claude → MCP Server → TCP socket → Flame Python API → Result back to Cla
 
 The system has two components:
 
-**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local TCP socket server (port 4444) when Flame launches. It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result.
+**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local Unix domain socket server when Flame launches (falls back to TCP port 4444 if AF_UNIX is unavailable). It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result.
 
 **`flame_mcp_server.py`** — An MCP server that Claude launches. It exposes tools that Claude can call by name, translates natural language into Python code, and communicates with the bridge over the socket.
 
 ```
-┌──────────────────┐    MCP (stdio)    ┌──────────────────────┐    TCP 4444    ┌─────────────────┐
+┌──────────────────┐    MCP (stdio)    ┌──────────────────────┐  Unix socket   ┌─────────────────┐
 │  Claude Code /   │ ◄──────────────── │   flame_mcp_server   │ ◄────────────  │  Autodesk Flame │
 │  Claude Desktop  │ ─────────────────►│   (Python, macOS)    │ ─────────────► │  Python bridge  │
-└──────────────────┘                   └──────────────────────┘                └─────────────────┘
+└──────────────────┘                   └──────────────────────┘  (TCP fallback) └─────────────────┘
 ```
 
 Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** — all three contexts use the same MCP server and behave identically.
@@ -148,7 +148,7 @@ In addition to natural language, the chat input accepts these special commands:
 
 | Backend | Model | Requires | Works offline? |
 |---------|-------|----------|----------------|
-| `anthropic` | Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
+| `anthropic` | Sonnet 4.6, Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
 | `ollama` | qwen3-coder 30B | gpu-server on LAN + GPU | ✗ |
 | `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
 | `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ ⚠️ |
@@ -427,7 +427,8 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Make sure Flame is open
 - Check `MCP Bridge → Status` in the Flame menu
 - Verify `flame_mcp_bridge.py` is in `/opt/Autodesk/shared/python/`
-- Run `lsof -i :4444` — should show Flame listening
+- Check the Unix socket exists: `ls -la ~/Projects/flame-mcp/run/flame_mcp.sock` — should be `srw-------`
+- If Unix socket is absent, the bridge falls back to TCP; run `lsof -i :4444` to confirm Flame is listening
 
 **Low RAG relevance scores on common operations**
 - If a pattern scores < 60%, Claude will auto-learn it after a successful run
@@ -460,7 +461,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Check daemon logs: `journalctl --user -u ollama` (Linux) or `ollama serve` output (Mac)
 
 **Port 4444 is already in use**
-Edit both `flame_mcp_bridge.py` and `flame_mcp_server.py`, change `BRIDGE_PORT = 4444` to an unused port. Values must match.
+The bridge uses a Unix domain socket by default (`~/Projects/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `flame_mcp_server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
 
 **`pip install` fails with `--user` conflict**
 Add `--no-user` to pip commands. Happens when `install.user = true` is set globally.

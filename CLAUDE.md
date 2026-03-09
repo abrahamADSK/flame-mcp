@@ -131,8 +131,8 @@ a TCP bridge (127.0.0.1:4444) that executes it live inside Flame.
 ## Flame Environment
 
 - **Application:** Autodesk Flame 2026, macOS
-- **Bridge:** TCP socket on `127.0.0.1:4444` — JSON payload `{"code": "..."}`,
-  returns `{"result": "..."}` or `{"error": "..."}`
+- **Bridge:** Unix domain socket `run/flame_mcp.sock` (falls back to TCP `127.0.0.1:4444`) —
+  JSON payload `{"code": "..."}`, returns `{"result": "..."}` or `{"error": "..."}`
 - **Entry point:** the `flame` module is always available inside the bridge
 - **Qt:** Flame 2026 uses PySide6 (not PySide2)
 - **Python:** the Flame-embedded Python interpreter (not system Python)
