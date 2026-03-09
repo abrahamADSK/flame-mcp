@@ -936,6 +936,17 @@ class _FlameChat:
                 btype = block.get('type', '')
                 if btype == 'text':
                     text = block.get('text', '').strip()
+                    # Strip thinking blocks emitted by reasoning models (Qwen3,
+                    # DeepSeek-R1, etc.).  These often contain raw <function=…>
+                    # syntax that must NOT be shown as plain chat text.
+                    # We remove both complete blocks and any unclosed opening
+                    # tags so the user never sees internal reasoning output.
+                    import re as _re
+                    text = _re.sub(r'<think>.*?</think>', '', text,
+                                   flags=_re.DOTALL).strip()
+                    # Catch any unclosed <think> at end of partial stream chunks
+                    text = _re.sub(r'<think>.*$', '', text,
+                                   flags=_re.DOTALL).strip()
                     if text:
                         assistant_parts.append(text)
                 elif btype == 'tool_use':
@@ -1389,20 +1400,9 @@ class _FlameChat:
         """
         Build the prompt for 'claude -p', injecting recent conversation history
         so Claude Code has context for follow-up requests.
-
-        When using any Ollama backend, prepend '/no_think' to suppress Qwen3's
-        extended-thinking mode.  Without this, Qwen3 emits thinking blocks that
-        contain raw <function=…></function> syntax which claude -p streams as
-        plain 'text' events instead of structured 'tool_use' blocks, causing
-        the widget to display them verbatim instead of executing them.
         """
         history = self._messages[:-1]   # everything except the latest user message
         user_msg = self._messages[-1]['content']
-
-        # Disable Qwen3 extended-thinking for all Ollama backends.
-        # /no_think is a Qwen3-specific directive; harmless on other models.
-        if getattr(self, '_backend', '') in ('ollama', 'ollama_cloud', 'ollama_mac'):
-            user_msg = '/no_think ' + user_msg
 
         if not history:
             return user_msg
