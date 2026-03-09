@@ -207,6 +207,21 @@ def _check_dangerous(code: str):
     except Exception:
         pass  # AST check is best-effort — never block on parse failure
 
+    # A2-EXT — PyExporter.export() called outside schedule_idle_event hangs Flame
+    # even with foreground=False, because the Qt event loop cannot process the export
+    # while the Python hook thread is still blocked waiting to return.
+    if re.search(r'\bPyExporter\s*\(', code) and not re.search(r'schedule_idle_event', code):
+        hits.append(
+            "  • PyExporter().export() called without schedule_idle_event — "
+            "this hangs Flame's main thread even with foreground=False.\n"
+            "    ✅ Instead:\n"
+            "       def _do_export():\n"
+            "           exporter = flame.PyExporter()\n"
+            "           exporter.foreground = False\n"
+            "           exporter.export([seq], preset_path, output_dir)\n"
+            "       flame.schedule_idle_event(_do_export)"
+        )
+
     if not hits:
         return None
     return (
@@ -424,6 +439,10 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    ★ STOP IMMEDIATELY after the first successful tool result that answers the question.
      Do NOT make additional tool calls to verify, explore, or gather extra context.
      Answer the user with the result you have. This is not optional.
+     ★ EXPORT SPECIAL CASE: once execute_python confirms "Export scheduled" or prints
+     the output path, STOP — do NOT poll the filesystem, do NOT re-export, do NOT
+     call execute_python again to "verify" the file. The export runs asynchronously
+     after your call returns; a second call will deadlock Flame.
 
 2. GROUNDING RULE — For anything NOT covered by a dedicated tool:
    - ALWAYS call search_flame_docs FIRST before writing any execute_python code.
@@ -446,8 +465,15 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
      HIDDEN = {"Timeline FX", "Grabbed References"}
      visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
 
-4. Never call flame.batch.render() directly — it crashes Flame.
-   Schedule renders via flame.schedule_idle_event(render_fn).
+4. Never call flame.batch.render() or PyExporter().export() directly — both block
+   Flame's main thread and freeze the application (even with foreground=False).
+   ALWAYS schedule via flame.schedule_idle_event():
+     def _do_export():
+         exporter = flame.PyExporter()
+         exporter.foreground = False
+         exporter.export([seq], preset_path, output_dir)
+     flame.schedule_idle_event(_do_export)
+   execute_python will BLOCK any PyExporter call not wrapped in schedule_idle_event.
 
 5. Always print output in execute_python — every call must end with print().
    The result is only visible through stdout capture.
@@ -470,10 +496,11 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    Just tell the user: "Flame bridge is not connected — open Flame and
    make sure flame_mcp_bridge.py is installed in /opt/Autodesk/shared/python/."
 
-10. NEVER use these patterns — they crash Flame (execute_python will block them):
+10. NEVER use these patterns — they crash or hang Flame (execute_python will block them):
    - len(flame.projects) or for x in flame.projects  → PyProjectSelector is not iterable
    - flame.projects.current_project.libraries         → returns None, use ws.libraries
    - flame.batch.render()                             → blocks main thread
+   - PyExporter().export() without schedule_idle_event → hangs main thread / deadlock
    - import wiretap                                   → crash-prone
    - dir(flame...)                                    → use search_flame_docs instead
    To list all Flame projects: use list_all_projects() or os.listdir("/opt/Autodesk/project")

@@ -291,23 +291,30 @@ Operators say: *"export a QuickTime"*, *"export with a preset"*,
 *"export for approval"*, *"export the master"*, *"export with handles"*
 
 ```python
-exporter = flame.PyExporter()
+# ⚠️  CRITICAL: PyExporter().export() MUST be called inside schedule_idle_event.
+# Calling it directly (even with foreground=False) blocks Flame's main thread
+# and causes a deadlock hang. The guard in execute_python will block direct calls.
 
-exporter.export(
-    sources,                  # list of clips/segments/sequences to export
-    preset_path,              # str — path to .xml export preset
-    output_directory,         # str — destination folder
-    background_job_settings=None,   # dict — BG export settings (optional)
-    hooks=None                # dict — hook callbacks (optional)
-)
+# ✅ CORRECT pattern — always use schedule_idle_event:
+def _do_export():
+    exporter = flame.PyExporter()
+    exporter.foreground = False          # background / Backburner
+    exporter.export(
+        sources,                         # list of clips/segments/sequences
+        preset_path,                     # str — path to .xml export preset
+        output_directory,                # str — destination folder
+    )
+    print("Export scheduled →", output_directory)
 
-# Background export example:
-exporter.export(
-    sources=[clip],
-    preset_path="/opt/Autodesk/presets/2026/export/file/QuickTime.xml",
-    output_directory="/deliveries/today/",
-    background_job_settings={"enabled": True}
-)
+flame.schedule_idle_event(_do_export)
+print("Export scheduled via idle event.")
+# ★ STOP after this print — do NOT poll the filesystem or call execute_python again.
+# The export runs after the hook returns; a second call will deadlock Flame.
+
+# ❌ WRONG — hangs Flame even though it looks safe:
+# exporter = flame.PyExporter()
+# exporter.foreground = False
+# exporter.export([seq], preset_path, output_dir)   # ← BLOCKED by execute_python guard
 ```
 
 ### Export Presets Location

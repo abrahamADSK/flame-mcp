@@ -3346,3 +3346,43 @@ instantiate the class.
 
 
 ---
+
+## ── Safe export with PyExporter via schedule_idle_event ─────────────────────────
+
+> ⚠️  CRITICAL: PyExporter().export() MUST run inside schedule_idle_event.
+> Calling it directly (even with foreground=False) blocks Flame's main thread
+> and causes a deadlock. The execute_python guard blocks direct PyExporter calls.
+
+```python
+import flame, os
+
+# Step 1: locate the sequence (example: search all reel groups on desktop)
+ws = flame.projects.current_project.current_workspace
+seq = None
+for rg in ws.desktop.reel_groups:
+    for reel in rg.reels:
+        if hasattr(reel, 'sequences'):
+            for s in reel.sequences:
+                if str(s.name).strip("'") == "MY_SEQUENCE":
+                    seq = s
+                    break
+
+if not seq:
+    print("ERROR: sequence not found")
+else:
+    output_dir = "/Users/abraham/Desktop/EXPORTS_MCP"
+    preset_path = "/opt/Autodesk/presets/2026.2.2/export/presets/flame/movie_file/H.264/QuickTime (High 8-bit).xml"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Step 2: schedule export via idle event — NEVER call .export() directly
+    _seq = seq  # capture for lambda
+    def _do_export():
+        exporter = flame.PyExporter()
+        exporter.foreground = False
+        exporter.export([_seq], preset_path, output_dir)
+
+    flame.schedule_idle_event(_do_export)
+    print("Export scheduled via idle event →", output_dir)
+    # ★ STOP here — do NOT poll filesystem or call execute_python again.
+    # The export runs after this call returns. A second call will deadlock Flame.
+```
