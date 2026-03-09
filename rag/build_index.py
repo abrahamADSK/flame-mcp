@@ -27,6 +27,7 @@ First run downloads the embedding model (~130 MB from HuggingFace, once).
 import os
 import re
 import sys
+from typing import Any
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -93,7 +94,7 @@ def collect_docs() -> list[str]:
 
 # ── Embedding ──────────────────────────────────────────────────────────────────
 
-def _make_embedding_fn():
+def _make_embedding_fn() -> Any:
     """
     Returns a ChromaDB-compatible embedding function using the BGE model.
     Downloads the model on first use (~130 MB, cached in ~/.cache/huggingface/).
@@ -119,7 +120,7 @@ def _make_embedding_fn():
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def build():
+def build() -> None:
     try:
         import chromadb
     except ImportError:

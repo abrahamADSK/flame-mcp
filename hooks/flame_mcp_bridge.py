@@ -34,6 +34,7 @@ BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
 # ── Dynamic project root detection ────────────────────────────────────────────
+# Note: _BRIDGE_SOCKET_PATH is set after _PROJECT_ROOT is known (see below)
 # When the bridge is in hooks/ (development), derive root from __file__.
 # When installed to /opt/Autodesk/shared/python/, set FLAME_MCP_ROOT in the env.
 _THIS_FILE    = os.path.abspath(__file__)
@@ -45,6 +46,12 @@ if (os.path.basename(_HOOKS_DIR) == 'hooks' and
 else:
     _PROJECT_ROOT = os.environ.get('FLAME_MCP_ROOT',
                                    os.path.expanduser('~/Projects/flame-mcp'))
+
+# A13 — Unix domain socket path (derived from project root; no new deps required)
+_BRIDGE_SOCKET_PATH = os.environ.get(
+    'FLAME_BRIDGE_SOCKET',
+    os.path.join(_PROJECT_ROOT, 'run', 'flame_mcp.sock')
+)
 
 # Crash recovery: written before each exec, cleared after success.
 # If Flame crashes mid-exec, this file will contain the offending code
@@ -64,6 +71,7 @@ MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud ───────────────────────────────────────────────────────
+    ("Sonnet 4.6",           "claude-sonnet-4-6",           "anthropic"),
     ("Sonnet 4.5",           "claude-sonnet-4-5-20250929",  "anthropic"),
     ("Haiku 4.5",            "claude-haiku-4-5-20251001",   "anthropic"),
     # ── Self-hosted Ollama  (Linux workstation / NAS on the LAN, needs GPU) ──
@@ -80,7 +88,7 @@ AVAILABLE_MODELS = [
     # ── Custom ────────────────────────────────────────────────────────────────
     ("Custom",               "",                             "anthropic"),
 ]
-DEFAULT_MODEL    = "claude-sonnet-4-5-20250929"
+DEFAULT_MODEL    = "claude-sonnet-4-6"
 DEFAULT_BACKEND  = "anthropic"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
@@ -193,7 +201,7 @@ def _start_bridge():
 
 
 def _stop_bridge():
-    """Stop the TCP server by closing the socket."""
+    """Stop the server by closing the socket (Unix or TCP) and cleaning up."""
     global _server_socket, _bridge_active
 
     if not _bridge_active:
@@ -205,32 +213,83 @@ def _stop_bridge():
             _server_socket.close()
         except Exception:
             pass
+        # A13 — remove Unix socket file if it was created by this run
+        if hasattr(socket, 'AF_UNIX') and os.path.exists(_BRIDGE_SOCKET_PATH):
+            try:
+                os.unlink(_BRIDGE_SOCKET_PATH)
+            except Exception:
+                pass
 
     _bridge_active = False
     print("[FlameMCPBridge] Stopped.")
 
 
 def _run_server():
-    """Main TCP server loop. Accepts incoming connections."""
+    """
+    Main server loop. Accepts incoming connections.
+    A13 — Uses a Unix domain socket by default (owner-only file permissions replace
+    TCP network authentication). Falls back to TCP if AF_UNIX is unavailable.
+    """
     global _server_socket, _bridge_active
 
-    _server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    _server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # A13 — prefer Unix socket; Python 3.9+ on macOS/Linux always has AF_UNIX
+    _use_unix = hasattr(socket, 'AF_UNIX')
+    _bound_ok = False
 
-    try:
-        _server_socket.bind((BRIDGE_HOST, BRIDGE_PORT))
-    except OSError as e:
-        print(f"[FlameMCPBridge] ERROR opening port {BRIDGE_PORT}: {e}", file=sys.stderr)
+    if _use_unix:
+        run_dir = os.path.dirname(_BRIDGE_SOCKET_PATH)
+        try:
+            os.makedirs(run_dir, exist_ok=True)
+            os.chmod(run_dir, 0o700)
+        except Exception:
+            pass
+        # Remove stale socket file left over from a previous Flame session
+        if os.path.exists(_BRIDGE_SOCKET_PATH):
+            try:
+                os.unlink(_BRIDGE_SOCKET_PATH)
+            except Exception:
+                pass
+        _server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            _server_socket.bind(_BRIDGE_SOCKET_PATH)
+            try:
+                os.chmod(_BRIDGE_SOCKET_PATH, 0o600)  # owner-only access
+            except Exception:
+                pass
+            _bound_ok = True
+        except OSError as e:
+            print(f"[FlameMCPBridge] Unix socket bind failed: {e} — falling back to TCP",
+                  file=sys.stderr)
+            try:
+                _server_socket.close()
+            except Exception:
+                pass
+            _use_unix = False
+
+    if not _use_unix:
+        _server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            _server_socket.bind((BRIDGE_HOST, BRIDGE_PORT))
+            _bound_ok = True
+        except OSError as e:
+            print(f"[FlameMCPBridge] ERROR opening port {BRIDGE_PORT}: {e}", file=sys.stderr)
+
+    if not _bound_ok:
         return
 
     _server_socket.listen(5)
     _bridge_active = True
-    print(f"[FlameMCPBridge] Active on {BRIDGE_HOST}:{BRIDGE_PORT}")
+
+    if _use_unix:
+        print(f"[FlameMCPBridge] Active on {_BRIDGE_SOCKET_PATH} (Unix socket)")
+    else:
+        print(f"[FlameMCPBridge] Active on {BRIDGE_HOST}:{BRIDGE_PORT} (TCP fallback)")
 
     while _bridge_active:
         try:
             _server_socket.settimeout(1.0)
-            conn, addr = _server_socket.accept()
+            conn, _addr = _server_socket.accept()
             t = threading.Thread(target=_handle_connection, args=(conn,), daemon=True)
             t.start()
         except socket.timeout:

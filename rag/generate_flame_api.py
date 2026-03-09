@@ -21,21 +21,37 @@ import json
 import os
 import sys
 import textwrap
+from typing import Any, Union
 
-BRIDGE_HOST = '127.0.0.1'
-BRIDGE_PORT = 4444
-ROOT        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_PATH = os.path.join(ROOT, 'docs', 'flame_api_full.md')
+BRIDGE_HOST   = '127.0.0.1'
+BRIDGE_PORT   = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))
+ROOT          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_PATH   = os.path.join(ROOT, 'docs', 'flame_api_full.md')
+
+# A13 — Unix domain socket path (preferred over TCP for security)
+_BRIDGE_SOCKET = os.environ.get(
+    'FLAME_BRIDGE_SOCKET',
+    os.path.join(ROOT, 'run', 'flame_mcp.sock')
+)
 
 
 # ── Bridge helper ─────────────────────────────────────────────────────────────
 
 def _send(code: str, timeout: int = 60) -> dict:
-    """Send Python code to the Flame bridge and return the parsed result."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    """
+    Send Python code to the Flame bridge and return the parsed result.
+    A13 — Prefers Unix socket; falls back to TCP if socket file absent.
+    """
+    use_unix = hasattr(socket, 'AF_UNIX') and os.path.exists(_BRIDGE_SOCKET)
+    if use_unix:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        addr: Union[str, tuple] = _BRIDGE_SOCKET
+    else:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        addr = (BRIDGE_HOST, BRIDGE_PORT)
     s.settimeout(timeout)
     try:
-        s.connect((BRIDGE_HOST, BRIDGE_PORT))
+        s.connect(addr)
         s.sendall((json.dumps({'code': code}) + '\n').encode('utf-8'))
         data = b''
         while not data.endswith(b'\n'):

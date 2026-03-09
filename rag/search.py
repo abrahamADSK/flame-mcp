@@ -11,6 +11,7 @@ The index must be built first:
 import os
 import sys
 import datetime
+from typing import Any
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
@@ -22,7 +23,7 @@ if ROOT not in sys.path:
 LOG_FILE  = os.path.join(ROOT, 'logs', 'flame_rag.log')
 
 
-def _log(msg: str):
+def _log(msg: str) -> None:
     ts = datetime.datetime.now().strftime('%H:%M:%S')
     with open(LOG_FILE, 'a') as f:
         f.write(f"[{ts}] {msg}\n")
@@ -32,7 +33,7 @@ _client     = None
 _collection = None
 
 
-def _get_embedding_fn():
+def _get_embedding_fn() -> Any:
     """
     Returns the BGE embedding function used by build_index.py.
     MUST match rag/config.py — build and query must use the same model
@@ -44,7 +45,7 @@ def _get_embedding_fn():
     return SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
 
 
-def _get_collection():
+def _get_collection() -> Any | None:
     global _client, _collection
     if _collection is not None:
         return _collection
@@ -67,7 +68,7 @@ def _get_collection():
         return None
 
 
-def search(query: str, n_results: int = 3) -> tuple:
+def search(query: str, n_results: int = 3) -> tuple[str, int]:
     """
     Search the documentation index for content relevant to `query`.
     Returns (text: str, max_relevance: int) where max_relevance is 0-100.

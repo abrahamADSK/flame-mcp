@@ -227,7 +227,8 @@ WRITE_ALLOWED_MODELS = {
     "claude-sonnet",
     "claude-3-5-sonnet",
     "claude-3-7-sonnet",
-    "claude-sonnet-4",   # matches claude-sonnet-4-5-... etc.
+    "claude-sonnet-4",    # matches claude-sonnet-4-5-..., claude-sonnet-4-6, etc.
+    "claude-sonnet-4-6",  # explicit entry for Sonnet 4.6
     "claude-opus-4",
 }
 
@@ -276,6 +277,11 @@ _last_rag_score: int = 100  # default high so we don't nag on first call
 # A12 — In-session RAG cache: identical queries return the same chunks
 # without hitting ChromaDB again. Flushed when the server restarts.
 _search_cache: dict[int, tuple[str, int]] = {}
+
+# A4 — RAG rebuild in-progress flag.
+# Set to True while build_index.py is running to warn search_flame_docs()
+# that results may be stale. Cleared by a background thread once rebuild ends.
+_rag_rebuild_flag: list[bool] = [False]   # list so inner functions can mutate it
 
 
 def _tok(text: str) -> int:
@@ -348,6 +354,13 @@ def _stats_footer() -> str:
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
+
+# A13 — Unix domain socket path (more secure than TCP; owner-only file permissions).
+# Override with FLAME_BRIDGE_SOCKET env var. Falls back to TCP if socket file absent.
+_BRIDGE_SOCKET = Path(os.environ.get(
+    'FLAME_BRIDGE_SOCKET',
+    str(_SERVER_DIR / 'run' / 'flame_mcp.sock')
+))
 
 mcp = FastMCP(
     "flame",
@@ -454,13 +467,24 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 
 def _call_flame(code: str, timeout: int = 15) -> dict:
     """
-    Send Python code to the Flame bridge via TCP socket.
+    Send Python code to the Flame bridge.
+    A13 — Prefers Unix domain socket (owner-only, no network exposure);
+    falls back to TCP if the socket file does not exist.
     Returns the result as a dictionary.
     """
+    # A13 — choose transport: Unix socket (preferred) or TCP fallback
+    use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if use_unix:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            addr: str | tuple = str(_BRIDGE_SOCKET)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            addr = (BRIDGE_HOST, BRIDGE_PORT)
+
+        with sock as s:
             s.settimeout(timeout)
-            s.connect((BRIDGE_HOST, BRIDGE_PORT))
+            s.connect(addr)
 
             payload = json.dumps({'code': code}) + "\n"
             s.sendall(payload.encode('utf-8'))
@@ -1108,10 +1132,15 @@ def search_flame_docs(query: str) -> str:
                     f"ℹ️  Read-only mode ({_get_current_model()}) — switch to Sonnet to save new patterns."
                 )
 
+        # A4 — Warn if RAG index is being rebuilt right now
+        rebuild_note = (
+            "\n⏳ Note: RAG index is currently being rebuilt — results may be stale."
+            if _rag_rebuild_flag[0] else ""
+        )
         footer = (
             f"\n─────────────────────────────\n"
             f"🔍 RAG · max relevance {max_score}% · ~{result_tokens} tokens · ~{saved} saved vs full doc"
-            f"{coverage_note}"
+            f"{coverage_note}{rebuild_note}"
             + _stats_footer()
         )
         full_result = result + footer
@@ -1188,15 +1217,41 @@ def learn_pattern(description: str, code: str) -> str:
     _stats['patterns_learned'] += 1
 
     # Rebuild RAG index in the background (non-blocking)
+    # A4 — Lock file + in-memory flag prevent concurrent readers from using a
+    #      partially-rebuilt ChromaDB. Cleared by a cleanup thread once done.
+    _lock_file = _SERVER_DIR / "rag" / ".rebuilding"
     try:
         python_exe = sys.executable
-        subprocess.Popen(
+        _lock_file.touch(exist_ok=True)
+        _rag_rebuild_flag[0] = True
+        _search_cache.clear()   # A4 — invalidate stale cached results
+
+        proc = subprocess.Popen(
             [python_exe, str(build_script)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+        def _rag_cleanup(p: subprocess.Popen, lock: Path) -> None:
+            p.wait()
+            _rag_rebuild_flag[0] = False
+            try:
+                lock.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        import threading as _threading
+        _threading.Thread(
+            target=_rag_cleanup, args=(proc, _lock_file), daemon=True
+        ).start()
+
         rebuild_status = "RAG index rebuild started in background ✅"
     except Exception as e:
+        _rag_rebuild_flag[0] = False
+        try:
+            _lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
         rebuild_status = f"RAG index rebuild failed: {e}"
 
     return (
@@ -1331,6 +1386,9 @@ def read_flame_log(
         read_flame_log("wiretap.log", grep="IFFFS")        # IFFFS operations
         read_flame_log("flame.log", lines=200, grep="Traceback|Error|crash")
     """
+    # A9 — Explicit path traversal guard: Pydantic blocks '/' and '\' but '..' passes through.
+    if '..' in log_name or log_name.startswith('.'):
+        return "❌ Error: invalid log name (path traversal not allowed)"
     log_path = _LOGS_DIR / log_name
     if not log_path.exists():
         # Suggest close matches
