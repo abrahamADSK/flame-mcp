@@ -42,3 +42,4 @@ logs/*.log
 # Copy config.example.json → config.json and edit locally
 config.json
 ollama_key
+ollama_key
