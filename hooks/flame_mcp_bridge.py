@@ -790,6 +790,13 @@ class _FlameChat:
             cmd = [claude_path, '-p', '--verbose', '--output-format', 'stream-json']
             if self._model:
                 cmd.extend(['--model', self._model])
+            # Cap agentic turns for Ollama models.  Qwen3 in thinking mode tends
+            # to plan exhaustive exploration and then execute every step, running
+            # 15-20 tool calls for questions that need 1-2.  --max-turns 6 gives
+            # enough headroom for multi-step tasks while preventing runaway loops.
+            # Anthropic models are left uncapped (they follow stop instructions).
+            if getattr(self, '_backend', '') in ('ollama', 'ollama_cloud', 'ollama_mac'):
+                cmd.extend(['--max-turns', '6'])
             cmd.append(prompt)
 
             proc = subprocess.Popen(
