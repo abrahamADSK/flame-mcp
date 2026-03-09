@@ -27,8 +27,8 @@ The system has two components:
 
 ```
 ┌──────────────────┐    MCP (stdio)    ┌──────────────────────┐    TCP 4444    ┌─────────────────┐
-│  Claude Code /   │ ◄──────────────── │   flame_mcp_server   │ ◄──────────── │  Autodesk Flame │
-│  Claude Desktop  │ ─────────────────►│   (Python, macOS)    │ ─────────────►│  Python bridge  │
+│  Claude Code /   │ ◄──────────────── │   flame_mcp_server   │ ◄────────────  │  Autodesk Flame │
+│  Claude Desktop  │ ─────────────────►│   (Python, macOS)    │ ─────────────► │  Python bridge  │
 └──────────────────┘                   └──────────────────────┘                └─────────────────┘
 ```
 
