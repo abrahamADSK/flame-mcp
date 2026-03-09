@@ -41,3 +41,4 @@ logs/*.log
 # User-specific config (hostnames, backend, model selection)
 # Copy config.example.json → config.json and edit locally
 config.json
+ollama_key
