@@ -43,3 +43,4 @@ logs/*.log
 config.json
 ollama_key
 ollama_key
+logs/crash_recovery.json

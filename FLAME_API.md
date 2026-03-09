@@ -3370,7 +3370,7 @@ for rg in ws.desktop.reel_groups:
 if not seq:
     print("ERROR: sequence not found")
 else:
-    output_dir = "/Users/abraham/Desktop/EXPORTS_MCP"
+    output_dir = "/Users/YOUR_USERNAME/Desktop/EXPORTS_MCP"
     preset_path = "/opt/Autodesk/presets/2026.2.2/export/presets/flame/movie_file/H.264/QuickTime (High 8-bit).xml"
     os.makedirs(output_dir, exist_ok=True)
 
