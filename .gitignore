@@ -37,3 +37,7 @@ logs/*.log
 
 # Claude Code local settings (user-specific paths)
 .claude/
+
+# User-specific config (hostnames, backend, model selection)
+# Copy config.example.json → config.json and edit locally
+config.json

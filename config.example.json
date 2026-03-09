@@ -1,0 +1,5 @@
+{
+  "model": "claude-sonnet-4-5-20250929",
+  "backend": "anthropic",
+  "ollama_url": "http://localhost:11434"
+}
