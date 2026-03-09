@@ -302,6 +302,11 @@ def _handle_connection(conn):
                     result['flame_state'] = 'possibly_corrupted'
                     _log("  ⚠️  Flame C++ exception detected — UI may be corrupted. "
                          "Consider restarting Flame if behaviour seems wrong.")
+                else:
+                    # Normal Python exception (AttributeError, NameError, etc.) —
+                    # NOT a Flame crash.  Clear crash recovery so the next Flame
+                    # startup does not show a false "previous session crashed" warning.
+                    _clear_crash_recovery()
             finally:
                 done.set()
 
@@ -1384,9 +1389,20 @@ class _FlameChat:
         """
         Build the prompt for 'claude -p', injecting recent conversation history
         so Claude Code has context for follow-up requests.
+
+        When using any Ollama backend, prepend '/no_think' to suppress Qwen3's
+        extended-thinking mode.  Without this, Qwen3 emits thinking blocks that
+        contain raw <function=…></function> syntax which claude -p streams as
+        plain 'text' events instead of structured 'tool_use' blocks, causing
+        the widget to display them verbatim instead of executing them.
         """
         history = self._messages[:-1]   # everything except the latest user message
         user_msg = self._messages[-1]['content']
+
+        # Disable Qwen3 extended-thinking for all Ollama backends.
+        # /no_think is a Qwen3-specific directive; harmless on other models.
+        if getattr(self, '_backend', '') in ('ollama', 'ollama_cloud', 'ollama_mac'):
+            user_msg = '/no_think ' + user_msg
 
         if not history:
             return user_msg

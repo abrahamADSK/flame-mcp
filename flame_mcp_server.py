@@ -412,7 +412,14 @@ You are controlling Autodesk Flame 2026 via a TCP bridge (port 4444).
 8. Call session_stats when the user asks about efficiency, token usage,
    or at the end of long multi-step tasks. It is not required after every response.
 
-9. NEVER use these patterns — they crash Flame (execute_python will block them):
+9. BRIDGE CONNECTION — If any tool returns an error that contains
+   'Cannot connect to Flame on port', STOP immediately.
+   Do NOT call search_flame_docs or execute_python as a fallback —
+   they will fail for the exact same reason (bridge is not running).
+   Just tell the user: "Flame bridge is not connected — open Flame and
+   make sure flame_mcp_bridge.py is installed in /opt/Autodesk/shared/python/."
+
+10. NEVER use these patterns — they crash Flame (execute_python will block them):
    - len(flame.projects) or for x in flame.projects  → PyProjectSelector is not iterable
    - flame.projects.current_project.libraries         → returns None, use ws.libraries
    - flame.batch.render()                             → blocks main thread
