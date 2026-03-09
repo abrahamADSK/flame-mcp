@@ -64,7 +64,7 @@ AVAILABLE_MODELS = [
     ("qwen3-coder 480B ☁",   "qwen3-coder:480b-cloud",      "ollama_cloud"),
     # ── Mac-local offline  (small model downloaded on the Mac, no internet) ──
     #   Requires: brew install ollama && ollama pull qwen2.5-coder:7b
-    #   ~4 GB download, works with no internet and no glorfindel
+    #   ~4 GB download, works with no internet and no gpu-server
     ("qwen2.5-coder 7B 🍎",  "qwen2.5-coder:7b",            "ollama_mac"),
     # ── Custom ────────────────────────────────────────────────────────────────
     ("Custom",               "",                             "anthropic"),
@@ -76,7 +76,7 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → 
 # URL for backends that use the Mac's own Ollama daemon (cloud proxy + offline models).
 # ollama_cloud:  localhost Ollama forwards the :cloud model to ollama.com servers.
 # ollama_mac:    localhost Ollama runs the model directly (offline, no GPU needed).
-# Neither requires glorfindel — Ollama must be installed on the Mac (brew install ollama).
+# Neither requires gpu-server — Ollama must be installed on the Mac (brew install ollama).
 OLLAMA_MAC_URL = "http://localhost:11434"
 
 # Context window forced when pre-loading a self-hosted Ollama model.
@@ -696,7 +696,7 @@ class _FlameChat:
             # Four backends, two physical paths:
             #
             #  anthropic    → api.anthropic.com  (default, no extra setup)
-            #  ollama       → glorfindel:11434   (LAN GPU server, big models)
+            #  ollama       → gpu-server:11434   (LAN GPU server, big models)
             #  ollama_cloud → localhost:11434    (Mac Ollama daemon → ollama.com cloud)
             #  ollama_mac   → localhost:11434    (Mac Ollama daemon, local model, offline)
             #
@@ -1044,7 +1044,7 @@ class _FlameChat:
         self._model   = model_id
         self._backend = backend
         self._save_model_config(model_id, backend)
-        # URL widget only needed for LAN Ollama (glorfindel) — cloud/mac use localhost
+        # URL widget only needed for LAN Ollama (gpu-server) — cloud/mac use localhost
         self._ollama_url_widget.setVisible(backend == "ollama")
         # Cloud key widget hidden — Ollama Mac daemon handles cloud auth internally
         self._ollama_cloud_key_widget.setVisible(False)
@@ -1123,7 +1123,7 @@ class _FlameChat:
         server hostname (ollama backend) or masked API key (ollama_cloud).
 
         Examples:
-          "qwen3-coder 30B"       → "qwen3-coder 30B  · glorfindel"
+          "qwen3-coder 30B"       → "qwen3-coder 30B  · gpu-server"
           "qwen3-coder 480B ☁"   → "qwen3-coder 480B ☁  · ollama_ab…"
         Called at startup and whenever the URL or cloud key changes.
         """
@@ -1216,7 +1216,7 @@ class _FlameChat:
         Claude Code on macOS can talk directly to any Ollama server on the LAN —
         no proxy required.
 
-        Self-hosted:  ANTHROPIC_BASE_URL = config.json → ollama_url  (e.g. glorfindel)
+        Self-hosted:  ANTHROPIC_BASE_URL = config.json → ollama_url  (e.g. gpu-server)
                       ANTHROPIC_API_KEY  = "ollama"  (arbitrary, Ollama ignores it)
         Cloud ☁:      ANTHROPIC_BASE_URL = http://localhost:11434  (Mac Ollama daemon)
                       Model tag = qwen3-coder:480b-cloud  (daemon proxies to ollama.com)

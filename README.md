@@ -149,7 +149,7 @@ In addition to natural language, the chat input accepts these special commands:
 | Backend | Model | Requires | Works offline? |
 |---------|-------|----------|----------------|
 | `anthropic` | Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
-| `ollama` | qwen3-coder 30B | glorfindel on LAN + GPU | ✗ |
+| `ollama` | qwen3-coder 30B | gpu-server on LAN + GPU | ✗ |
 | `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
 | `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ ⚠️ |
 
@@ -308,7 +308,7 @@ Three Ollama-based backends are available, covering every scenario:
 ┌─────────────────┬──────────────────────┬────────────────────────────────────┐
 │ Backend         │ Physical path        │ Use case                           │
 ├─────────────────┼──────────────────────┼────────────────────────────────────┤
-│ ollama          │ Mac → glorfindel LAN │ Best quality, big GPU model        │
+│ ollama          │ Mac → gpu-server LAN │ Best quality, big GPU model        │
 │ ollama_cloud ☁  │ Mac localhost → ☁    │ Anywhere with internet, no GPU     │
 │ ollama_mac  🍎  │ Mac localhost        │ Offline emergency, no internet     │
 └─────────────────┴──────────────────────┴────────────────────────────────────┘
@@ -316,13 +316,13 @@ Three Ollama-based backends are available, covering every scenario:
 
 `ollama_cloud` and `ollama_mac` both require **Ollama installed on the Mac** — a lightweight daemon (~50 MB, no models bundled) that listens at `localhost:11434` and implements the Anthropic Messages API. For cloud models it acts as a transparent proxy to ollama.com; for local models it runs them directly using Mac CPU/GPU.
 
-> Ollama was **not** previously required on the Mac — it only ran on glorfindel. This is a new requirement for the two Mac-based backends.
+> Ollama was **not** previously required on the Mac — it only ran on gpu-server. This is a new requirement for the two Mac-based backends.
 
 ### Option 1 — Self-hosted GPU (ollama backend)
 
-Best quality. Runs on the Linux workstation (glorfindel) with a dedicated GPU.
+Best quality. Runs on the Linux workstation (gpu-server) with a dedicated GPU.
 
-**On the Linux machine (glorfindel):**
+**On the Linux machine (gpu-server):**
 
 ```bash
 # Install Ollama
@@ -349,7 +349,7 @@ ollama create qwen3-flame -f ~/Modelfile
 **In the Flame widget:**
 1. Select **qwen3-coder 30B** from the model dropdown
 2. Enter the server URL (e.g. `http://192.168.1.50:11434`) and press Enter
-3. The combo label updates to show `· glorfindel` confirming the server is saved
+3. The combo label updates to show `· gpu-server` confirming the server is saved
 
 > **GPU requirements:** qwen3-coder 30B (Q4_K_M, ~18.5 GB) fits in a 24 GB GPU (e.g. RTX 3090) with a 24K context window. Reduce `num_ctx` if you have less VRAM.
 
@@ -376,7 +376,7 @@ The Mac daemon forwards the request to ollama.com's servers. Authentication with
 
 ### Option 3 — Mac offline fallback (ollama_mac backend)
 
-Small model stored locally on the Mac. Works with no internet and no glorfindel — useful when working remotely on a laptop.
+Small model stored locally on the Mac. Works with no internet and no gpu-server — useful when working remotely on a laptop.
 
 **On the Mac (one-time setup, ~4 GB download):**
 
@@ -398,7 +398,7 @@ Quality is significantly lower than the 30B or 480B models. Runs on Mac CPU (no 
 
 Ollama implements the [Anthropic Messages API](https://ollama.com/blog/claude) natively (v0.14+). The bridge sets `ANTHROPIC_BASE_URL` before launching the `claude` CLI subprocess:
 
-- `ollama` → `http://<ollama_url>` (glorfindel LAN address)
+- `ollama` → `http://<ollama_url>` (gpu-server LAN address)
 - `ollama_cloud` → `http://localhost:11434` (Mac daemon → cloud proxy)
 - `ollama_mac` → `http://localhost:11434` (Mac daemon → local model)
 
