@@ -17,3 +17,9 @@ and search.py (read). If you change it here, delete rag/index/ and rebuild.
 #
 # Switched to bge-large for better recall on exact Flame API method names (C6).
 EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+
+# C3 — Hybrid BM25 + semantic search via Reciprocal Rank Fusion
+# BM25_CANDIDATES: how many candidates each retriever fetches before fusion
+# RRF_K: RRF damping constant (higher = less aggressive rank compression; 60 is standard)
+BM25_CANDIDATES = 20
+RRF_K           = 60

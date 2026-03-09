@@ -24,6 +24,7 @@ Rebuild the index whenever you change the docs:
 First run downloads the embedding model (~570 MB from HuggingFace, once).
 """
 
+import json
 import os
 import re
 import sys
@@ -165,6 +166,16 @@ def build() -> None:
         documents = [c['text']     for c in all_chunks],
         metadatas = [c['metadata'] for c in all_chunks],
     )
+
+    # C3 — Save plain-text corpus for BM25 (no embeddings needed)
+    corpus_path = os.path.join(ROOT, 'rag', 'corpus.json')
+    corpus = [
+        {'id': c['id'], 'text': c['text'], 'metadata': c['metadata']}
+        for c in all_chunks
+    ]
+    with open(corpus_path, 'w', encoding='utf-8') as f:
+        json.dump(corpus, f, ensure_ascii=False, separators=(',', ':'))
+    print(f"  BM25 corpus saved: {len(corpus)} chunks → rag/corpus.json")
 
     print(f"\nDone. {len(all_chunks)} chunks indexed.")
     print(f"Index location: {INDEX_DIR}")

@@ -312,7 +312,29 @@ _stats = {
     'dedicated_calls':    0,   # calls to hardcoded tools (no RAG needed)
     'tokens_saved_tools': 0,   # tokens saved by dedicated tools
     'patterns_learned':   0,   # auto-learned patterns added to FLAME_API.md
+    'patterns_staged':    0,   # C5 — candidates staged by non-trusted models
+    'patterns_failed':    0,   # C5 — failed executions logged for gap analysis
 }
+
+# C5 — Staging paths
+_CANDIDATES_PATH = _SERVER_DIR / "rag" / "candidates.json"
+_FAILED_PATH     = _SERVER_DIR / "rag" / "failed.json"
+
+
+def _load_json_list(path: Path) -> list[dict]:
+    """Read a JSON list file; return [] on missing/corrupt."""
+    try:
+        return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+    except Exception:
+        return []
+
+
+def _save_json_list(path: Path, data: list[dict]) -> None:
+    """Write a JSON list file atomically (best-effort)."""
+    try:
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
 
 # Tracks the max relevance score of the most recent search_flame_docs call.
 # Used by the LLM to decide whether to call learn_pattern after a success.
@@ -649,6 +671,21 @@ def execute_python(
     _stats['exec_calls'] += 1
     _stats['tokens_in']  += t_in
     _stats['tokens_out'] += t_out
+
+    # C5 — Log failed executions when RAG confidence was low (knowledge gap indicator)
+    is_error = bool(result.get('error')) or output.startswith('ERROR') or output.startswith('Traceback')
+    if is_error and _last_rag_score < _rag_threshold():
+        failed = _load_json_list(_FAILED_PATH)
+        failed.append({
+            'timestamp':  datetime.datetime.now().isoformat()[:19],
+            'rag_score':  _last_rag_score,
+            'model':      _get_current_model(),
+            'error':      output[:300],
+            'code_snippet': code.strip()[:200],
+        })
+        # Keep last 100 failures max
+        _save_json_list(_FAILED_PATH, failed[-100:])
+        _stats['patterns_failed'] += 1
 
     call_rating = _rating(t_in + t_out)
     footer = (
@@ -1233,13 +1270,30 @@ def learn_pattern(description: str, code: str) -> str:
         code:        The exact working Python code that just ran successfully.
     """
     # B1/B3 — Write permission gate: only whitelisted models may modify FLAME_API.md.
-    # Lightweight models (Qwen, Llama, etc.) can read RAG but not write to it.
+    # C5 — Non-trusted models are staged in rag/candidates.json instead of rejected.
     if not _model_can_write():
         current_model = _get_current_model()
+        candidates = _load_json_list(_CANDIDATES_PATH)
+        # Deduplicate by description
+        if not any(c.get('description', '').lower()[:40] == description.lower()[:40]
+                   for c in candidates):
+            candidates.append({
+                'id':          f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(candidates)}",
+                'status':      'candidate',
+                'description': description,
+                'code':        code.strip(),
+                'model':       current_model,
+                'timestamp':   datetime.datetime.now().isoformat()[:19],
+            })
+            _save_json_list(_CANDIDATES_PATH, candidates)
+            _stats['patterns_staged'] += 1
+            return (
+                f"📋 Pattern staged for review: '{description}'\n"
+                f"   Saved to rag/candidates.json (model: {current_model} — read-only).\n"
+                f"   A trusted model (Sonnet/Opus) can promote it to FLAME_API.md."
+            )
         return (
-            f"⛔ Pattern NOT saved — the active model ({current_model}) "
-            f"does not have write permission to the knowledge base.\n"
-            f"ℹ️  To save this pattern, switch to Sonnet or an equivalent model."
+            f"📋 Pattern already staged: '{description}' — already in candidates.json."
         )
 
     api_doc = _SERVER_DIR / "FLAME_API.md"
@@ -1360,6 +1414,10 @@ def session_stats() -> str:
         f"  dedicated tool calls      : {_stats['dedicated_calls']}\n"
         f"  Patterns learned          : {learned}"
         + (" 🧠 self-improved!" if learned > 0 else "") + "\n"
+        f"  Patterns staged (C5)      : {_stats['patterns_staged']}"
+        + (" — review rag/candidates.json" if _stats['patterns_staged'] > 0 else "") + "\n"
+        f"  Failed low-RAG execs (C5) : {_stats['patterns_failed']}"
+        + (" — gaps logged in rag/failed.json" if _stats['patterns_failed'] > 0 else "") + "\n"
         f"  Tokens sent (code)        : ~{_stats['tokens_in']}\n"
         f"  Tokens received (output)  : ~{_stats['tokens_out']}\n"
         f"  Total tokens used         : ~{used}  {_rating(used)}\n"
