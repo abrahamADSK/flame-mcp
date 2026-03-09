@@ -1,5 +1,9 @@
 {
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-4-6",
   "backend": "anthropic",
-  "ollama_url": "http://localhost:11434"
+  "ollama_url": "http://localhost:11434",
+
+  "rag_fallback_threshold": 60,
+  "fallback_model": "claude-sonnet-4-6",
+  "write_allowed_models": ["claude-opus", "claude-sonnet"]
 }

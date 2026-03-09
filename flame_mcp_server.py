@@ -233,18 +233,47 @@ WRITE_ALLOWED_MODELS = {
 }
 
 
+def _get_config() -> dict:
+    """
+    Read config.json and return it as a dict.
+    B5 — exposes runtime-tunable keys:
+      rag_fallback_threshold  int   default 60  — coverage % below which pattern is undocumented
+      fallback_model          str   default ""  — model name shown in "switch to X" hints
+      write_allowed_models    list  default []  — overrides WRITE_ALLOWED_MODELS when non-empty
+    Returns an empty dict on any read/parse failure (callers use .get() with defaults).
+    """
+    try:
+        return json.loads((_SERVER_DIR / "config.json").read_text())
+    except Exception:
+        return {}
+
+
 def _get_current_model() -> str:
     """Return the model string from config.json, or 'unknown' on failure."""
-    try:
-        cfg = json.loads((_SERVER_DIR / "config.json").read_text())
-        return cfg.get("model", "unknown")
-    except Exception:
-        return "unknown"
+    return _get_config().get("model", "unknown")
+
+
+def _rag_threshold() -> int:
+    """B5 — RAG relevance threshold from config (default 60)."""
+    return int(_get_config().get("rag_fallback_threshold", 60))
+
+
+def _fallback_model_name() -> str:
+    """B5 — Suggested write-capable model from config (default 'Sonnet')."""
+    name = _get_config().get("fallback_model", "")
+    return name if name else "Sonnet"
 
 
 def _model_can_write() -> bool:
-    """True if the active model is in the write-allowed whitelist."""
+    """
+    True if the active model is in the write-allowed list.
+    B5 — checks config's write_allowed_models first (operator override);
+    falls back to the hardcoded WRITE_ALLOWED_MODELS set.
+    """
     model = _get_current_model().lower()
+    cfg_list = _get_config().get("write_allowed_models")
+    if cfg_list:
+        return any(allowed.lower() in model for allowed in cfg_list)
     return any(allowed in model for allowed in WRITE_ALLOWED_MODELS)
 
 # ─── Token tracking ───────────────────────────────────────────────────────────
@@ -572,12 +601,12 @@ def execute_python(
     # B4 — Low-confidence warning when a read-only model has weak RAG grounding
     # Execution still proceeds; the operator sees the warning and can intervene.
     b4_warning = ""
-    if _last_rag_score < 60 and not _model_can_write():
+    if _last_rag_score < _rag_threshold() and not _model_can_write():
         b4_warning = (
             f"\n⚠️  LOW CONFIDENCE EXECUTION — RAG score {_last_rag_score}/100 "
             f"with read-only model ({_get_current_model()}).\n"
             f"   The code below may be based on hallucinated API paths. "
-            f"Switch to Sonnet if the result looks wrong.\n"
+            f"Switch to {_fallback_model_name()} if the result looks wrong.\n"
         )
 
     t_in  = _tok(code)
@@ -1118,7 +1147,7 @@ def search_flame_docs(query: str) -> str:
 
         # B2 — Coverage note depends on model write permissions
         coverage_note = ""
-        if max_score < 60:
+        if max_score < _rag_threshold():
             if _model_can_write():
                 # Sonnet/Opus: offer to learn the new pattern
                 coverage_note = (
@@ -1129,7 +1158,7 @@ def search_flame_docs(query: str) -> str:
                 # Read-only model: inform but don't offer to learn
                 coverage_note = (
                     f"\n⚠️  Low RAG coverage (max {max_score}%). "
-                    f"ℹ️  Read-only mode ({_get_current_model()}) — switch to Sonnet to save new patterns."
+                    f"ℹ️  Read-only mode ({_get_current_model()}) — switch to {_fallback_model_name()} to save new patterns."
                 )
 
         # A4 — Warn if RAG index is being rebuilt right now
