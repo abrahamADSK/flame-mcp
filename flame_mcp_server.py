@@ -312,6 +312,7 @@ _stats = {
     'patterns_learned':   0,   # auto-learned patterns added to FLAME_API.md
     'patterns_staged':    0,   # C5 — candidates staged by non-trusted models
     'patterns_failed':    0,   # C5 — failed executions logged for gap analysis
+    'timings':           [],   # REC-001: ring buffer of recent call timings (max 20)
 }
 # Records when _stats was last reset (server start or Flame crash recovery)
 _stats_reset_at = datetime.datetime.now()
@@ -596,7 +597,10 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
       tool (list_libraries, get_project_info, etc.). The bridge skips redirect check.
     dedicated_tool=False: used by execute_python — bridge enforces redirect patterns
       as a second layer of defence even if the server-side check was bypassed.
+
+    REC-001: Returns '_bridge_ms' key with bridge roundtrip time in milliseconds.
     """
+    _t0_bridge = time.monotonic()
     # A13 — choose transport: Unix socket (preferred) or TCP fallback
     use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
     try:
@@ -628,7 +632,9 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
                     break
                 response += chunk
 
-            return json.loads(response.decode('utf-8').strip())
+            result = json.loads(response.decode('utf-8').strip())
+            result['_bridge_ms'] = round((time.monotonic() - _t0_bridge) * 1000)
+            return result
 
     except ConnectionRefusedError:
         return {
@@ -752,11 +758,17 @@ def execute_python(
         )
 
     t_in  = _tok(code)
+    _t0_exec = time.monotonic()
     # dedicated_tool=False: execute_python is user-facing code. The bridge checks
     # redirect patterns as a second enforcement layer regardless of server-side checks.
     result = _call_flame(code, timeout=timeout, dedicated_tool=False)
     output = result.get('output', '') + result.get('error', '')
     t_out = _tok(output)
+
+    # REC-001: collect timing data
+    _bridge_ms = result.get('_bridge_ms', 0)
+    _total_ms  = round((time.monotonic() - _t0_exec) * 1000)
+    _track_timing({'op': 'exec', 'bridge_ms': _bridge_ms, 'total_ms': _total_ms})
 
     _stats['exec_calls'] += 1
     _stats['tokens_in']  += t_in
@@ -781,6 +793,7 @@ def execute_python(
     footer = (
         f"\n─────────────────────────────\n"
         f"🔥 This call · ~{t_in + t_out} tokens  {call_rating}"
+        f" · bridge {_bridge_ms}ms · total {_total_ms}ms"
         + _stats_footer()
     )
     return rag_nudge + b4_warning + _fmt(result) + footer
@@ -790,6 +803,13 @@ def _track_dedicated() -> None:
     """Increment dedicated tool counter and accumulate estimated savings."""
     _stats['dedicated_calls']    += 1
     _stats['tokens_saved_tools'] += _DEDICATED_TOOL_SAVINGS
+
+
+def _track_timing(entry: dict) -> None:
+    """REC-001: append timing entry to ring buffer (max 20 entries)."""
+    _stats['timings'].append(entry)
+    if len(_stats['timings']) > 20:
+        _stats['timings'].pop(0)
 
 
 @mcp.tool(annotations=_RO)
@@ -1358,13 +1378,16 @@ def search_flame_docs(query: str) -> str:
             _rag_called_this_session = True
             return cached_result + "\n📎 (cached result — same query this session)"
 
+        _t0_rag = time.monotonic()
         result, max_score = search(query, n_results=5)
+        _rag_ms = round((time.monotonic() - _t0_rag) * 1000)
         _last_rag_score = max_score
         result_tokens = _tok(result)
         saved = max(0, _FULL_DOC_TOKENS - result_tokens)
         _stats['rag_calls']    += 1
         _stats['tokens_saved'] += saved
         _rag_called_this_session = True
+        _track_timing({'op': 'rag', 'rag_ms': _rag_ms, 'score': max_score})
 
         # B2 — Coverage note depends on model write permissions
         coverage_note = ""
@@ -1390,6 +1413,7 @@ def search_flame_docs(query: str) -> str:
         footer = (
             f"\n─────────────────────────────\n"
             f"🔍 RAG · max relevance {max_score}% · ~{result_tokens} tokens · ~{saved} saved vs full doc"
+            f" · {_rag_ms}ms"
             f"{coverage_note}{rebuild_note}"
             + _stats_footer()
         )
@@ -1580,7 +1604,25 @@ def session_stats() -> str:
         f"  Total avoided             : ~{saved_total}  ({pct} of context)\n"
         f"{'─'*32}\n"
         + efficiency
+        + _timings_summary()
     )
+
+
+def _timings_summary() -> str:
+    """REC-001: format last 10 call timings for get_session_stats output."""
+    entries = _stats['timings']
+    if not entries:
+        return ""
+    lines = [f"\n{'─'*32}\n⏱  Recent call timings (last {len(entries)})"]
+    for e in entries[-10:]:
+        op = e.get('op', '?')
+        if op == 'exec':
+            lines.append(f"   exec     bridge={e.get('bridge_ms', '?')}ms  total={e.get('total_ms', '?')}ms")
+        elif op == 'rag':
+            lines.append(f"   rag      search={e.get('rag_ms', '?')}ms  score={e.get('score', '?')}%")
+        else:
+            lines.append(f"   {op}  {e}")
+    return "\n".join(lines)
 
 
 # ─── Flame log reader ─────────────────────────────────────────────────────────
