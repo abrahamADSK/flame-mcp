@@ -26,6 +26,8 @@ build/
 
 # Logs (keep folder, ignore content)
 logs/*.log
+logs/*.txt
+logs/*.json
 
 # Distribution
 *.tar.gz
@@ -51,3 +53,11 @@ docs/transcripts/
 
 # Phase D — generated patterns file starts as local-only until reviewed
 # docs/flame_youtube_patterns.md  # uncomment to exclude until reviewed
+
+# Backup files
+*.bak.md
+*.bak
+
+# macOS HFS+ metadata artifacts (created when unzipping on macOS)
+__MACOSX/
+._*
