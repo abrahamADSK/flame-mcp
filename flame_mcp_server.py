@@ -584,6 +584,46 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
 )
 
 
+# ─── Stone+Wire project database (Flame 2026+) ───────────────────────────────
+
+_SW_LIST_PROJECTS = '/opt/Autodesk/sw/tools/sw_listProjects'
+
+def _sw_list_projects() -> list:
+    """
+    Run sw_listProjects and return parsed project list from the Stone+Wire DB.
+    Authoritative source in Flame 2026+: includes projects on all volumes.
+    Runs as the current user — no sudo needed.
+
+    Each entry: {'uuid': str, 'name': str, 'path': str, 'modified': str}
+    Returns [] on any failure (binary missing, S+W service down, etc.).
+
+    Output line format (one project per line, amid noise):
+      UUID: name, /path/to/project, 1, YYYY-MM-DD HH:MM:SS.ffffff+TZ
+    """
+    try:
+        proc = subprocess.run(
+            [_SW_LIST_PROJECTS],
+            capture_output=True, text=True, timeout=10
+        )
+        _pat = re.compile(
+            r'^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
+            r':\s+(.+?),\s+(/\S+?),\s+\d+,\s+(.+)$'
+        )
+        projects = []
+        for line in proc.stdout.splitlines():
+            m = _pat.match(line.strip())
+            if m:
+                projects.append({
+                    'uuid':     m.group(1),
+                    'name':     m.group(2).strip(),
+                    'path':     m.group(3).strip(),
+                    'modified': m.group(4).strip(),
+                })
+        return projects
+    except Exception:
+        return []
+
+
 # ─── Bridge communication ─────────────────────────────────────────────────────
 
 def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> dict:
@@ -856,9 +896,19 @@ except Exception as e:
     import re as _re
 
     def _cfg_fallback(project_name: str) -> list:
-        """Read frame rate / resolution / colour space from the project .cfg file."""
-        cfg_path = (f"/var/opt/Autodesk/flame/projects/{project_name}"
-                    f"/setups/cfg/{project_name}.cfg")
+        """Read frame rate / resolution / colour space from the project .cfg file.
+        Uses sw_listProjects to resolve the real path (handles external volumes).
+        """
+        # Flame 2026+: find real project path from Stone+Wire DB
+        project_path = None
+        for p in _sw_list_projects():
+            if p['name'] == project_name:
+                project_path = p['path']
+                break
+        if project_path is None:
+            # Fallback for older Flame or if S+W service is down
+            project_path = f"/var/opt/Autodesk/flame/projects/{project_name}"
+        cfg_path = f"{project_path}/setups/cfg/{project_name}.cfg"
         try:
             with open(cfg_path) as _f:
                 cfg = _f.read()
@@ -1145,9 +1195,32 @@ else:
 def list_all_projects() -> str:
     """
     List all Flame projects available on this workstation.
-    Shows which project is currently active.
-    Uses the /opt/Autodesk/project directory — does not require switching projects.
+    Shows which project is currently active, its path, and last modified date.
+
+    In Flame 2026+ uses sw_listProjects (Stone+Wire DB) — authoritative source
+    that includes projects on all volumes (internal and external mounts).
+    Falls back to scanning /opt/Autodesk/project for older Flame versions.
     """
+    # Primary: Stone+Wire database (Flame 2026+)
+    sw_projects = _sw_list_projects()
+    if sw_projects:
+        current_result = _call_flame(
+            "print(str(flame.projects.current_project.name))"
+        )
+        current = current_result.get('output', '').strip()
+        lines = [
+            f"Active project: {current}",
+            f"All projects ({len(sw_projects)}) — sorted by last modified:",
+        ]
+        for p in sw_projects:
+            marker = "  ◀ active" if p['name'] == current else ""
+            date   = p['modified'][:10]
+            lines.append(f"  {p['name']:<30}  {p['path']}  [{date}]{marker}")
+        _stats['tokens_out'] += _tok('\n'.join(lines))
+        _track_dedicated()
+        return '\n'.join(lines)
+
+    # Fallback: scan /opt/Autodesk/project (Flame < 2026)
     code = """
 import os
 projects_dir = "/opt/Autodesk/project"
