@@ -9,30 +9,47 @@ a Unix socket bridge (`run/flame_mcp.sock`, TCP 127.0.0.1:4444 fallback) that ex
 
 ## Rules — read before every task
 
-1. **Pick the single right dedicated tool — don't chain reads.**
-   Use the most specific tool that answers the question and stop. Do NOT run
-   `ping → get_project_info → list_libraries` as a warm-up chain — go directly
-   to the answer. Available dedicated tools (zero RAG, zero execute_python):
-   - `ping()`                                        — bridge connected?
-   - `get_project_info()`                            — project name, fps, resolution
-   - `get_flame_version()`                           — Flame version string
-   - `list_libraries()`                              — all user-visible libraries
-   - `list_reels(library_name)`                      — reels in a library
-   - `list_clips(library_name, reel_name, limit)`    — clips in library/reel
-   - `list_desktop_reels()`                          — desktop reel groups + reels + **clip names**
-   - `list_batch_groups()`                           — batch groups on the desktop
-   - `list_all_projects()`                           — all projects on this workstation
-   - `get_clip_metadata(library, reel, clip)`        — detailed metadata for one clip
-   - `get_selected_clips()`                          — items currently selected in Flame
-   - `flame_wiretap_tree(path)`                      — IFFFS node tree via Wiretap CLI
-   - `list_flame_logs()`                             — log files in /opt/Autodesk/logs
-   - `read_flame_log(name, lines, grep)`             — read / filter a log file
+1. **MANDATORY: Use dedicated tools — execute_python is the last resort.**
+   For every question or task, go through this checklist IN ORDER before
+   reaching for `execute_python`:
 
-2. **Call `search_flame_docs` before every `execute_python`.**
+   | Question type | Dedicated tool |
+   |---|---|
+   | Project name, resolution, fps, bit depth | `get_project_info()` |
+   | What libraries exist? | `list_libraries()` |
+   | What reels are in library X? | `list_reels(library_name)` |
+   | What clips are in library/reel X? | `list_clips(library_name, reel_name)` |
+   | Desktop structure (reel groups, reels, clips) | `list_desktop_reels()` |
+   | Batch groups on desktop | `list_batch_groups()` |
+   | All Flame projects on this workstation | `list_all_projects()` |
+   | Clip technical metadata | `get_clip_metadata(library, reel, clip)` |
+   | Currently selected items in Flame | `get_selected_clips()` |
+   | IFFFS/Wiretap node tree | `flame_wiretap_tree(path)` |
+   | Log files | `list_flame_logs()` / `read_flame_log()` |
+   | Bridge status | `ping()` |
+   | Flame version | `get_flame_version()` |
+
+   Only call `execute_python` when **none** of the above tools cover the operation.
+   Do NOT use `execute_python` to answer a question that a dedicated tool handles —
+   even if writing the code feels faster. The dedicated tools are validated,
+   handle edge cases, and avoid API guessing.
+
+   ❌ Wrong: `execute_python("print(flame.projects.current_project.name)")`
+   ✅ Right: `get_project_info()`
+
+   ❌ Wrong: `execute_python("for l in ws.libraries: print(l.name)")`
+   ✅ Right: `list_libraries()`
+
+2. **MANDATORY: Call `search_flame_docs` before every `execute_python`.**
    Before writing any `execute_python` code, call `search_flame_docs` with a short
    description (e.g. `"import clip to reel"`, `"list libraries"`). It returns the
    relevant API section (~200 tokens vs 1500 for the full file). Only fall back to
    reading `FLAME_API.md` directly if the search returns nothing useful.
+
+   DO NOT skip this step even if you think you know the API. Common API traps:
+   - `flame.selection` → does NOT exist. Use `flame.media_panel.selected_entries`
+   - `project.libraries` → returns None. Use `ws.libraries` via `current_workspace`
+   - `flame.batch.render()` → crashes Flame. Use `schedule_idle_event`
 
 3. **Use low-relevance RAG results — do NOT discard them.**
    If `search_flame_docs` returns results below 60% relevance, still read and use

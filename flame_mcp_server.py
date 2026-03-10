@@ -340,6 +340,10 @@ def _save_json_list(path: Path, data: list[dict]) -> None:
 # Used by the LLM to decide whether to call learn_pattern after a success.
 _last_rag_score: int = 100  # default high so we don't nag on first call
 
+# OBS-013: tracks whether search_flame_docs was called in this session.
+# execute_python prepends a reminder if the model skips RAG entirely.
+_rag_called_this_session: bool = False
+
 # A12 — In-session RAG cache: identical queries return the same chunks
 # without hitting ChromaDB again. Flushed when the server restarts.
 _search_cache: dict[int, tuple[str, int]] = {}
@@ -627,16 +631,32 @@ def execute_python(
     """
     Execute arbitrary Python code inside Autodesk Flame.
     Has full access to the flame module and its entire Python API.
-    Use this to inspect or modify projects, libraries, reels, clips,
-    sequences, batch setups, nodes, and anything else exposed by Flame.
 
-    IMPORTANT: ALWAYS call search_flame_docs BEFORE using this tool, no
-    exceptions. Never guess API methods, class names, or object hierarchy.
+    *** STOP — CHECK DEDICATED TOOLS FIRST ***
+    Before calling execute_python, check if a dedicated tool already answers
+    the question. Using a dedicated tool is ALWAYS faster, more reliable, and
+    uses fewer API calls:
+    - Project info (name, resolution, fps, bit depth) → get_project_info()
+    - List libraries                                  → list_libraries()
+    - List reels in a library                         → list_reels()
+    - List clips in a library/reel                    → list_clips()
+    - Desktop structure (reel groups, reels, clips)   → list_desktop_reels()
+    - Batch groups on desktop                         → list_batch_groups()
+    - All projects on workstation                     → list_all_projects()
+    - Clip technical metadata                         → get_clip_metadata()
+    - Currently selected items in Flame               → get_selected_clips()
+    - Wiretap IFFFS tree                              → flame_wiretap_tree()
+    - Flame log files                                 → list_flame_logs() / read_flame_log()
+    Only use execute_python when NO dedicated tool covers the operation.
+
+    MANDATORY: Call search_flame_docs BEFORE writing any execute_python code.
+    Never guess API methods, class names, or object hierarchy.
 
     Key rules:
     - Libraries: use ws = flame.projects.current_project.current_workspace,
       then ws.libraries  (NOT project.libraries — that returns None)
     - Renders: never call flame.batch.render() directly, use schedule_idle_event
+    - Selected items: use flame.media_panel.selected_entries (NOT flame.selection)
     - Always end with print() so the result is visible
 
     Args:
@@ -651,6 +671,15 @@ def execute_python(
     danger = _check_dangerous(code)
     if danger:
         return danger + _stats_footer()
+
+    # OBS-013: nudge the model to use search_flame_docs if it hasn't in this session
+    rag_nudge = ""
+    if not _rag_called_this_session and _stats['exec_calls'] == 0:
+        rag_nudge = (
+            "⚠️  REMINDER: Call search_flame_docs before execute_python. "
+            "Also check if a dedicated tool (get_project_info, list_libraries, "
+            "list_clips, get_selected_clips, etc.) already answers this question.\n"
+        )
 
     # B4 — Low-confidence warning when a read-only model has weak RAG grounding
     # Execution still proceeds; the operator sees the warning and can intervene.
@@ -693,7 +722,7 @@ def execute_python(
         f"🔥 This call · ~{t_in + t_out} tokens  {call_rating}"
         + _stats_footer()
     )
-    return b4_warning + _fmt(result) + footer
+    return rag_nudge + b4_warning + _fmt(result) + footer
 
 
 def _track_dedicated() -> None:
@@ -1083,10 +1112,15 @@ def get_selected_clips() -> str:
     Return the clips or items currently selected in the Flame media panel or desktop.
     Useful for contextual operations: 'what do I have selected right now?'
     Returns name and type for each selected item.
+
+    IMPORTANT: The correct API is flame.media_panel.selected_entries — NOT
+    flame.selection (which does not exist and will raise AttributeError).
+    Do NOT use execute_python with flame.selection to answer this question;
+    use this dedicated tool instead.
     """
     code = """
 try:
-    sel = list(flame.selection) if flame.selection else []
+    sel = list(flame.media_panel.selected_entries)
     if not sel:
         print("No items currently selected.")
     else:
@@ -1126,9 +1160,10 @@ def flame_wiretap_tree(path: str = "/") -> str:
     Note: Runs the CLI tool via subprocess — does NOT execute code inside Flame.
     """
     wt_tool = "/opt/Autodesk/wiretap/tools/current/wiretap_print_tree"
+    host    = "localhost:IFFFS"
     try:
         proc = subprocess.run(
-            [wt_tool, "-n", path],
+            [wt_tool, "-h", host, "-n", path],
             capture_output=True,
             text=True,
             timeout=10,
@@ -1139,6 +1174,14 @@ def flame_wiretap_tree(path: str = "/") -> str:
             _track_dedicated()
             return output
         if err:
+            # Common failure: IFFFS daemon not running or wrong host
+            if "No route to host" in err or "Connection refused" in err or "IFFFS" in err:
+                return (
+                    f"❌ Cannot connect to IFFFS at {host}\n"
+                    f"  Detail: {err}\n"
+                    "  Check that the Flame IFFFS daemon is running:\n"
+                    "    /opt/Autodesk/wiretap/tools/current/wiretap_ping localhost"
+                )
             return f"⚠️  wiretap_print_tree stderr:\n{err}"
         return "(no output — path may be empty or not found)"
     except FileNotFoundError:
@@ -1213,6 +1256,8 @@ def search_flame_docs(query: str) -> str:
             cached_result, cached_score = _search_cache[cache_key]
             _last_rag_score = cached_score
             _stats['rag_calls'] += 1   # OBS-009: count cache hits too
+            global _rag_called_this_session
+            _rag_called_this_session = True
             return cached_result + "\n📎 (cached result — same query this session)"
 
         result, max_score = search(query, n_results=5)
@@ -1221,6 +1266,8 @@ def search_flame_docs(query: str) -> str:
         saved = max(0, _FULL_DOC_TOKENS - result_tokens)
         _stats['rag_calls']    += 1
         _stats['tokens_saved'] += saved
+        global _rag_called_this_session
+        _rag_called_this_session = True
 
         # B2 — Coverage note depends on model write permissions
         coverage_note = ""
