@@ -1,20 +1,20 @@
 {
   "_meta": {
-    "description": "Curated inventory of YouTube videos relevant to Flame Python scripting, API, Wiretap SDK, and CLI tools — for Phase D transcript extraction",
+    "description": "Curated inventory of YouTube videos relevant to Flame Python scripting, API, Wiretap SDK, and CLI tools \u2014 for Phase D transcript extraction",
     "last_updated": "2026-03-10",
-    "total_youtube_videos": 41,
+    "total_youtube_videos": 44,
     "total_additional_sources": 7,
     "channels": [
       "logik_live",
       "flame_learning_channel"
     ],
-    "scraping_notes": "Full inventory after exhaustive keyword search on both channels. Logik Live: 233 videos total (gap #38-#128 has no Python content confirmed via keyword searches). FLC: 640 videos; Python Scripting playlist (6 available + 1 unavailable) is the primary source.",
+    "scraping_notes": "Exhaustive inventory after keyword search + browser verification on both channels. Logik Live: 233 total videos, ~37 Python-relevant selected. FLC: 640 total videos; Python Scripting playlist (6 available + 1 unavailable) is the only Python-specific content \u2014 all 7 included.",
     "tiers": {
       "HIGH": "Direct Python scripting tutorials, hands-on code demos",
       "MEDIUM": "Python-adjacent tools, pipeline automation, ShotGrid integration",
-      "LOW": "Flame feature releases and Autodesk dev interviews — useful for API change context"
+      "LOW": "Flame feature releases and Autodesk dev interviews \u2014 useful for API change context"
     },
-    "status": "complete inventory — run fetch_transcripts.py on Mac to populate transcripts"
+    "status": "complete inventory \u2014 run fetch_transcripts.py on Mac to populate transcripts"
   },
   "logik_live": {
     "channel_id": "UClogiklive",
@@ -36,7 +36,7 @@
           "custom_scripts",
           "menus"
         ],
-        "notes": "Foundational episode — beginner to intermediate Python scripting for Flame. Covers the range of what is possible with the Flame Python API.",
+        "notes": "Foundational episode \u2014 beginner to intermediate Python scripting for Flame. Covers the range of what is possible with the Flame Python API.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -54,7 +54,7 @@
           "frame_io_integration",
           "delivery_automation"
         ],
-        "notes": "Real-world production automation — Uppercut (NYC) workflow. Project creation, shot publishing, renaming, Frame.io integration, delivery.",
+        "notes": "Real-world production automation \u2014 Uppercut (NYC) workflow. Project creation, shot publishing, renaming, Frame.io integration, delivery.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -71,7 +71,7 @@
           "simple_automation",
           "beginner_scripts"
         ],
-        "notes": "Practical beginner scripts — append start frame to clip name, source timecode manipulation.",
+        "notes": "Practical beginner scripts \u2014 append start frame to clip name, source timecode manipulation.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -201,7 +201,7 @@
           "small_archives",
           "workflow_automation"
         ],
-        "notes": "Publishing workflow fundamentals — openclip, small archives, automated render delivery. Relevant to understanding the workflow Python scripts automate.",
+        "notes": "Publishing workflow fundamentals \u2014 openclip, small archives, automated render delivery. Relevant to understanding the workflow Python scripts automate.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -251,7 +251,7 @@
           "archiving",
           "api_context"
         ],
-        "notes": "Stephane Labrie, Product Owner for Project Management, Conforming, Archiving. Discusses these subsystems — relevant to Python scripting in those areas.",
+        "notes": "Stephane Labrie, Product Owner for Project Management, Conforming, Archiving. Discusses these subsystems \u2014 relevant to Python scripting in those areas.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -315,7 +315,7 @@
           "user_requests",
           "api_roadmap"
         ],
-        "notes": "First Reverse User Group — users request features from Autodesk devs. API roadmap context.",
+        "notes": "First Reverse User Group \u2014 users request features from Autodesk devs. API roadmap context.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -543,7 +543,7 @@
           "api_changes",
           "snapshot_feature"
         ],
-        "notes": "Flame 2026.1 update — new Snapshot feature and other enhancements.",
+        "notes": "Flame 2026.1 update \u2014 new Snapshot feature and other enhancements.",
         "transcript_status": "done",
         "_channel": "logik_live"
       },
@@ -559,7 +559,52 @@
           "api_changes"
         ],
         "notes": "Most recent Flame version overview (2026.2). Includes Francis Bouillon alongside regular presenters.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
+        "_channel": "logik_live"
+      },
+      {
+        "id": "p574FITZOWM",
+        "title": "Logik Academy - Pybox and Nuke",
+        "url": "https://www.youtube.com/watch?v=p574FITZOWM",
+        "duration": "8:49",
+        "relevance": "MEDIUM",
+        "topics": [
+          "pybox",
+          "nuke_integration",
+          "python_pipeline"
+        ],
+        "notes": "Randy McEntee explains how to connect Flame and Nuke via Pybox. Covers the Python-based bridge between Flame and Nuke workflows.",
+        "transcript_status": "pending",
+        "_channel": "logik_live"
+      },
+      {
+        "id": "Wp__7HlqyUY",
+        "title": "Logik Academy - The Logik Portal",
+        "url": "https://www.youtube.com/watch?v=Wp__7HlqyUY",
+        "duration": "14:58",
+        "relevance": "MEDIUM",
+        "topics": [
+          "python_tool",
+          "logik_portal",
+          "workflow_launcher"
+        ],
+        "notes": "Randy McEntee presents The Logik Portal by Mike Vaglienty \u2014 a Python application accessible from within Flame. Shows Python-based launcher/portal tool pattern.",
+        "transcript_status": "pending",
+        "_channel": "logik_live"
+      },
+      {
+        "id": "UpCfAV6p-lI",
+        "title": "Jan Klier RevUG 2026: Expand Pybox for Clips",
+        "url": "https://www.youtube.com/watch?v=UpCfAV6p-lI",
+        "duration": "3:47",
+        "relevance": "MEDIUM",
+        "topics": [
+          "pybox",
+          "clip_operations",
+          "python_api"
+        ],
+        "notes": "RevUG 2026 submission by Jan Klier requesting expanded Pybox functionality for clip-level operations. Shows current Pybox Python API usage and desired extensions.",
+        "transcript_status": "pending",
         "_channel": "logik_live"
       }
     ]
@@ -593,7 +638,7 @@
           "python_hooks"
         ],
         "notes": "First Python scripting episode on the official channel. Covers watch folder automation and OpenClip workflow via Python. RAG gap filler for watch_folders (0 chunks in current corpus).",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -609,7 +654,7 @@
           "export_automation"
         ],
         "notes": "Batch automation and render output naming via Python. Directly relevant to batch group scripting patterns.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -625,7 +670,7 @@
           "custom_tools"
         ],
         "notes": "Updated Python scripting overview for Flame 2018.2. Covers new hooks and API additions in that release cycle.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -641,7 +686,7 @@
           "context_menus"
         ],
         "notes": "Creating custom menu actions via Python hooks. Core pattern for building Flame tools. RAG gap filler for custom_menus.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -658,7 +703,7 @@
           "flame_2023_api"
         ],
         "notes": "New Python features in Flame 2023.1: PyTransition for Timeline, MediaHub browser controls, messaging/dialog API.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -674,7 +719,7 @@
           "action_environment"
         ],
         "notes": "Adding items to Action contextual menus by editing XML. Shows XML-based menu customization complementing Python hook approach.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       },
       {
@@ -689,7 +734,7 @@
           "logik_portal"
         ],
         "notes": "Python script for installing Logik matchbox shaders. Demonstrates scripted asset management.",
-        "transcript_status": "failed",
+        "transcript_status": "done",
         "_channel": "flame_learning_channel"
       }
     ]
@@ -704,7 +749,7 @@
         "size": "643K+ lines of Python scripts",
         "relevance": "HIGH",
         "notes": "Community scripts repository. Real-world patterns for clip management, batch automation, delivery pipelines.",
-        "status": "pending — scrape via GitHub API"
+        "status": "pending \u2014 scrape via GitHub API"
       },
       {
         "name": "pyflame.com",
@@ -712,7 +757,7 @@
         "type": "website",
         "relevance": "HIGH",
         "notes": "Tim Berglund's pyflame library + community scripts portal. Contains helper functions wrapping the raw Flame API.",
-        "status": "pending — fetch docs + example scripts"
+        "status": "pending \u2014 fetch docs + example scripts"
       },
       {
         "name": "kmatchbox/PythonHooks",
@@ -736,7 +781,7 @@
         "type": "official_docs",
         "relevance": "HIGH",
         "notes": "Official Python API reference. Includes Python Examples cookbook, Hooks Reference, Class Browser. Target for Phase E2.",
-        "status": "pending — Phase E2 scrape"
+        "status": "pending \u2014 Phase E2 scrape"
       },
       {
         "name": "Autodesk Wiretap SDK Docs",
@@ -744,7 +789,7 @@
         "type": "official_docs",
         "relevance": "HIGH",
         "notes": "Wiretap SDK documentation. Wiretap provides programmatic access to the Flame IFFFS content database. Key for understanding wiretap_print_tree, IFFFS node hierarchy, and cross-project operations.",
-        "status": "pending — Phase E2 scrape"
+        "status": "pending \u2014 Phase E2 scrape"
       },
       {
         "name": "Flame Command-Line Tools Reference",
@@ -752,7 +797,7 @@
         "type": "official_docs",
         "relevance": "HIGH",
         "notes": "CLI tools: flamerender, flame_archive, batchrender, wiretap_print_tree, etc. Complements Python API for scripted Flame automation.",
-        "status": "pending — Phase E2 scrape"
+        "status": "pending \u2014 Phase E2 scrape"
       }
     ]
   }
