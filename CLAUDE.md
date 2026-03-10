@@ -157,6 +157,30 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
 
 ---
 
+## Deploy workflow — after every code change
+
+Cuando cambies código del proyecto, sigue estos pasos en orden:
+
+### Si cambias `flame_mcp_server.py` (el MCP server):
+1. `git push` desde el Mac (el VM no puede hacer push por el proxy)
+2. **Claude.app → Settings → Developer → MCP servers → Reload**
+   Esto mata el proceso viejo y arranca uno nuevo con el código del disco.
+   ⚠️ `pkill -f flame_mcp_server.py` funciona pero el desktop app lo respawnea
+   inmediatamente — usa siempre el botón de reload del Settings.
+
+### Si cambias `hooks/flame_mcp_bridge.py` (el hook de Flame):
+1. Copiar el hook actualizado a Flame:
+   ```bash
+   cp ~/Projects/flame-mcp/hooks/flame_mcp_bridge.py \
+      /opt/Autodesk/shared/python/flame_mcp_bridge.py
+   ```
+2. En Flame: **MCP Bridge → Reload hook**
+
+### Si cambias ambos:
+Hacer los dos pasos anteriores, en cualquier orden.
+
+---
+
 ## API References
 
 ### Primary — embedded cheatsheet (read this, do not fetch URLs)
