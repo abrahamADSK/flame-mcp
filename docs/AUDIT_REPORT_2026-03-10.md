@@ -22,7 +22,7 @@ El archivo `config.json` contiene:
 }
 ```
 
-- `[internal-hostname]` es el hostname de un servidor privado de red local — información de infraestructura interna.
+- `ollama_url` apunta a un hostname de servidor privado de red local — información de infraestructura interna.
 - `ollama_cloud_key` es una API key real de ollama.com activa.
 
 **Estado actual:** `config.json` está en `.gitignore` — **NO se sube a git**. El riesgo es nulo en este momento.

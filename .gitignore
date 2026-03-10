@@ -48,8 +48,9 @@ logs/crash_recovery.json
 rag/candidates.json
 rag/failed.json
 
-# Phase D — raw transcripts (large, ephemeral; only processed patterns go in git)
+# Phase D — raw source material (large, ephemeral; only processed patterns go in git)
 docs/transcripts/
+docs/ocr_frames/
 
 # Phase D — generated patterns file starts as local-only until reviewed
 # docs/flame_youtube_patterns.md  # uncomment to exclude until reviewed

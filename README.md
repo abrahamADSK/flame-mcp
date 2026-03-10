@@ -59,7 +59,7 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** â
 ### Automatic (recommended)
 
 ```bash
-git clone https://github.com/abrahamADSK/flame-mcp.git
+git clone https://github.com/abrahamADSK/flame-mcp.git  # replace with your fork URL if applicable
 cd flame-mcp
 chmod +x install.sh
 ./install.sh
@@ -76,7 +76,7 @@ The installer will:
 
 ```bash
 # 1. Clone and set up
-git clone https://github.com/abrahamADSK/flame-mcp.git
+git clone https://github.com/abrahamADSK/flame-mcp.git  # replace with your fork URL if applicable
 cd flame-mcp
 
 # 2. Virtual environment + dependencies
