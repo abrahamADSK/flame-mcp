@@ -624,6 +624,55 @@ def _sw_list_projects() -> list:
         return []
 
 
+def _sysconfig_project_path(project_name: str) -> 'str | None':
+    """
+    Compute project home path from sysconfig.cfg when sw_listProjects is unavailable.
+
+    sysconfig.cfg lives in /opt/Autodesk/cfg/.<version>/sysconfig.cfg.
+    The default_home key defines the project root template; Flame tokens
+    (<project name>, <project>, <host name>, <hostname>, <host>, <workstation>)
+    are expanded at project-creation time.
+
+    Returns the resolved path string, or None if sysconfig.cfg cannot be read
+    or the template contains unresolvable tokens.
+    """
+    import glob as _glob
+    try:
+        candidates = sorted(_glob.glob('/opt/Autodesk/cfg/.*/sysconfig.cfg'))
+        if not candidates:
+            return None
+        # Use the most recently modified sysconfig.cfg (latest installed version)
+        cfg_file = max(candidates, key=os.path.getmtime)
+        with open(cfg_file) as _f:
+            content = _f.read()
+        # Parse: "default_home = /some/path/<project name>" (= optional, may use spaces)
+        m = re.search(
+            r'^\s*default_home\s*[=\s]\s*(.+)$',
+            content, re.MULTILINE | re.IGNORECASE
+        )
+        if not m:
+            return None
+        template = m.group(1).strip().strip('"').strip("'")
+        # Expand project name tokens
+        for tok in ('<project name>', '<project>'):
+            template = template.replace(tok, project_name)
+        # Expand hostname tokens
+        try:
+            _hn = subprocess.run(['hostname', '-s'], capture_output=True, text=True,
+                                 timeout=3).stdout.strip()
+        except Exception:
+            _hn = ''
+        if _hn:
+            for tok in ('<host name>', '<hostname>', '<host>', '<workstation>'):
+                template = template.replace(tok, _hn)
+        # If unexpanded tokens remain, the template is unresolvable
+        if '<' in template:
+            return None
+        return template.rstrip('/')
+    except Exception:
+        return None
+
+
 # ─── Bridge communication ─────────────────────────────────────────────────────
 
 def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> dict:
@@ -897,16 +946,29 @@ except Exception as e:
 
     def _cfg_fallback(project_name: str) -> list:
         """Read frame rate / resolution / colour space from the project .cfg file.
-        Uses sw_listProjects to resolve the real path (handles external volumes).
+
+        Three-level path resolution (project paths are site-configurable via
+        sysconfig.cfg — never assume /var/opt/Autodesk/flame/projects/):
+
+          1. sw_listProjects  — Stone+Wire DB: real path, all volumes (Flame 2026+)
+          2. sysconfig.cfg    — expand default_home template (S+W down, any version)
+          3. /var/opt/...     — last resort for vanilla default-install Flame
+
+        {project_home}/setups is always a Flame-managed symlink to the actual
+        setups dir, so the path {home}/setups/cfg/{name}.cfg is always correct
+        regardless of where default_setups_dir resolves to.
         """
-        # Flame 2026+: find real project path from Stone+Wire DB
+        # Level 1: Stone+Wire DB
         project_path = None
         for p in _sw_list_projects():
             if p['name'] == project_name:
                 project_path = p['path']
                 break
+        # Level 2: sysconfig.cfg template expansion
         if project_path is None:
-            # Fallback for older Flame or if S+W service is down
+            project_path = _sysconfig_project_path(project_name)
+        # Level 3: vanilla default path
+        if project_path is None:
             project_path = f"/var/opt/Autodesk/flame/projects/{project_name}"
         cfg_path = f"{project_path}/setups/cfg/{project_name}.cfg"
         try:
