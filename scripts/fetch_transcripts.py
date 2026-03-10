@@ -30,9 +30,10 @@ def fetch_transcript(video_id: str, title: str) -> str | None:
     """Download transcript for a single video. Returns text or None."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
-        from youtube_transcript_api.formatters import TextFormatter
 
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # v0.6.0+ requires instantiation; list() replaced list_transcripts()
+        ytt = YouTubeTranscriptApi()
+        transcript_list = ytt.list(video_id)
 
         # Prefer manual English transcript, fall back to auto-generated
         try:
@@ -44,9 +45,12 @@ def fetch_transcript(video_id: str, title: str) -> str | None:
                 # Try any available language
                 transcript = list(transcript_list)[0]
 
-        data = transcript.fetch()
-        formatter = TextFormatter()
-        text = formatter.format_transcript(data)
+        fetched = transcript.fetch()
+        # Each snippet has a .text attribute in v0.6.0+
+        text = " ".join(
+            snippet.text if hasattr(snippet, "text") else snippet["text"]
+            for snippet in fetched
+        )
         print(f"  ✅ {video_id}: {title[:60]}")
         return text
 
