@@ -361,6 +361,11 @@ def _handle_connection(conn):
         # to allow deliberate direct execution (e.g. testing dedicated tools themselves).
         _log(f"PAYLOAD keys={list(payload.keys())}  bypass_redirect={payload.get('bypass_redirect', False)}")
         if not payload.get('bypass_redirect', False):
+            try:
+                with open("/tmp/flame_mcp_redirect.log", "a") as _rf:
+                    _rf.write(f"CHECK: code={code[:80]!r} patterns={len(_BRIDGE_REDIRECT_PATTERNS)}\n")
+            except Exception:
+                pass
             for _pat, _msg in _BRIDGE_REDIRECT_PATTERNS:
                 if _re_bridge.search(_pat, code):
                     _log(f"  🚫 REDIRECT matched: {_pat[:60]}")
