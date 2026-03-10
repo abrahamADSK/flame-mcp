@@ -703,8 +703,16 @@ def execute_python(
          "Use list_flame_logs() / read_flame_log() — they list and filter log files."),
     ]
     import re as _re
+    import sys as _sys2
+    print(
+        f"[flame-mcp] execute_python called — "
+        f"redirect_check=active  patterns={len(_REDIRECT_PATTERNS)}  "
+        f"rag_called={_rag_called_this_session}",
+        file=_sys2.stderr, flush=True
+    )
     for _pattern, _msg in _REDIRECT_PATTERNS:
         if _re.search(_pattern, code):
+            print(f"[flame-mcp] REDIRECT matched pattern: {_pattern}", file=_sys2.stderr, flush=True)
             return (
                 f"🚫 REDIRECT — a dedicated tool handles this query:\n"
                 f"   {_msg}\n"
@@ -1719,5 +1727,14 @@ def _sync_tool_permissions() -> None:
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import sys as _sys
+    _mtime = datetime.datetime.fromtimestamp(
+        __import__('os').path.getmtime(__file__)
+    ).strftime('%Y-%m-%d %H:%M:%S')
+    print(
+        f"[flame-mcp] server start  file={__file__}  mtime={_mtime}  "
+        f"redirects={len(_REDIRECT_PATTERNS)}  pid={__import__('os').getpid()}",
+        file=_sys.stderr, flush=True
+    )
     _sync_tool_permissions()
     mcp.run(transport='stdio')
