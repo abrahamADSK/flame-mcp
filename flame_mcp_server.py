@@ -749,7 +749,11 @@ def execute_python(
         )
 
     t_in  = _tok(code)
-    result = _call_flame(code, timeout=timeout)
+    # bypass_redirect=False: execute_python is user-facing — the bridge must also
+    # run its redirect check as a second enforcement layer.  Only dedicated tools
+    # (list_libraries, get_project_info, …) pass bypass_redirect=True because they
+    # intentionally use code patterns that would otherwise match a redirect.
+    result = _call_flame(code, timeout=timeout, bypass_redirect=False)
     output = result.get('output', '') + result.get('error', '')
     t_out = _tok(output)
 
