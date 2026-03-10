@@ -1285,7 +1285,7 @@ def search_flame_docs(query: str) -> str:
 
     If the index has not been built yet, returns setup instructions.
     """
-    global _last_rag_score
+    global _last_rag_score, _rag_called_this_session
     try:
         from rag.search import search
 
@@ -1295,7 +1295,6 @@ def search_flame_docs(query: str) -> str:
             cached_result, cached_score = _search_cache[cache_key]
             _last_rag_score = cached_score
             _stats['rag_calls'] += 1   # OBS-009: count cache hits too
-            global _rag_called_this_session
             _rag_called_this_session = True
             return cached_result + "\n📎 (cached result — same query this session)"
 
@@ -1305,7 +1304,6 @@ def search_flame_docs(query: str) -> str:
         saved = max(0, _FULL_DOC_TOKENS - result_tokens)
         _stats['rag_calls']    += 1
         _stats['tokens_saved'] += saved
-        global _rag_called_this_session
         _rag_called_this_session = True
 
         # B2 — Coverage note depends on model write permissions
