@@ -32,11 +32,17 @@ extract_video() {
 
     echo "--- Processing: ${VID_ID} ---"
 
-    # Skip if all frames already exist
-    local existing_count=$(ls "${OUT_DIR}"/frame_*.jpg 2>/dev/null | wc -l | tr -d ' ')
-    if [[ $existing_count -gt 0 ]]; then
-        echo "  Already has ${existing_count} frames — skipping download (delete dir to re-extract)"
-        return
+    # Skip if directory exists AND actually contains frame files
+    # (check directory existence first to avoid NULL_GLOB false positives)
+    if [[ -d "$OUT_DIR" ]]; then
+        local existing_count=0
+        for f in "${OUT_DIR}"/frame_*.jpg; do
+            [[ -f "$f" ]] && (( existing_count++ ))
+        done
+        if [[ $existing_count -gt 0 ]]; then
+            echo "  Already has ${existing_count} frames — skipping download (delete dir to re-extract)"
+            return
+        fi
     fi
 
     mkdir -p "$OUT_DIR"
@@ -123,11 +129,18 @@ extract_video "VJFgxnCqrE0" "28 75 121 168 257 381 434 512 558 674 925 972"
 echo "=== Done ==="
 echo ""
 echo "Total frames:"
-ls "${OCR_DIR}"/**/*.jpg 2>/dev/null | wc -l
+total=0
+for f in "${OCR_DIR}"/*/*; do
+    [[ -f "$f" && "$f" == *.jpg ]] && (( total++ ))
+done
+echo "  $total"
 
 echo ""
 echo "Per video:"
 for vid in hPa1OVEY_78 ZDHntCBBRXM lMRidruJDqA VJFgxnCqrE0; do
-    count=$(ls "${OCR_DIR}/${vid}"/frame_*.jpg 2>/dev/null | wc -l | tr -d ' ')
+    count=0
+    for f in "${OCR_DIR}/${vid}"/frame_*.jpg; do
+        [[ -f "$f" ]] && (( count++ ))
+    done
     echo "  ${vid}: ${count} frames"
 done
