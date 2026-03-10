@@ -585,12 +585,17 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
 
 # ─── Bridge communication ─────────────────────────────────────────────────────
 
-def _call_flame(code: str, timeout: int = 15) -> dict:
+def _call_flame(code: str, timeout: int = 15, bypass_redirect: bool = True) -> dict:
     """
     Send Python code to the Flame bridge.
     A13 — Prefers Unix domain socket (owner-only, no network exposure);
     falls back to TCP if the socket file does not exist.
     Returns the result as a dictionary.
+
+    bypass_redirect=True (default): tells the bridge to skip its redirect check.
+      All calls from this MCP server are trusted — dedicated tools have their own
+      logic and execute_python has already run _REDIRECT_PATTERNS before calling here.
+      The bridge redirect is only meant to catch external Bash/nc bypass attempts.
     """
     # A13 — choose transport: Unix socket (preferred) or TCP fallback
     use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
@@ -606,7 +611,7 @@ def _call_flame(code: str, timeout: int = 15) -> dict:
             s.settimeout(timeout)
             s.connect(addr)
 
-            payload = json.dumps({'code': code}) + "\n"
+            payload = json.dumps({'code': code, 'bypass_redirect': bypass_redirect}) + "\n"
             s.sendall(payload.encode('utf-8'))
 
             # A5 — cumulative deadline prevents partial-response hangs
