@@ -120,6 +120,37 @@ _last_crash_info = None   # set at startup if a crash was detected
 # so the MCP server is not left waiting for a reply that will never arrive.
 _EXEC_TIMEOUT = 30
 
+# OBS-025: Bridge-level redirect enforcement.
+# execute_python in the MCP server can be bypassed when claude -p uses Bash to
+# send JSON directly to this socket (documented protocol enabled the bypass).
+# Adding the same redirect table HERE catches ALL execution attempts regardless
+# of how they arrive — MCP tool call OR raw socket payload.
+import re as _re_bridge
+_BRIDGE_REDIRECT_PATTERNS = [
+    (r'get_project_info|current_project.*\.(name|description|workspaces)',
+     "Use get_project_info() MCP tool — accesses resolution/fps/bit_depth via Wiretap."),
+    (r'ws\.libraries|current_workspace\.libraries|getLibraries',
+     "Use list_libraries() MCP tool — filters hidden system libraries automatically."),
+    (r'\.reels\b|getReels\(',
+     "Use list_reels(library_name) MCP tool."),
+    (r'getEntries\(|\.clips\b|getClips\(',
+     "Use list_clips(library_name, reel_name) MCP tool."),
+    (r'reel_groups|getReelGroups|desktop.*reel',
+     "Use list_desktop_reels() MCP tool."),
+    (r'batch_groups|getBatchGroups|\.batch_group',
+     "Use list_batch_groups() MCP tool."),
+    (r'flame\.selection\b',
+     "flame.selection does not exist — use get_selected_clips() MCP tool."),
+    (r'media_panel\.selected_entries',
+     "Use get_selected_clips() MCP tool."),
+    (r'get_version\(\)|flame\.version\b',
+     "Use get_flame_version() MCP tool."),
+    (r'wiretap_print_tree|wiretap_get_children',
+     "Use flame_wiretap_tree(path) MCP tool."),
+    (r'os\.listdir.*log|/opt/Autodesk/logs',
+     "Use list_flame_logs() / read_flame_log() MCP tools."),
+]
+
 
 # ── Flame initialisation hook ─────────────────────────────────────────────────
 
@@ -323,6 +354,26 @@ def _handle_connection(conn):
         # Log first line of code so we can see what's being executed
         first_line = code.strip().splitlines()[0] if code.strip() else '(empty)'
         _log(f"EXEC: {first_line[:120]}")
+
+        # OBS-025: Bridge-level redirect enforcement.
+        # Catches ALL callers (MCP tool, Bash nc, Quick Console) — not just the MCP path.
+        # Quick Console bypass: payload can include {"code":..., "bypass_redirect":true}
+        # to allow deliberate direct execution (e.g. testing dedicated tools themselves).
+        if not payload.get('bypass_redirect', False):
+            for _pat, _msg in _BRIDGE_REDIRECT_PATTERNS:
+                if _re_bridge.search(_pat, code):
+                    _log(f"  🚫 REDIRECT matched: {_pat[:60]}")
+                    conn.sendall((json.dumps({
+                        'status': 'redirect',
+                        'error': (
+                            f"\U0001f6ab REDIRECT \u2014 a dedicated MCP tool handles this query.\n"
+                            f"   {_msg}\n"
+                            f"   Call the MCP tool instead of sending code to the bridge."
+                        ),
+                        'output': '',
+                    }) + "\n").encode('utf-8'))
+                    conn.close()
+                    return
 
         local_ns = {'flame': flame}
         result   = {}
