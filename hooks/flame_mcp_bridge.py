@@ -856,6 +856,24 @@ class _FlameChat:
             # Anthropic models are left uncapped (they follow stop instructions).
             if getattr(self, '_backend', '') in ('ollama', 'ollama_cloud', 'ollama_mac'):
                 cmd.extend(['--max-turns', '6'])
+            # Inject critical tool-selection rules as a real system prompt so
+            # claude -p receives them at higher priority than MCP instructions
+            # metadata (OBS-011/013 root cause fix).
+            cmd.extend([
+                '--append-system-prompt',
+                (
+                    'CRITICAL RULES for this Flame MCP session:\n'
+                    '1. ALWAYS use dedicated MCP tools when they cover the query — '
+                    'NEVER use execute_python for: project info, libraries, reels, '
+                    'clips, desktop, batch groups, clip metadata, selected clips, '
+                    'wiretap tree, log files, ping, or version.\n'
+                    '2. ALWAYS call search_flame_docs before ANY execute_python call '
+                    '— no exceptions, even for patterns you think you know.\n'
+                    '3. flame.selection does not exist — use flame.media_panel.selected_entries.\n'
+                    '4. flame.projects.current_project.libraries returns None — '
+                    'use current_workspace.libraries.'
+                ),
+            ])
             cmd.append(prompt)
 
             proc = subprocess.Popen(

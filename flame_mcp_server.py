@@ -672,9 +672,48 @@ def execute_python(
     if danger:
         return danger + _stats_footer()
 
+    # Bug 3 (OBS-013): server-side pattern redirect — if the submitted code
+    # clearly matches something a dedicated tool does, refuse execution and
+    # tell the model exactly which tool to use instead.
+    _REDIRECT_PATTERNS = [
+        # (regex pattern in code,  redirect message)
+        (r'get_project_info|current_project.*\.(name|description|workspaces)',
+         "Use get_project_info() — it returns project name, resolution, fps, "
+         "bit depth via Wiretap XML. execute_python cannot access those fields."),
+        (r'ws\.libraries|current_workspace\.libraries|getLibraries',
+         "Use list_libraries() — it filters hidden system libraries automatically."),
+        (r'\.reels|getReels\(',
+         "Use list_reels(library_name) — returns all reels for a library in one call."),
+        (r'getEntries\(|\.clips|getClips\(',
+         "Use list_clips(library_name, reel_name) — returns formatted clip list."),
+        (r'reel_groups|getReelGroups|desktop.*reel',
+         "Use list_desktop_reels() — returns the full desktop hierarchy with clip names."),
+        (r'batch_groups|getBatchGroups|\.batch_group',
+         "Use list_batch_groups() — returns batch groups with node and reel counts."),
+        (r'flame\.selection',
+         "flame.selection does not exist. "
+         "Use get_selected_clips() — it uses flame.media_panel.selected_entries correctly."),
+        (r'media_panel\.selected_entries',
+         "Use get_selected_clips() — the dedicated tool handles this."),
+        (r'get_version\(\)|flame\.version',
+         "Use get_flame_version() — returns the version string directly."),
+        (r'wiretap_print_tree|wiretap_get_children',
+         "Use flame_wiretap_tree(path) — it handles host flags and error handling."),
+        (r'os\.listdir.*log|/opt/Autodesk/logs',
+         "Use list_flame_logs() / read_flame_log() — they list and filter log files."),
+    ]
+    import re as _re
+    for _pattern, _msg in _REDIRECT_PATTERNS:
+        if _re.search(_pattern, code):
+            return (
+                f"🚫 REDIRECT — a dedicated tool handles this query:\n"
+                f"   {_msg}\n"
+                f"   Call the dedicated tool instead of execute_python."
+            )
+
     # OBS-013: nudge the model to use search_flame_docs if it hasn't in this session
     rag_nudge = ""
-    if not _rag_called_this_session and _stats['exec_calls'] == 0:
+    if not _rag_called_this_session:
         rag_nudge = (
             "⚠️  REMINDER: Call search_flame_docs before execute_python. "
             "Also check if a dedicated tool (get_project_info, list_libraries, "
