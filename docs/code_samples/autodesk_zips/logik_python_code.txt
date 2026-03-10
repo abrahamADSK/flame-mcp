@@ -1,0 +1,30 @@
+#Implement the custom Right-Click entry
+def getCustomUIActions( ):
+
+    #Create the menu entry for 'getLogikShaders'
+    getLogikShaders = {}
+    getLogikShaders['name']    = 'getLogikShaders'
+    getLogikShaders['caption'] = "Download Latest Logik Shaders"
+
+    #add that entry to the 'web utilities' section
+    webgroup = {}
+    webgroup['name']    = "Web Utilities"
+    webgroup['actions'] = ( getLogikShaders, )
+
+    return ( webgroup, )
+
+
+
+#add the action to the right-click entry
+def customUIAction( info, userdata ):
+
+   #get which action the user selected
+   action = info['name']
+
+   #if 'download latest logik shaders'
+   if action == 'getLogikShaders':
+      import commands
+      import os
+      print commands.getstatusoutput('curl "http://logik-matchbook.org/MatchboxShaderCollection.tgz" -o MatchboxShaderCollection.tgz')
+      print commands.getstatusoutput('tar zxvf MatchboxShaderCollection.tgz')
+      print commands.getstatusoutput('python INSTALL.command')
