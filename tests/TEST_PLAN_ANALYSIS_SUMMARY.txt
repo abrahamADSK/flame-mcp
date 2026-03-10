@@ -1,0 +1,425 @@
+================================================================================
+FLAME-MCP COMPREHENSIVE TEST PLAN - EXECUTIVE SUMMARY
+================================================================================
+
+Date: 2026-03-10
+Analyzed: flame_mcp_server.py, rag/corpus.json, FLAME_API.md, docs/, hooks/
+
+================================================================================
+1. MCP TOOLS INVENTORY
+================================================================================
+
+Total MCP Tools: 18
+
+A. CORE EXECUTION (1 tool)
+   - execute_python: Full Flame Python API access with safety checks (18 dangerous patterns)
+
+B. INSPECTION (11 tools)
+   - get_project_info: Project metadata (fps, resolution, bit depth)
+   - list_libraries: All libraries with reel/folder/group counts
+   - list_reels: Reels in library with clip counts
+   - list_clips: Clips with optional library/reel/limit filtering
+   - list_desktop_reels: Full desktop hierarchy (reel_groups > reels > clips)
+   - list_batch_groups: Batch groups with reel/node counts
+   - list_all_projects: All projects on workstation
+   - get_clip_metadata: Full clip metadata (resolution, timecode, bit depth, etc.)
+   - get_selected_clips: Current media panel/desktop selection
+   - flame_wiretap_tree: IFFFS tree navigation (cross-project safe)
+   - get_flame_version: Version string
+
+C. KNOWLEDGE & RAG (2 tools)
+   - search_flame_docs: Semantic search on 668-chunk corpus (12 sources)
+   - learn_pattern: Add new patterns to FLAME_API.md (trusted) or candidates.json (read-only)
+
+D. DIAGNOSTICS (3 tools)
+   - ping: Bridge connectivity check
+   - session_stats: Token usage + efficiency rating
+   - list_flame_logs: Log file enumeration (/opt/Autodesk/logs/)
+   - read_flame_log: Tail log with grep filtering (reverse-chunk algorithm)
+
+TOOL BREAKDOWN:
+- Read-only (safe): 15 tools
+- Read-write (safe): 2 tools (learn_pattern, session_stats)
+- Destructive (checked): 1 tool (execute_python with pattern detection)
+
+================================================================================
+2. DANGEROUS PATTERNS DETECTION
+================================================================================
+
+Total Patterns Blocked: 18
+
+CATEGORIES:
+
+1. flame.projects Iteration/Indexing (3 patterns)
+   - len(flame.projects) → Not a list
+   - for x in flame.projects → Not iterable
+   - flame.projects[0] → Not subscriptable
+   FIX: Use flame.projects.current_project or os.listdir('/opt/Autodesk/project')
+
+2. Library Access (1 pattern)
+   - flame.projects.current_project.libraries → Returns None
+   FIX: Use ws = ...current_workspace; ws.libraries
+
+3. Thread-Blocking Calls (1 pattern)
+   - flame.batch.render() → Blocks main thread, freezes Flame
+   FIX: Use schedule_idle_event(lambda: render(...))
+
+4. Crash-Prone Modules (2 patterns)
+   - import wiretap → Unsafe module
+   - WireTapServerHandle / libwiretap → C-bindings unsafe
+   FIX: Use standard flame API only
+
+5. WireTap Low-Level (1 pattern)
+   - .createNode(), .getNumChildren(), .getNodeInfo() → Crashes from Python hooks
+   FIX: Use standard flame API
+
+6. Internal Methods (2 patterns)
+   - ws.replace_desktop() → Corrupts workspace state
+   - flame.clear_desktop() → Doesn't exist in public API
+   FIX: Use ws.desktop and reel_groups/reels attributes
+
+7. Discovery Misuse (1 pattern)
+   - dir(flame) → Unsafe, causes speculative code
+   FIX: Use search_flame_docs() for verified patterns
+
+8. Object Destruction (1 pattern)
+   - .clear() on objects (PyReelGroup, PyLibrary, etc.) → Raw C destructor
+   FIX: Use flame.delete(item) on each item
+
+9. Reel Deletion Pitfalls (2 patterns)
+   - for reel in list(rg.reels): flame.delete(reel) → Crashes with zero reels
+   - flame.delete(list(rg.reels)) → Crashes with zero reels
+   FIX: Always keep ≥1 reel in desktop reel groups
+   CORRECT: flame.delete(list(rg.reels)[:-1])
+
+10. PyAttribute Type Confusion (2 patterns)
+    - .name == "string" → Silent failure (PyAttribute, not string)
+    - .name.startswith() → AttributeError
+    FIX: Always wrap with str(): str(obj.name) == "string"
+
+11. Generator Pitfalls (2 patterns)
+    - next(x for x in reels if ...) → StopIteration if not found
+    - next(..., None) result without None check → AttributeError
+    FIX: next((x for x in reels if ...), None) and check result is not None
+
+12. Timeline Methods (Flame 2026) (1 pattern)
+    - seg.delete(), track.remove_gap(), track.ripple() → Don't exist
+    FIX: Use gap-close rebuild algorithm (iterate non-gap segments)
+
+13. Export Without Idle Event (1 pattern)
+    - PyExporter().export() outside schedule_idle_event → Hangs Flame
+    FIX: Use schedule_idle_event for Qt-dependent operations
+
+DETECTION MECHANISM:
+- Regex checks (runs BEFORE code execution)
+- AST analysis (catches obfuscated calls like getattr(flame, 'batch').render())
+- All checks run locally before TCP send
+- Error messages include problem + safe alternative
+
+================================================================================
+3. RAG CORPUS ANALYSIS
+================================================================================
+
+Total Chunks: 668
+Total Sources: 12
+Indexed By: Chroma VectorDB (semantic search)
+
+SOURCE BREAKDOWN:
+
+1. FLAME_API.md (294 chunks)
+   - Full Python API reference
+   - 68 classes with methods/attributes
+   - Module-level functions
+   - Object hierarchy
+
+2. flame_advanced_api.md (78 chunks)
+   - Action, Color Management, Conform
+   - Timeline FX, Export workflows
+   - Advanced node types
+
+3. flame_code_samples.md (46 chunks)
+   - Production code from Autodesk
+   - Hook registration (modern API)
+   - Media panel + batch UI actions
+   - Real-world examples
+
+4. flame_community_workflows.md (23 chunks)
+   - Logik Forums + operator language
+   - Desktop setup, reel creation
+   - Naming conventions
+   - "How artists talk about it"
+
+5. flame_cookbook_official.md (22 chunks)
+   - Official Autodesk recipes
+   - Clip import, reformat, render
+   - Standard patterns
+
+6. flame_ocr_patterns.md (15 chunks)
+   - YouTube OCR extraction (Round 1)
+   - Basic workspace traversal
+   - Correct workspace access pattern
+
+7. flame_ocr_patterns_v2.md (23 chunks)
+   - YouTube OCR extraction (Round 2)
+   - Batch naming hooks
+   - Python hook paths
+
+8. flame_openclip_patterns.md (8 chunks)
+   - OpenClip XML workflows
+   - Watch-folder architecture
+   - Multi-version clip management
+
+9. flame_reference_guide.md (30 chunks)
+   - API method signatures
+   - Reference-level documentation
+
+10. flame_segment_timeline_api.md (61 chunks)
+    - PySegment, PyAudioTrack
+    - Timeline editing
+    - Gap closure patterns
+
+11. flame_vocabulary.md (8 chunks)
+    - Operator terminology glossary
+    - Maps artist language to API
+
+12. flame_youtube_patterns.md (60 chunks)
+    - Logik Live sessions
+    - Advanced workflows
+    - Multi-video patterns
+
+COVERAGE:
+- All 68 Py* classes documented
+- All module-level functions documented
+- All dangerous patterns + fixes documented
+- All major workflows documented
+- Estimated: 95%+ API coverage
+
+================================================================================
+4. CORE OBJECT HIERARCHY
+================================================================================
+
+CRITICAL ACCESS PATTERN:
+   ws = flame.projects.current_project.current_workspace
+
+STRUCTURE:
+   flame.projects.current_project (PyProject)
+   └─ current_workspace (PyWorkspace)
+       ├─ libraries (PyLibrary[])
+       │   ├─ reels (PyReel[])
+       │   │   └─ clips (PyClip/PySequence[])
+       │   │       └─ segments (PySegment[]) [sequences only]
+       │   ├─ folders (PyFolder[])
+       │   └─ reel_groups (PyReelGroup[])
+       └─ desktop (PyDesktop)
+           ├─ reel_groups (PyReelGroup[]) ← Use for desktop reels
+           │   └─ reels (PyReel[])
+           └─ batch_groups (PyBatch[])
+               ├─ reels (PyReel[])
+               └─ nodes (PyNode variants)
+
+KEY POINTS:
+- ❌ flame.projects.current_project.libraries → WRONG (returns None)
+- ✓ ws.libraries → CORRECT
+- ✓ str(obj.name) → CORRECT (always wrap)
+- ❌ obj.name == "string" → WRONG (PyAttribute)
+- ✓ Must keep ≥1 reel in desktop reel groups
+- ✓ Use schedule_idle_event for long operations
+
+================================================================================
+5. FLAME PYTHON API CLASSES (68 TOTAL)
+================================================================================
+
+PROJECT & WORKSPACE:
+- PyProject, PyProjectSelector, PyWorkspace, PyDesktop
+
+LIBRARY STRUCTURE:
+- PyLibrary, PyReel, PyReelGroup, PyFolder, PyClip, PySequence
+
+BATCH & RENDERING:
+- PyBatch, PyBatchIteration, PyExporter, PyRenderNode
+
+NODE TYPES (12 variants):
+- PyActionNode, PyActionFamilyNode, PyImageNode, PyMorphNode
+- PyGMaskTracerNode, PyClipNode, PyOFXNode, PyPaintNode
+- PyHDRNode, PyLensDistortionNode, PyClrMgmtNode, PyCompassNode
+
+TIMELINE:
+- PySegment, PyAudioTrack
+
+UTILITIES:
+- PyAttribute (NOT a string!), PyFlameObject, PyMarker, PyResolution
+
+DOCUMENTED OPERATIONS:
+- Import: flame.import_clips(path, library)
+- Delete: flame.delete(obj) or flame.delete([objs])
+- Duplicate: flame.duplicate(obj) or flame.duplicate_many([objs])
+- Render: PyClip.render(mode, option, quality)
+- Export: PyExporter().export(...) [requires schedule_idle_event]
+- Find: flame.find_by_name/uid/wiretap_node_id
+- Commands: flame.execute_command/execute_shortcut
+- Idle: flame.schedule_idle_event(fn) [required for long ops]
+
+================================================================================
+6. SAFETY ANNOTATIONS & CONSTRAINTS
+================================================================================
+
+MCP TOOL ANNOTATIONS:
+   _RO  = read-only (15 tools)
+   _RW  = read-write, non-destructive (2 tools)
+   _DST = destructive with pattern detection (1 tool: execute_python)
+
+CRITICAL CONSTRAINTS:
+
+A. Object Hierarchy
+   - Always access via current_workspace (not project.libraries)
+   - Always wrap .name with str() before string operations
+   - Always check next() results for None before use
+
+B. Reel Groups
+   - MUST keep ≥1 reel in desktop reel groups
+   - flame.delete(list(rg.reels)[:-1]) ✓ SAFE
+   - flame.delete(list(rg.reels)) ❌ CRASHES
+
+C. Long Operations
+   - MUST use schedule_idle_event for:
+     * flame.batch.render()
+     * PyExporter().export()
+     * Large media imports
+     * Timeline rebuilds
+
+D. Timeline Editing
+   - No: seg.delete(), track.remove_gap(), track.ripple()
+   - Must rebuild sequence by iterating non-gap segments
+
+E. PyAttribute Type
+   - .name returns PyAttribute, NOT string
+   - Always: str(obj.name) before comparisons
+   - Never: obj.name.method() directly
+
+================================================================================
+7. TEST PLAN OVERVIEW
+================================================================================
+
+TOTAL TEST CASES: ~150
+
+BREAKDOWN:
+
+A. Read-Only Tools (15 tools)
+   - Parameter validation (3 tests each): 45 tests
+   - Output format validation (2 tests each): 30 tests
+   - Edge cases (3 tests each): 45 tests
+   Subtotal: ~120 tests
+
+B. Dangerous Pattern Detection (1 tool)
+   - Regex patterns (18 tests): 18 tests
+   - AST detection (2 tests): 2 tests
+   - Error message quality (1 test): 1 test
+   Subtotal: ~21 tests
+
+C. Integration
+   - search_flame_docs → execute_python: 1 test
+   - learn_pattern → RAG rebuild: 1 test
+   - Session stats tracking: 1 test
+   Subtotal: ~3 tests
+
+D. Coverage Matrix
+   - 100% of MCP tools
+   - 100% of parameter combinations
+   - 100% of dangerous patterns
+   - 100% of error cases
+
+VALIDATION CHECKLIST (Quick):
+- [ ] All 18 tools invoke successfully
+- [ ] No dangerous patterns execute
+- [ ] RAG search returns results + score
+- [ ] Error messages include alternatives
+- [ ] Timeout parameter works (1-300)
+- [ ] Token counting accurate
+- [ ] session_stats tracks efficiently
+- [ ] learn_pattern works (trusted/staged)
+
+================================================================================
+8. KEY FILES GENERATED
+================================================================================
+
+1. TEST_PLAN_COMPREHENSIVE.md (31 KB)
+   - Full 10-section test plan
+   - Detailed requirements
+   - Expected outcomes
+   - Coverage matrix
+   - Prerequisites
+
+2. TEST_PLAN_QUICK_REFERENCE.md (12 KB)
+   - Tool summary table
+   - Dangerous patterns checklist
+   - Corpus sources
+   - Object hierarchy
+   - Critical constraints
+
+3. TEST_PLAN_ANALYSIS_SUMMARY.txt (THIS FILE)
+   - Executive summary
+   - One-page reference
+   - Key statistics
+
+================================================================================
+9. IMPLEMENTATION NOTES
+================================================================================
+
+RAG SYSTEM:
+- Semantic search on 668 chunks
+- Top 5 results + max relevance score
+- Session cache for identical queries
+- Pattern learning (trusted) or staging (read-only)
+- Background index rebuild
+
+BRIDGE MODEL:
+- TCP localhost:4444 (overridable)
+- JSON request/response
+- Pattern detection BEFORE code execution
+- Timeout: 1-300 seconds (default 15)
+- Output capture (stdout + stderr)
+
+SAFETY CHECKS (in order):
+1. Regex check (18 patterns)
+2. AST check (obfuscated calls)
+3. Code execution (inside Flame)
+4. Output capture
+5. Token tracking
+6. Error handling
+
+TOKEN EFFICIENCY:
+- Dedicated tools save vs execute_python
+- RAG search saves vs full FLAME_API.md
+- Session stats track total savings
+- Target: >50% tokens saved in typical session
+
+================================================================================
+10. SUCCESS CRITERIA
+================================================================================
+
+ALL OF THE FOLLOWING MUST PASS:
+
+1. All 18 MCP tools invoke successfully
+2. All 18 dangerous patterns are blocked
+3. Zero patterns execute despite blocks
+4. RAG search accuracy > 85%
+5. Pattern deduplication works
+6. learn_pattern model-gating works
+7. Error messages include safe alternatives
+8. Timeout parameter works (all ranges)
+9. Token counting is accurate
+10. session_stats tracks all metrics
+11. Zero false positives in pattern detection
+12. Zero false negatives in pattern detection
+13. Bridge connectivity detected correctly
+14. Log tailing works for large files
+15. Grep filtering matches expected results
+16. IFFFS tree exploration works
+17. All read-only tools are truly read-only
+18. All parameter validations work
+19. All edge cases handled gracefully
+20. 100% API coverage documented
+
+STATUS: READY FOR TESTING
+
+================================================================================
