@@ -356,11 +356,13 @@ def _handle_connection(conn):
         _log(f"EXEC: {first_line[:120]}")
 
         # OBS-025: Bridge-level redirect enforcement.
-        # Catches ALL callers (MCP tool, Bash nc, Quick Console) — not just the MCP path.
-        # Quick Console bypass: payload can include {"code":..., "bypass_redirect":true}
-        # to allow deliberate direct execution (e.g. testing dedicated tools themselves).
-        _log(f"PAYLOAD keys={list(payload.keys())}  bypass_redirect={payload.get('bypass_redirect', False)}")
-        if not payload.get('bypass_redirect', False):
+        # Catches ALL callers including cached MCP server instances.
+        # Uses '_dt' (dedicated tool) key — only present in NEW server payloads.
+        # Old/cached server sends 'bypass_redirect':True without '_dt', so it is
+        # NOT trusted: redirect check runs regardless of bypass_redirect value.
+        _dt = payload.get('_dt', False)
+        _log(f"PAYLOAD keys={list(payload.keys())}  _dt={_dt}")
+        if not _dt:
             try:
                 with open("/tmp/flame_mcp_redirect.log", "a") as _rf:
                     _rf.write(f"CHECK: code={code[:80]!r} patterns={len(_BRIDGE_REDIRECT_PATTERNS)}\n")

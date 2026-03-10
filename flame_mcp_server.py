@@ -585,17 +585,17 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
 
 # ─── Bridge communication ─────────────────────────────────────────────────────
 
-def _call_flame(code: str, timeout: int = 15, bypass_redirect: bool = True) -> dict:
+def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> dict:
     """
     Send Python code to the Flame bridge.
     A13 — Prefers Unix domain socket (owner-only, no network exposure);
     falls back to TCP if the socket file does not exist.
     Returns the result as a dictionary.
 
-    bypass_redirect=True (default): tells the bridge to skip its redirect check.
-      All calls from this MCP server are trusted — dedicated tools have their own
-      logic and execute_python has already run _REDIRECT_PATTERNS before calling here.
-      The bridge redirect is only meant to catch external Bash/nc bypass attempts.
+    dedicated_tool=True (default): marks the payload as coming from a dedicated MCP
+      tool (list_libraries, get_project_info, etc.). The bridge skips redirect check.
+    dedicated_tool=False: used by execute_python — bridge enforces redirect patterns
+      as a second layer of defence even if the server-side check was bypassed.
     """
     # A13 — choose transport: Unix socket (preferred) or TCP fallback
     use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
@@ -611,7 +611,7 @@ def _call_flame(code: str, timeout: int = 15, bypass_redirect: bool = True) -> d
             s.settimeout(timeout)
             s.connect(addr)
 
-            payload = json.dumps({'code': code, 'bypass_redirect': bypass_redirect}) + "\n"
+            payload = json.dumps({'code': code, '_dt': dedicated_tool}) + "\n"
             s.sendall(payload.encode('utf-8'))
 
             # A5 — cumulative deadline prevents partial-response hangs
@@ -749,11 +749,9 @@ def execute_python(
         )
 
     t_in  = _tok(code)
-    # bypass_redirect=False: execute_python is user-facing — the bridge must also
-    # run its redirect check as a second enforcement layer.  Only dedicated tools
-    # (list_libraries, get_project_info, …) pass bypass_redirect=True because they
-    # intentionally use code patterns that would otherwise match a redirect.
-    result = _call_flame(code, timeout=timeout, bypass_redirect=False)
+    # dedicated_tool=False: execute_python is user-facing code. The bridge checks
+    # redirect patterns as a second enforcement layer regardless of server-side checks.
+    result = _call_flame(code, timeout=timeout, dedicated_tool=False)
     output = result.get('output', '') + result.get('error', '')
     t_out = _tok(output)
 
