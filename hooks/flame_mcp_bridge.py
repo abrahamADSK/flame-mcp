@@ -1028,6 +1028,8 @@ class _FlameChat:
             # ── Display main assistant response ──────────────────────────────
             response = self._strip_ansi('\n\n'.join(assistant_parts).strip())
             if response:
+                # REC-002: log first 200 chars of assistant response for QA audit
+                _log(f"RESPONSE: {response[:200].replace(chr(10), ' ')!r}")
                 self._messages.append({"role": "assistant", "content": response})
                 self._ui_queue.append(
                     lambda r=response: self._append_bubble("assistant", r))
