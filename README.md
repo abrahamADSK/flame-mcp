@@ -71,6 +71,7 @@ The installer will:
 3. Copy the Flame hook to `/opt/Autodesk/shared/python/` (requires `sudo`)
 4. Register the MCP server with Claude Code
 5. Build the RAG documentation index
+6. Generate `.claude/settings.local.json` with all 18 MCP tools allowed
 
 ### Manual
 

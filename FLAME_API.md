@@ -2097,6 +2097,12 @@ Object representing a Paint node.
 
 Object representing a Project.
 
+> ⚠️ **PyProject limitations** — The following attributes are **NOT available** via the Python API and will return `None` if accessed directly:
+> `frame_rate`, `width`, `height`, `bit_depth`, `resolution`, `scan_mode`, `colour_space`.
+> These values are stored in Wiretap XML metadata, not in the Python object.
+> **Always use the `get_project_info` tool** to retrieve project resolution, frame rate, and bit depth.
+> Do NOT attempt `flame.projects.current_project.frame_rate` — it does not exist.
+
 **Attributes:** `attributes`, `current_workspace`, `description`, `media_folder`, `name`, `nickname`, `parent`, `project_folder`, `project_name`, `setups_folder`, `shared_libraries`, `workspaces_count`
 
 **Methods:**
