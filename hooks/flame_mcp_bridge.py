@@ -355,14 +355,17 @@ def _handle_connection(conn):
         first_line = code.strip().splitlines()[0] if code.strip() else '(empty)'
         _log(f"EXEC: {first_line[:120]}")
 
-        # OBS-025: Bridge-level redirect enforcement.
-        # Catches ALL callers including cached MCP server instances.
-        # Uses '_dt' (dedicated tool) key — only present in NEW server payloads.
-        # Old/cached server sends 'bypass_redirect':True without '_dt', so it is
-        # NOT trusted: redirect check runs regardless of bypass_redirect value.
-        _dt = payload.get('_dt', False)
-        _log(f"PAYLOAD keys={list(payload.keys())}  _dt={_dt}")
-        if not _dt:
+        # OBS-025: Bridge-level redirect enforcement — BRIDGE ONLY, no server trust.
+        # Marker is '# DT\n' at the START of the code string, added by _call_flame
+        # in the MCP server for every dedicated tool call (list_libraries, etc.).
+        # execute_python does NOT add the prefix → always goes through redirect check.
+        # Old/cached server never adds '# DT\n' → all its code goes through check.
+        # This is fully independent of server reload / pkill cycles.
+        _is_dt = code.startswith('# DT\n')
+        if _is_dt:
+            code = code[len('# DT\n'):]   # strip marker before execution
+        _log(f"PAYLOAD keys={list(payload.keys())}  _dt={_is_dt}")
+        if not _is_dt:
             try:
                 with open("/tmp/flame_mcp_redirect.log", "a") as _rf:
                     _rf.write(f"CHECK: code={code[:80]!r} patterns={len(_BRIDGE_REDIRECT_PATTERNS)}\n")

@@ -611,7 +611,10 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
             s.settimeout(timeout)
             s.connect(addr)
 
-            payload = json.dumps({'code': code, '_dt': dedicated_tool}) + "\n"
+            # Dedicated tools prepend '# DT\n' so the bridge skips redirect check.
+            # execute_python passes dedicated_tool=False → no prefix → bridge enforces.
+            marked_code = ('# DT\n' + code) if dedicated_tool else code
+            payload = json.dumps({'code': marked_code}) + "\n"
             s.sendall(payload.encode('utf-8'))
 
             # A5 — cumulative deadline prevents partial-response hangs
