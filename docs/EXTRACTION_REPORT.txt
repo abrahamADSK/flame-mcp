@@ -1,0 +1,181 @@
+FLAME PYTHON API PATTERNS - EXTRACTION REPORT
+==============================================
+
+Date: 2026-03-10
+Source: 12 YouTube transcripts from Logik Live channel
+Output: /sessions/magical-fervent-ride/mnt/Projects/flame-mcp/docs/flame_youtube_patterns.md
+
+DOCUMENT STATISTICS
+-------------------
+Total Words: 4,084
+Main Sections (##): 55
+Subsections (###): 38
+
+TRANSCRIPTS PROCESSED
+---------------------
+
+HIGH PRIORITY:
+✓ jfxJYUnWIjY.txt - Writing Python Scripts for Flame (Andy Milkis & Fred Warren)
+✓ GA0ipgNXhnI.txt - Simple Python Scripts (Bryan Bayley)
+✓ wTRwYyXTosk.txt - Uppercut Workflow (John Geehreng)
+✓ FYNkebyiCEU.txt - Logik Projekt (Phil Man)
+✓ 0SpDr3tMdPI.txt - Python Fun (Andrew Miller & Erik Borzi)
+
+MEDIUM PRIORITY:
+✓ KG51c1GStLk.txt - Timeline Segment Color via Python
+✓ b-4fG6zModA.txt - AI/ML Tools with Python (Andy Milkis)
+✓ C5TcgHte2o0.txt - Python Head Tracking Tool (Eric Levy)
+✓ 5xKjiUBSse8.txt - TWML Python ML Integration
+✓ Dzq3hua0GrU.txt - ShotGrid Integration
+✓ SjeSywTMSAE.txt - Advanced Publishing/Conform
+✓ uAPgg4r0BbY.txt - Publishing Workflows 101
+
+KEY PATTERNS EXTRACTED
+----------------------
+
+1. Hook System
+   - Hook file locations: /opt/Autodesk/shared/python/
+   - Hook functions: app_initialized, batch_render_begin, batch_render_end, after_iterate, menu_*
+   - Hook signature patterns and rescan mechanism
+
+2. Object Hierarchy (8 levels)
+   - flame.projects.current_project
+   - workspace → libraries → reels → clips
+   - batch_groups → nodes → segments
+
+3. Project & Workspace Operations
+   - Project creation patterns
+   - Workspace access and initialization
+   - Template restoration
+
+4. Library & Reel Operations
+   - Library enumeration and modification
+   - Reel creation, deletion, property access
+   - Clip organization patterns
+
+5. Clip & Media Operations
+   - Clip properties: name, timecode, duration, color, path
+   - Timecode manipulation (start_frame, frame_rate)
+   - OpenClip XML versioning patterns
+   - Clip naming automation with tokens
+
+6. Timeline Segment Operations
+   - Segment color manipulation (RGB 0.0-1.0)
+   - Segment properties and iteration
+   - Dynamic metadata updates on iterate
+
+7. Custom Menu Registration
+   - Menu item pattern and discovery
+   - Hotkey assignment to hooks
+   - Frame.io context menu integration
+
+8. Batch & Render Hooks
+   - Batch group management
+   - Render node operations
+   - Backburner integration patterns
+
+9. MediaHub Integration (minimal coverage)
+   - References to MediaHub API
+   - Asset tracking context
+
+10. Publishing & OpenClip
+    - OpenClip XML structure and versioning
+    - Publishing workflow automation
+    - Version stacking in timelines
+    - Frame.io integration for review delivery
+
+11. Complete Script Examples (5 examples)
+    - Clip renaming script
+    - Segment color menu hook
+    - Slate versioning on iterate
+    - Uppercut publish script
+    - Frame.io comment fetch
+
+12. Version-Specific Changes
+    - Flame 2022: Project management API improvements
+    - Flame 2023: Python API enhancements
+    - Flame 2024: Snapshot functionality, Type node
+    - Flame 2025-2026: Continued Python API expansion
+
+13. Real-World Workflow Patterns
+    - Uppercut (NYC): Complete production pipeline (11 scripts)
+    - Logik Projekt: Open-source pipeline tool
+    - MTI Film: Advanced motion tracking workflows
+
+14. Uncertain/Speculative Patterns
+    - Mechanisms that required inference from transcripts
+    - [uncertain] tags for patterns needing verification
+
+15. Integration Patterns
+    - Frame.io REST API integration
+    - Backburner CLI invocation
+    - Slack webhook posting
+    - ShotGrid/Shotgun pipeline context
+
+16. Source Videos Reference Table
+    - 12 videos documented with topics and notes
+
+MAJOR FINDINGS
+--------------
+
+1. Hook-Based Architecture: Flame Python scripting is event-driven via hooks in
+   /opt/Autodesk/shared/python/. Scripts execute on specific events (render start,
+   iterate, app launch, menu selection).
+
+2. OpenClip XML is Central: Modern Flame workflows use OpenClip XML files as
+   version containers, enabling seamless integration with external renderers
+   (Nuke, other tools).
+
+3. Object Hierarchy is Strict: Projects contain workspaces, which contain
+   libraries/batches, which contain reels/clips/segments. This hierarchy is
+   strictly enforced.
+
+4. Properties Over Methods: Most scripting involves reading/writing object
+   properties (name, timecode, color) rather than calling methods.
+
+5. External API Integration: Scripts commonly integrate with Frame.io, Slack,
+   ShotGrid, and Backburner via REST APIs, webhooks, and CLI invocation.
+
+6. Template-Based Workflows: Production pipelines standardize on batch templates,
+   folder structures, and naming conventions applied via Python.
+
+7. Version Tracking: Sophisticated versioning workflows manage multiple versions
+   of shots across Flame and external rendering tools (Nuke), with automatic
+   version stacking in timelines.
+
+GAPS & UNCERTAIN AREAS
+----------------------
+
+1. Context mechanism unclear - how hooks access "current" objects (selected clip,
+   active batch, etc.). Likely via a flame.context object but details absent.
+
+2. 3D text node property access - scripts reference updating text on 3D text nodes
+   but exact mechanism/properties not detailed.
+
+3. Batch loading/saving - References to loading batch setups from files, but exact
+   API calls not shown.
+
+4. MediaHub API - Only briefly mentioned; no detailed API patterns extracted.
+
+5. Segment selection context - How scripts determine "selected segment" for color
+   operations unclear; likely right-click context menu parameter.
+
+RECOMMENDATIONS FOR LLM USE
+----------------------------
+
+This document provides a comprehensive reference for assisting developers with
+Flame Python scripting. Use it to:
+
+1. Answer questions about hook registration and lifecycle
+2. Explain object hierarchy and property access patterns
+3. Provide examples for common automation tasks (renaming, coloring, publishing)
+4. Suggest integration patterns for external tools
+5. Explain version management workflows using OpenClip
+6. Provide context for real-world production pipelines
+
+The document includes 5 complete script examples showing practical patterns.
+All uncertain patterns are marked with [uncertain] tags for transparency.
+
+For production use, developers should verify uncertain patterns against the
+official Flame Python API documentation.
+

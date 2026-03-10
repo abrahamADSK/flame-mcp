@@ -4,7 +4,10 @@
     "last_updated": "2026-03-10",
     "total_youtube_videos": 41,
     "total_additional_sources": 7,
-    "channels": ["logik_live", "flame_learning_channel"],
+    "channels": [
+      "logik_live",
+      "flame_learning_channel"
+    ],
     "scraping_notes": "Full inventory after exhaustive keyword search on both channels. Logik Live: 233 videos total (gap #38-#128 has no Python content confirmed via keyword searches). FLC: 640 videos; Python Scripting playlist (6 available + 1 unavailable) is the primary source.",
     "tiers": {
       "HIGH": "Direct Python scripting tutorials, hands-on code demos",
@@ -13,7 +16,6 @@
     },
     "status": "complete inventory — run fetch_transcripts.py on Mac to populate transcripts"
   },
-
   "logik_live": {
     "channel_id": "UClogiklive",
     "channel_handle": "@logiklive",
@@ -21,7 +23,6 @@
     "total_channel_videos": 233,
     "scrape_date": "2026-03-10",
     "episodes": [
-
       {
         "id": "jfxJYUnWIjY",
         "episode": "#007",
@@ -29,9 +30,15 @@
         "url": "https://www.youtube.com/watch?v=jfxJYUnWIjY",
         "year": 2019,
         "relevance": "HIGH",
-        "topics": ["python_basics", "flame_api_intro", "custom_scripts", "menus"],
+        "topics": [
+          "python_basics",
+          "flame_api_intro",
+          "custom_scripts",
+          "menus"
+        ],
         "notes": "Foundational episode — beginner to intermediate Python scripting for Flame. Covers the range of what is possible with the Flame Python API.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "wTRwYyXTosk",
@@ -40,9 +47,16 @@
         "url": "https://www.youtube.com/watch?v=wTRwYyXTosk",
         "year": 2023,
         "relevance": "HIGH",
-        "topics": ["project_creation", "shot_publishing", "clip_renaming", "frame_io_integration", "delivery_automation"],
+        "topics": [
+          "project_creation",
+          "shot_publishing",
+          "clip_renaming",
+          "frame_io_integration",
+          "delivery_automation"
+        ],
         "notes": "Real-world production automation — Uppercut (NYC) workflow. Project creation, shot publishing, renaming, Frame.io integration, delivery.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "GA0ipgNXhnI",
@@ -51,9 +65,15 @@
         "url": "https://www.youtube.com/watch?v=GA0ipgNXhnI",
         "year": 2023,
         "relevance": "HIGH",
-        "topics": ["clip_naming", "timecode_manipulation", "simple_automation", "beginner_scripts"],
+        "topics": [
+          "clip_naming",
+          "timecode_manipulation",
+          "simple_automation",
+          "beginner_scripts"
+        ],
         "notes": "Practical beginner scripts — append start frame to clip name, source timecode manipulation.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "0SpDr3tMdPI",
@@ -62,9 +82,14 @@
         "url": "https://www.youtube.com/watch?v=0SpDr3tMdPI",
         "year": 2024,
         "relevance": "HIGH",
-        "topics": ["python_api", "advanced_scripting", "workflow_automation"],
+        "topics": [
+          "python_api",
+          "advanced_scripting",
+          "workflow_automation"
+        ],
         "notes": "Most recent dedicated Python episode. Andrew Miller (MTI Film) and Erik Borzi. Covers newer API features.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "FYNkebyiCEU",
@@ -73,9 +98,15 @@
         "url": "https://www.youtube.com/watch?v=FYNkebyiCEU",
         "year": 2024,
         "relevance": "HIGH",
-        "topics": ["pipeline_tool", "project_management", "python_pipeline", "workflow_automation"],
+        "topics": [
+          "pipeline_tool",
+          "project_management",
+          "python_pipeline",
+          "workflow_automation"
+        ],
         "notes": "Logik Projekt is an open-source Python pipeline solution for Flame by Phil Man. Handles project creation, shot structure, publishing. Key example of a complete Python-based Flame pipeline.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "KG51c1GStLk",
@@ -84,9 +115,14 @@
         "url": "https://www.youtube.com/watch?v=KG51c1GStLk",
         "year": 2021,
         "relevance": "MEDIUM",
-        "topics": ["timeline_segments", "segment_colors", "python_api"],
+        "topics": [
+          "timeline_segments",
+          "segment_colors",
+          "python_api"
+        ],
         "notes": "Short demo clip (~3 min). Timeline segment color manipulation via Python. Drop into /opt/Autodesk/shared/python, rescan hooks.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "5xKjiUBSse8",
@@ -95,9 +131,14 @@
         "url": "https://www.youtube.com/watch?v=5xKjiUBSse8",
         "year": 2020,
         "relevance": "MEDIUM",
-        "topics": ["python_ml_tools", "timewarp_ml", "custom_python_nodes"],
+        "topics": [
+          "python_ml_tools",
+          "timewarp_ml",
+          "custom_python_nodes"
+        ],
         "notes": "Andriy Toloshny presents the python-based ML Timewarp Tool for Flame (TWML). Demonstrates how Python is used to integrate external ML models into Flame workflows.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "b-4fG6zModA",
@@ -106,9 +147,14 @@
         "url": "https://www.youtube.com/watch?v=b-4fG6zModA",
         "year": 2024,
         "relevance": "MEDIUM",
-        "topics": ["python_ml_integration", "ai_tools", "custom_scripts"],
+        "topics": [
+          "python_ml_integration",
+          "ai_tools",
+          "custom_scripts"
+        ],
         "notes": "Andy Milkis (key Flame Python developer) discusses AI/ML tools built with Python for Flame. Likely covers Python integration patterns for external models.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "C5TcgHte2o0",
@@ -117,9 +163,14 @@
         "url": "https://www.youtube.com/watch?v=C5TcgHte2o0",
         "year": 2025,
         "relevance": "MEDIUM",
-        "topics": ["python_tool_development", "ai_tracking", "custom_flame_tools"],
+        "topics": [
+          "python_tool_development",
+          "ai_tracking",
+          "custom_flame_tools"
+        ],
         "notes": "Python-based head tracking tool built by VFX artist Eric Levy (not a developer). Shows artist-level Python tool development for Flame.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "Dzq3hua0GrU",
@@ -128,9 +179,14 @@
         "url": "https://www.youtube.com/watch?v=Dzq3hua0GrU",
         "year": 2019,
         "relevance": "MEDIUM",
-        "topics": ["shotgrid_integration", "pipeline_integration", "shot_management"],
+        "topics": [
+          "shotgrid_integration",
+          "pipeline_integration",
+          "shot_management"
+        ],
         "notes": "Instinctual (LA) shows Shotgun/ShotGrid integration with Flame. Pipeline automation and shot tracking context relevant to Python-based pipelines.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "uAPgg4r0BbY",
@@ -139,9 +195,15 @@
         "url": "https://www.youtube.com/watch?v=uAPgg4r0BbY",
         "year": 2022,
         "relevance": "MEDIUM",
-        "topics": ["openclip", "publishing", "small_archives", "workflow_automation"],
+        "topics": [
+          "openclip",
+          "publishing",
+          "small_archives",
+          "workflow_automation"
+        ],
         "notes": "Publishing workflow fundamentals — openclip, small archives, automated render delivery. Relevant to understanding the workflow Python scripts automate.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "SjeSywTMSAE",
@@ -150,9 +212,15 @@
         "url": "https://www.youtube.com/watch?v=SjeSywTMSAE",
         "year": 2025,
         "relevance": "MEDIUM",
-        "topics": ["publishing", "conform", "openclip", "advanced_workflow"],
+        "topics": [
+          "publishing",
+          "conform",
+          "openclip",
+          "advanced_workflow"
+        ],
         "notes": "Advanced publishing techniques for online conform. Connected Conform workflow updates. Context for Python publishing automation.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "mWJXtyW-qTs",
@@ -161,9 +229,14 @@
         "url": "https://www.youtube.com/watch?v=mWJXtyW-qTs",
         "year": 2019,
         "relevance": "LOW",
-        "topics": ["flame_development", "product_roadmap", "api_context"],
+        "topics": [
+          "flame_development",
+          "product_roadmap",
+          "api_context"
+        ],
         "notes": "Will Harris (Flame Family Product Manager) and Yann Laforest. In-depth look at how Flame Development Team functions and their trends. Context for API evolution.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "78NDywJW8YU",
@@ -172,9 +245,15 @@
         "url": "https://www.youtube.com/watch?v=78NDywJW8YU",
         "year": 2019,
         "relevance": "LOW",
-        "topics": ["project_management", "conforming", "archiving", "api_context"],
+        "topics": [
+          "project_management",
+          "conforming",
+          "archiving",
+          "api_context"
+        ],
         "notes": "Stephane Labrie, Product Owner for Project Management, Conforming, Archiving. Discusses these subsystems — relevant to Python scripting in those areas.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "F94TWWVMXf0",
@@ -183,9 +262,14 @@
         "url": "https://www.youtube.com/watch?v=F94TWWVMXf0",
         "year": 2019,
         "relevance": "LOW",
-        "topics": ["python_api", "flame_development", "user_feedback"],
+        "topics": [
+          "python_api",
+          "flame_development",
+          "user_feedback"
+        ],
         "notes": "Fred Warren, Flame Family Product Owner. Discusses Flame development and Python API philosophy. Useful for API context.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "8IVfvoCMsko",
@@ -194,9 +278,14 @@
         "url": "https://www.youtube.com/watch?v=8IVfvoCMsko",
         "year": 2021,
         "relevance": "LOW",
-        "topics": ["flame_development", "api_context", "feature_selection"],
+        "topics": [
+          "flame_development",
+          "api_context",
+          "feature_selection"
+        ],
         "notes": "Software Manager Jasmin Frenette discusses Flame from the developer's perspective. Feature selection, development priorities.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "MwLpopgpcwE",
@@ -205,9 +294,14 @@
         "url": "https://www.youtube.com/watch?v=MwLpopgpcwE",
         "year": 2022,
         "relevance": "LOW",
-        "topics": ["flame_2023_api", "developer_perspective", "api_changes"],
+        "topics": [
+          "flame_2023_api",
+          "developer_perspective",
+          "api_changes"
+        ],
         "notes": "Senior Software Developers discuss Flame 2023 development. Developer-level API context for the 2023 release cycle.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "5YLynVywTB0",
@@ -216,9 +310,14 @@
         "url": "https://www.youtube.com/watch?v=5YLynVywTB0",
         "year": 2023,
         "relevance": "LOW",
-        "topics": ["flame_development", "user_requests", "api_roadmap"],
+        "topics": [
+          "flame_development",
+          "user_requests",
+          "api_roadmap"
+        ],
         "notes": "First Reverse User Group — users request features from Autodesk devs. API roadmap context.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "trWwDlJ8z7o",
@@ -227,9 +326,14 @@
         "url": "https://www.youtube.com/watch?v=trWwDlJ8z7o",
         "year": 2026,
         "relevance": "LOW",
-        "topics": ["flame_2026_api", "user_requests", "api_roadmap"],
+        "topics": [
+          "flame_2026_api",
+          "user_requests",
+          "api_roadmap"
+        ],
         "notes": "Most recent Reverse User Group (Feb 2026). Autodesk devs discuss new features and respond to user requests. Contains latest API information.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "YSODSDpGigs",
@@ -238,9 +342,13 @@
         "url": "https://www.youtube.com/watch?v=YSODSDpGigs",
         "year": 2021,
         "relevance": "LOW",
-        "topics": ["flame_2022_features", "api_changes"],
+        "topics": [
+          "flame_2022_features",
+          "api_changes"
+        ],
         "notes": "Flame 2022 feature overview with Fred Warren. API changes context.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "xnd1F-b_yLA",
@@ -249,9 +357,13 @@
         "url": "https://www.youtube.com/watch?v=xnd1F-b_yLA",
         "year": 2021,
         "relevance": "LOW",
-        "topics": ["flame_2022_features", "api_changes"],
+        "topics": [
+          "flame_2022_features",
+          "api_changes"
+        ],
         "notes": "Flame 2022 feature overview with Stephane Labrie. Project management / conform API changes.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "FYz7jyOqEas",
@@ -260,9 +372,13 @@
         "url": "https://www.youtube.com/watch?v=FYz7jyOqEas",
         "year": 2022,
         "relevance": "LOW",
-        "topics": ["flame_2023_features", "api_changes"],
+        "topics": [
+          "flame_2023_features",
+          "api_changes"
+        ],
         "notes": "Flame 2023 release overview. API additions context.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "GfsuPake0NY",
@@ -271,9 +387,13 @@
         "url": "https://www.youtube.com/watch?v=GfsuPake0NY",
         "year": 2022,
         "relevance": "LOW",
-        "topics": ["flame_2023_features", "api_changes"],
+        "topics": [
+          "flame_2023_features",
+          "api_changes"
+        ],
         "notes": "Fred Warren presents Flame 2023 features.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "ipB8OF4nQfg",
@@ -282,9 +402,13 @@
         "url": "https://www.youtube.com/watch?v=ipB8OF4nQfg",
         "year": 2022,
         "relevance": "LOW",
-        "topics": ["flame_2023_features", "api_changes"],
+        "topics": [
+          "flame_2023_features",
+          "api_changes"
+        ],
         "notes": "Stephane Labrie presents Flame 2023 features (project management, conform, archiving side).",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "HWG_tFsnB5k",
@@ -293,9 +417,14 @@
         "url": "https://www.youtube.com/watch?v=HWG_tFsnB5k",
         "year": 2023,
         "relevance": "LOW",
-        "topics": ["flame_2023_2_features", "flame_2023_3_features", "api_changes"],
+        "topics": [
+          "flame_2023_2_features",
+          "flame_2023_3_features",
+          "api_changes"
+        ],
         "notes": "Point release features. May include Python API additions.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "CGVPTh0Kcjk",
@@ -304,9 +433,13 @@
         "url": "https://www.youtube.com/watch?v=CGVPTh0Kcjk",
         "year": 2023,
         "relevance": "LOW",
-        "topics": ["flame_2024_features", "api_changes"],
+        "topics": [
+          "flame_2024_features",
+          "api_changes"
+        ],
         "notes": "Flame 2024 release features and API changes.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "O0t9dWtLnFc",
@@ -315,9 +448,13 @@
         "url": "https://www.youtube.com/watch?v=O0t9dWtLnFc",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2024_1_features", "api_changes"],
+        "topics": [
+          "flame_2024_1_features",
+          "api_changes"
+        ],
         "notes": "Flame 2024.1 update features.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "cUSQZGsyt7c",
@@ -326,9 +463,13 @@
         "url": "https://www.youtube.com/watch?v=cUSQZGsyt7c",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2025_features", "api_changes"],
+        "topics": [
+          "flame_2025_features",
+          "api_changes"
+        ],
         "notes": "Flame 2025 release overview. New features including match grain.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "hn_3Ovhe_TE",
@@ -337,9 +478,13 @@
         "url": "https://www.youtube.com/watch?v=hn_3Ovhe_TE",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2025_features", "api_changes"],
+        "topics": [
+          "flame_2025_features",
+          "api_changes"
+        ],
         "notes": "Stephane Labrie presents remaining Flame 2025 features.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "kSJsp9AW18w",
@@ -348,9 +493,13 @@
         "url": "https://www.youtube.com/watch?v=kSJsp9AW18w",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2025_1_features", "api_changes"],
+        "topics": [
+          "flame_2025_1_features",
+          "api_changes"
+        ],
         "notes": "Flame 2025.1 update features.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "Kbz8l6d_mRw",
@@ -359,9 +508,13 @@
         "url": "https://www.youtube.com/watch?v=Kbz8l6d_mRw",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2026_features", "api_changes"],
+        "topics": [
+          "flame_2026_features",
+          "api_changes"
+        ],
         "notes": "Flame 2026 Part 1 feature overview with Stephane Labrie.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "v5-qzux_rtg",
@@ -370,9 +523,13 @@
         "url": "https://www.youtube.com/watch?v=v5-qzux_rtg",
         "year": 2024,
         "relevance": "LOW",
-        "topics": ["flame_2026_features", "api_changes"],
+        "topics": [
+          "flame_2026_features",
+          "api_changes"
+        ],
         "notes": "Flame 2026 Part 2 with Fred Warren.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "eAnwbSdfwbg",
@@ -381,9 +538,14 @@
         "url": "https://www.youtube.com/watch?v=eAnwbSdfwbg",
         "year": 2025,
         "relevance": "LOW",
-        "topics": ["flame_2026_1_features", "api_changes", "snapshot_feature"],
+        "topics": [
+          "flame_2026_1_features",
+          "api_changes",
+          "snapshot_feature"
+        ],
         "notes": "Flame 2026.1 update — new Snapshot feature and other enhancements.",
-        "transcript_status": "pending"
+        "transcript_status": "done",
+        "_channel": "logik_live"
       },
       {
         "id": "K1jS7l_JM0Q",
@@ -392,13 +554,16 @@
         "url": "https://www.youtube.com/watch?v=K1jS7l_JM0Q",
         "year": 2025,
         "relevance": "LOW",
-        "topics": ["flame_2026_2_features", "api_changes"],
+        "topics": [
+          "flame_2026_2_features",
+          "api_changes"
+        ],
         "notes": "Most recent Flame version overview (2026.2). Includes Francis Bouillon alongside regular presenters.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "logik_live"
       }
     ]
   },
-
   "flame_learning_channel": {
     "channel_id": "UCSsh51xYqNOpiDTfvnnzyww",
     "channel_url": "https://www.youtube.com/channel/UCSsh51xYqNOpiDTfvnnzyww",
@@ -421,9 +586,15 @@
         "flame_version": "2016 EXT 1",
         "url": "https://www.youtube.com/watch?v=hPa1OVEY_78",
         "relevance": "HIGH",
-        "topics": ["openclip", "watch_folders", "file_system_hooks", "python_hooks"],
+        "topics": [
+          "openclip",
+          "watch_folders",
+          "file_system_hooks",
+          "python_hooks"
+        ],
         "notes": "First Python scripting episode on the official channel. Covers watch folder automation and OpenClip workflow via Python. RAG gap filler for watch_folders (0 chunks in current corpus).",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "ZDHntCBBRXM",
@@ -431,9 +602,15 @@
         "flame_version": "2016 EXT 2",
         "url": "https://www.youtube.com/watch?v=ZDHntCBBRXM",
         "relevance": "HIGH",
-        "topics": ["batch_iteration", "render_naming", "python_hooks", "export_automation"],
+        "topics": [
+          "batch_iteration",
+          "render_naming",
+          "python_hooks",
+          "export_automation"
+        ],
         "notes": "Batch automation and render output naming via Python. Directly relevant to batch group scripting patterns.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "VJFgxnCqrE0",
@@ -441,9 +618,15 @@
         "flame_version": "2018.2",
         "url": "https://www.youtube.com/watch?v=VJFgxnCqrE0",
         "relevance": "HIGH",
-        "topics": ["python_scripting_overview", "flame_api_2018", "hooks", "custom_tools"],
+        "topics": [
+          "python_scripting_overview",
+          "flame_api_2018",
+          "hooks",
+          "custom_tools"
+        ],
         "notes": "Updated Python scripting overview for Flame 2018.2. Covers new hooks and API additions in that release cycle.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "lMRidruJDqA",
@@ -451,9 +634,15 @@
         "flame_version": "2020",
         "url": "https://www.youtube.com/watch?v=lMRidruJDqA",
         "relevance": "HIGH",
-        "topics": ["custom_menus", "python_hooks", "ui_customization", "context_menus"],
+        "topics": [
+          "custom_menus",
+          "python_hooks",
+          "ui_customization",
+          "context_menus"
+        ],
         "notes": "Creating custom menu actions via Python hooks. Core pattern for building Flame tools. RAG gap filler for custom_menus.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "e2ob2gNoea8",
@@ -461,9 +650,16 @@
         "flame_version": "2023.1",
         "url": "https://www.youtube.com/watch?v=e2ob2gNoea8",
         "relevance": "HIGH",
-        "topics": ["mediahub_browser", "python_messaging", "ui_dialogs", "PyTransition", "flame_2023_api"],
+        "topics": [
+          "mediahub_browser",
+          "python_messaging",
+          "ui_dialogs",
+          "PyTransition",
+          "flame_2023_api"
+        ],
         "notes": "New Python features in Flame 2023.1: PyTransition for Timeline, MediaHub browser controls, messaging/dialog API.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "ewKoYXkqEXA",
@@ -471,9 +667,15 @@
         "flame_version": "2018.2",
         "url": "https://www.youtube.com/watch?v=ewKoYXkqEXA",
         "relevance": "HIGH",
-        "topics": ["custom_menus", "xml_customization", "context_menus", "action_environment"],
+        "topics": [
+          "custom_menus",
+          "xml_customization",
+          "context_menus",
+          "action_environment"
+        ],
         "notes": "Adding items to Action contextual menus by editing XML. Shows XML-based menu customization complementing Python hook approach.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       },
       {
         "id": "C5Ez4nlRvTk",
@@ -481,13 +683,17 @@
         "flame_version": "2016 EXT 1",
         "url": "https://www.youtube.com/watch?v=C5Ez4nlRvTk",
         "relevance": "MEDIUM",
-        "topics": ["matchbox_shaders", "python_install_scripts", "logik_portal"],
+        "topics": [
+          "matchbox_shaders",
+          "python_install_scripts",
+          "logik_portal"
+        ],
         "notes": "Python script for installing Logik matchbox shaders. Demonstrates scripted asset management.",
-        "transcript_status": "pending"
+        "transcript_status": "failed",
+        "_channel": "flame_learning_channel"
       }
     ]
   },
-
   "additional_sources": {
     "description": "Non-YouTube sources for Phase D/E knowledge extraction (Python API, Wiretap SDK, CLI tools)",
     "sources": [
