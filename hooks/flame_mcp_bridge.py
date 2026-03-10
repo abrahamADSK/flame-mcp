@@ -359,6 +359,7 @@ def _handle_connection(conn):
         # Catches ALL callers (MCP tool, Bash nc, Quick Console) — not just the MCP path.
         # Quick Console bypass: payload can include {"code":..., "bypass_redirect":true}
         # to allow deliberate direct execution (e.g. testing dedicated tools themselves).
+        _log(f"PAYLOAD keys={list(payload.keys())}  bypass_redirect={payload.get('bypass_redirect', False)}")
         if not payload.get('bypass_redirect', False):
             for _pat, _msg in _BRIDGE_REDIRECT_PATTERNS:
                 if _re_bridge.search(_pat, code):
