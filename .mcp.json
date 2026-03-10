@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "flame": {
+      "command": ".venv/bin/python",
+      "args": ["flame_mcp_server.py"]
+    }
+  }
+}
