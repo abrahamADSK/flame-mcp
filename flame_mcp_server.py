@@ -832,7 +832,43 @@ except Exception as e:
                 wtap_id = val
 
     # Step 2 — get frame rate / resolution / bit depth from Wiretap XML metadata
+    # OBS-028 fallback: if IFFFS is unreachable, read the project .cfg file directly.
+    import re as _re
+
+    def _cfg_fallback(project_name: str) -> list:
+        """Read frame rate / resolution / colour space from the project .cfg file."""
+        cfg_path = (f"/var/opt/Autodesk/flame/projects/{project_name}"
+                    f"/setups/cfg/{project_name}.cfg")
+        try:
+            with open(cfg_path) as _f:
+                cfg = _f.read()
+        except Exception:
+            return ["Frame rate: — (IFFFS unreachable, .cfg not found)"]
+        def _cfg(key):
+            m = _re.search(rf"^{key}\s+(.+)$", cfg, _re.MULTILINE | _re.IGNORECASE)
+            return m.group(1).strip() if m else "—"
+        fps    = _cfg("Framerate")
+        colour = _cfg("ColourSpace")
+        # VideoPreviewWindow = "1920, 1080, 23976p"
+        vp     = _cfg("VideoPreviewWindow")
+        res    = "—"
+        if vp and vp != "—":
+            parts = [p.strip() for p in vp.split(",")]
+            if len(parts) >= 2:
+                res = f"{parts[0]}x{parts[1]}"
+        return [
+            f"Frame rate: {fps}  (source: .cfg)",
+            f"Resolution: {res}  (source: .cfg)",
+            f"Bit depth: —  (not in .cfg)",
+            f"Colour space: {colour}  (source: .cfg)",
+        ]
+
     meta_lines = []
+    project_name_for_cfg = ""
+    for line in py_out.splitlines():
+        if line.startswith("Name:"):
+            project_name_for_cfg = line.split(":", 1)[1].strip()
+
     if wtap_id:
         try:
             proc = subprocess.run(
@@ -841,7 +877,6 @@ except Exception as e:
                 capture_output=True, text=True, timeout=10
             )
             xml = proc.stdout
-            import re as _re
             def _xml(tag):
                 m = _re.search(rf"<{tag}[^>]*>([^<]+)</{tag}>", xml, _re.IGNORECASE)
                 return m.group(1).strip() if m else "—"
@@ -852,10 +887,13 @@ except Exception as e:
                 f"Scan mode: {_xml('ScanMode')}",
                 f"Colour space: {_xml('ColourSpace')}",
             ]
-        except Exception as e:
-            meta_lines = [f"Wiretap metadata: unavailable ({e})"]
+            # If IFFFS returned all dashes, fall back to .cfg
+            if all(v.endswith("—") for v in meta_lines):
+                meta_lines = _cfg_fallback(project_name_for_cfg)
+        except Exception:
+            meta_lines = _cfg_fallback(project_name_for_cfg)
     else:
-        meta_lines = ["Frame rate: — (PyProject.get_wiretap_node_id() failed)"]
+        meta_lines = _cfg_fallback(project_name_for_cfg)
 
     # Merge outputs (skip the WiretapID line from display)
     display = [l for l in py_out.splitlines() if not l.startswith("WiretapID:")]
