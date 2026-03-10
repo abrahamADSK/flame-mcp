@@ -15,7 +15,6 @@ and are licensed under the **Creative Commons Attribution-NonCommercial-ShareAli
 This license is separate from and independent of the MIT License that covers the rest of this project.
 
 Affected files:
-- `docs/code_samples/autodesk_zips/husky.py`
 - `docs/code_samples/autodesk_zips/naming_conventions.py`
 - `docs/code_samples/autodesk_zips/logik_python_code.txt`
 - `docs/code_samples/autodesk_zips/custom_menu_actions/*.py`
