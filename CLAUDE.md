@@ -2,8 +2,8 @@
 
 ## What this project is
 An MCP server that lets Claude control Autodesk Flame 2026 via natural language.
-Claude runs as an external agent; the `execute_python` tool sends Python code into
-a Unix socket bridge (`run/flame_mcp.sock`, TCP 127.0.0.1:4444 fallback) that executes it live inside Flame.
+Use the `execute_python` MCP tool to run Python inside Flame.
+Do NOT communicate with the bridge socket directly — the MCP tool handles that internally.
 
 ---
 
@@ -148,8 +148,8 @@ a Unix socket bridge (`run/flame_mcp.sock`, TCP 127.0.0.1:4444 fallback) that ex
 ## Flame Environment
 
 - **Application:** Autodesk Flame 2026, macOS
-- **Bridge:** Unix domain socket `run/flame_mcp.sock` (falls back to TCP `127.0.0.1:4444`) —
-  JSON payload `{"code": "..."}`, returns `{"result": "..."}` or `{"error": "..."}`
+- **Bridge:** Internal — use the `execute_python` MCP tool. Do NOT write Bash/shell
+  commands to talk to the bridge socket; that bypasses tool-selection enforcement.
 - **Entry point:** the `flame` module is always available inside the bridge
 - **Qt:** Flame 2026 uses PySide6 (not PySide2)
 - **Python:** the Flame-embedded Python interpreter (not system Python)
