@@ -151,6 +151,27 @@ _BRIDGE_REDIRECT_PATTERNS = [
      "Use list_flame_logs() / read_flame_log() MCP tools."),
 ]
 
+# Structural bridge patterns suppressed when creation intent is detected.
+_BRIDGE_SOFT_REDIRECTS = {
+    r'ws\.libraries|current_workspace\.libraries|getLibraries',
+    r'\.reels\b|getReels\(',
+    r'getEntries\(|\.clips\b|getClips\(',
+    r'reel_groups|getReelGroups|desktop.*reel',
+    r'batch_groups|getBatchGroups|\.batch_group',
+}
+
+_BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(
+    r'create_sequence\s*\('
+    r'|\.overwrite\s*\('
+    r'|import_clips\s*\('
+    r'|flame\.delete\s*\('
+    r'|schedule_idle_event'
+    r'|create_reel\s*\('
+    r'|create_library\s*\('
+    r'|create_batch_group\s*\('
+    r'|create_clip\s*\('
+)
+
 
 # ── Flame initialisation hook ─────────────────────────────────────────────────
 
@@ -366,13 +387,21 @@ def _handle_connection(conn):
             code = code[len('# DT\n'):]   # strip marker before execution
         _log(f"PAYLOAD keys={list(payload.keys())}  _dt={_is_dt}")
         if not _is_dt:
+            _has_creation = bool(_BRIDGE_CREATION_INTENT_RE.search(code))
             try:
                 with open("/tmp/flame_mcp_redirect.log", "a") as _rf:
-                    _rf.write(f"CHECK: code={code[:80]!r} patterns={len(_BRIDGE_REDIRECT_PATTERNS)}\n")
+                    _rf.write(
+                        f"CHECK: code={code[:80]!r} "
+                        f"patterns={len(_BRIDGE_REDIRECT_PATTERNS)} "
+                        f"creation={_has_creation}\n"
+                    )
             except Exception:
                 pass
             for _pat, _msg in _BRIDGE_REDIRECT_PATTERNS:
                 if _re_bridge.search(_pat, code):
+                    if _has_creation and _pat in _BRIDGE_SOFT_REDIRECTS:
+                        _log(f"  ℹ️  REDIRECT suppressed (creation intent): {_pat[:60]}")
+                        continue
                     _log(f"  🚫 REDIRECT matched: {_pat[:60]}")
                     conn.sendall((json.dumps({
                         'status': 'redirect',

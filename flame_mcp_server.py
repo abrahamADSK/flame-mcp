@@ -378,6 +378,34 @@ _REDIRECT_PATTERNS = [
      "Use list_flame_logs() / read_flame_log() — they list and filter log files."),
 ]
 
+# Structural redirect patterns that are suppressed when creation/modification
+# intent is detected. These match object-hierarchy traversal (libraries → reels
+# → clips) that is legitimately required for operations like create_sequence /
+# overwrite / import_clips. Hard patterns (wrong API, version, logs) always
+# redirect regardless of intent.
+_SOFT_REDIRECT_PATTERNS: set = {
+    r'ws\.libraries|current_workspace\.libraries|getLibraries',
+    r'\.reels|getReels\(',
+    r'getEntries\(|\.clips|getClips\(',
+    r'reel_groups|getReelGroups|desktop.*reel',
+    r'batch_groups|getBatchGroups|\.batch_group',
+}
+
+# Regex that detects creation / modification intent in execute_python code.
+# When matched, soft redirect patterns above are suppressed so the model can
+# traverse the hierarchy (libraries → reels → clips) to operate on it.
+_CREATION_INTENT_RE = re.compile(
+    r'create_sequence\s*\('
+    r'|\.overwrite\s*\('
+    r'|import_clips\s*\('
+    r'|flame\.delete\s*\('
+    r'|schedule_idle_event'
+    r'|create_reel\s*\('
+    r'|create_library\s*\('
+    r'|create_batch_group\s*\('
+    r'|create_clip\s*\('
+)
+
 # A12 — In-session RAG cache: identical queries return the same chunks
 # without hitting ChromaDB again. Flushed when the server restarts.
 _search_cache: dict[int, tuple[str, int]] = {}
@@ -811,14 +839,21 @@ def execute_python(
     # (redirect patterns are defined at module level as _REDIRECT_PATTERNS)
     import re as _re
     import sys as _sys2
+    _has_creation = bool(_CREATION_INTENT_RE.search(code))
     print(
         f"[flame-mcp] execute_python called — "
         f"redirect_check=active  patterns={len(_REDIRECT_PATTERNS)}  "
-        f"rag_called={_rag_called_this_session}",
+        f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}",
         file=_sys2.stderr, flush=True
     )
     for _pattern, _msg in _REDIRECT_PATTERNS:
         if _re.search(_pattern, code):
+            if _has_creation and _pattern in _SOFT_REDIRECT_PATTERNS:
+                print(
+                    f"[flame-mcp] REDIRECT suppressed (creation intent): {_pattern}",
+                    file=_sys2.stderr, flush=True
+                )
+                continue
             print(f"[flame-mcp] REDIRECT matched pattern: {_pattern}", file=_sys2.stderr, flush=True)
             return (
                 f"🚫 REDIRECT — a dedicated tool handles this query:\n"
