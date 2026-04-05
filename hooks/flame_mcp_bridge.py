@@ -45,7 +45,7 @@ if (os.path.basename(_HOOKS_DIR) == 'hooks' and
     _PROJECT_ROOT = _AUTO_ROOT
 else:
     _PROJECT_ROOT = os.environ.get('FLAME_MCP_ROOT',
-                                   os.path.expanduser('~/Projects/flame-mcp'))
+                                   os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # A13 — Unix domain socket path (derived from project root; no new deps required)
 _BRIDGE_SOCKET_PATH = os.environ.get(
@@ -890,7 +890,7 @@ class _FlameChat:
                     "Check the bridge log (MCP Bridge → View log) for searched paths.\n\n"
                     "Quick fix — run in Terminal:\n"
                     "  which claude\n"
-                    "Then paste the full path into ~/Projects/flame-mcp/.env:\n"
+                    f"Then paste the full path into {_PROJECT_ROOT}/.env:\n"
                     "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
@@ -935,7 +935,7 @@ class _FlameChat:
                 env = self._get_ollama_env(env)
 
             prompt = self._build_prompt()
-            cwd = os.path.expanduser('~/Projects/flame-mcp')
+            cwd = _PROJECT_ROOT
 
             cmd = [claude_path, '-p', '--verbose', '--output-format', 'stream-json']
             if self._model:
@@ -1509,7 +1509,7 @@ class _FlameChat:
         # ── 0. Explicit override via CLAUDE_PATH env var or .env ─────────
         explicit = os.environ.get('CLAUDE_PATH', '')
         if not explicit:
-            for candidate in ['~/Projects/flame-mcp/.env', '~/flame-mcp/.env']:
+            for candidate in [os.path.join(_PROJECT_ROOT, '.env'), '~/flame-mcp/.env']:
                 p = os.path.expanduser(candidate)
                 if os.path.exists(p):
                     with open(p) as f:
@@ -1883,7 +1883,7 @@ def _action_launch_claude(selection):
 
     # Locate the flame-mcp project directory
     candidates = [
-        os.path.expanduser('~/Projects/flame-mcp'),
+        _PROJECT_ROOT,
         os.path.expanduser('~/flame-mcp'),
         os.path.expanduser('~/Documents/flame-mcp'),
     ]
@@ -1936,7 +1936,7 @@ def _action_view_log(selection):
         _log(f"View log error: {e}")
 
 
-RAG_LOG_FILE = os.path.expanduser('~/Projects/flame-mcp/logs/flame_rag.log')
+RAG_LOG_FILE = os.path.join(_PROJECT_ROOT, 'logs', 'flame_rag.log')
 
 
 def _action_view_rag_log(selection):

@@ -10,7 +10,7 @@ Checks:
   4. Coverage by Flame API category
 
 Usage:
-    cd ~/Projects/flame-mcp
+    cd <flame-mcp repo root>
     source .venv/bin/activate
     python rag/validate_index.py
 

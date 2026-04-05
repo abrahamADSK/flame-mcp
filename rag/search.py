@@ -168,7 +168,7 @@ def search(query: str, n_results: int = 3) -> tuple[str, int]:
     if collection is None:
         return (
             "RAG index not found. Build it first:\n"
-            "  cd ~/Projects/flame-mcp\n"
+            "  cd <flame-mcp repo root>\n"
             "  source .venv/bin/activate\n"
             "  python rag/build_index.py",
             0

@@ -8,7 +8,7 @@ The output is saved as docs/flame_api_full.md and automatically picked up
 by build_index.py when rebuilding the RAG index.
 
 Usage (with Flame open and bridge running):
-    cd ~/Projects/flame-mcp
+    cd <flame-mcp repo root>
     source .venv/bin/activate
     python rag/generate_flame_api.py
 

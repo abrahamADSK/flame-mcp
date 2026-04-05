@@ -5,7 +5,7 @@ Indexes documentation files into a local ChromaDB vector database.
 Run once after installation, and again whenever docs change.
 
 Usage:
-    cd ~/Projects/flame-mcp
+    cd <flame-mcp repo root>
     source .venv/bin/activate
     python rag/build_index.py
 

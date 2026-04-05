@@ -1594,7 +1594,7 @@ def search_flame_docs(query: str) -> str:
         return (
             f"search_flame_docs error: {e}\n\n"
             "To build the index:\n"
-            "  cd ~/Projects/flame-mcp\n"
+            "  cd <flame-mcp repo root>\n"
             "  source .venv/bin/activate\n"
             "  python rag/build_index.py"
         )
