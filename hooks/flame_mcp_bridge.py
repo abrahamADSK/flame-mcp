@@ -946,7 +946,6 @@ class _FlameChat:
             _repo_candidates = [
                 _PROJECT_ROOT,
                 os.path.expanduser('~/Claude_projects/flame-mcp'),
-                os.path.expanduser('~/Projects/flame-mcp'),
                 os.path.expanduser('~/flame-mcp'),
                 os.path.expanduser('~/Documents/flame-mcp'),
             ]
@@ -1905,7 +1904,6 @@ def _action_launch_claude(selection):
     candidates = [
         _PROJECT_ROOT,
         os.path.expanduser('~/Claude_projects/flame-mcp'),
-        os.path.expanduser('~/Projects/flame-mcp'),
         os.path.expanduser('~/flame-mcp'),
         os.path.expanduser('~/Documents/flame-mcp'),
     ]
