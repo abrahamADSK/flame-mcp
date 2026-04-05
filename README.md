@@ -17,7 +17,7 @@ Claude → MCP Server → Unix socket → Flame Python API → Result back to Cl
 
 ---
 
-## How it works
+## Features
 
 The system has two components:
 
