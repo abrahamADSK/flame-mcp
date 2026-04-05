@@ -41,19 +41,43 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info "Project directory: $SCRIPT_DIR"
 
 # ── 1. Check Python 3.11+ ─────────────────────────────────────────────────────
+# macOS ships python3 via Xcode CLT which may be 3.9.  Search for a newer
+# versioned binary first (Homebrew, pyenv, system) before falling back.
 info "Checking Python version..."
-if ! command -v python3 &>/dev/null; then
-    err "python3 not found. Install it with: brew install python3"
+
+PYTHON_BIN=""
+for candidate in python3.13 python3.12 python3.11; do
+    # Check Homebrew paths explicitly (not always in Flame's PATH)
+    for prefix in /opt/homebrew/bin /usr/local/bin; do
+        if [ -x "$prefix/$candidate" ]; then
+            PYTHON_BIN="$prefix/$candidate"
+            break 2
+        fi
+    done
+    # Then check PATH
+    if command -v "$candidate" &>/dev/null; then
+        PYTHON_BIN="$(command -v "$candidate")"
+        break
+    fi
+done
+
+# Fallback: unversioned python3 (may be 3.9 on macOS)
+if [ -z "$PYTHON_BIN" ]; then
+    if command -v python3 &>/dev/null; then
+        PYTHON_BIN="$(command -v python3)"
+    else
+        err "python3 not found. Install it with: brew install python@3.12"
+    fi
 fi
 
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_VERSION=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 
 if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 11 ]; }; then
-    err "Python 3.11 or higher is required. Found: $PYTHON_VERSION"
+    err "Python 3.11+ required (found $PYTHON_VERSION at $PYTHON_BIN). Install with: brew install python@3.12"
 fi
-ok "Python $PYTHON_VERSION"
+ok "Python $PYTHON_VERSION ($PYTHON_BIN)"
 
 # ── 2. Check Claude Code ──────────────────────────────────────────────────────
 info "Checking Claude Code..."
@@ -68,7 +92,7 @@ info "Setting up Python virtual environment..."
 if [ -d "$SCRIPT_DIR/.venv" ]; then
     warn "Virtual environment already exists, skipping creation."
 else
-    python3 -m venv "$SCRIPT_DIR/.venv"
+    "$PYTHON_BIN" -m venv "$SCRIPT_DIR/.venv"
     ok "Virtual environment created at .venv/"
 fi
 
@@ -213,7 +237,7 @@ if [ -n "$OLLAMA_ADDR" ]; then
     read -r -p "  Model to activate [default: qwen3-coder:30b-a3b]: " OLLAMA_MODEL
     OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3-coder:30b-a3b}"
 
-    python3 - <<PYEOF
+    "$PYTHON_BIN" - <<PYEOF
 import json, os
 cfg_path = "$CONFIG_FILE"
 cfg = {}

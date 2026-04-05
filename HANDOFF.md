@@ -43,7 +43,7 @@
 
 ## Dependencias
 
-**requirements.txt**: mcp>=1.26.0, chromadb>=0.6.0, sentence-transformers>=2.7.0, rank-bm25>=0.7.2, pydantic>=2.0
+**requirements.txt**: mcp>=1.26.0, chromadb>=0.6.0, sentence-transformers>=2.7.0, rank-bm25>=0.2, pydantic>=2.0
 
 **install.sh** (265 líneas): Python 3.11+, Claude Code v2+, Node.js 22+, crea .venv, copia hook a `/opt/Autodesk/shared/python/`, registra MCP, construye RAG index, auto-aprueba 18 tools.
 
@@ -54,6 +54,7 @@
 ## Bugs conocidos
 
 - Ningún bug identificado en el código. NO VERIFICADO en ejecución real.
+- Widget embebido requiere que el repo esté en una de las rutas candidatas (ver abajo).
 
 ---
 
@@ -98,13 +99,42 @@
 
 ---
 
+## Fixes aplicados — 2026-04-05 (sesión Mac install)
+
+### Widget embebido no detectaba tools MCP
+- **Causa raíz**: `_agent_loop` usaba `cwd = _PROJECT_ROOT` para lanzar `claude -p`. Cuando el hook está instalado en `/opt/Autodesk/shared/python/`, `_PROJECT_ROOT` resuelve a `/opt/Autodesk/shared/` → Claude Code no encuentra `.mcp.json` → no ve las tools de flame-mcp.
+- **Fix**: Buscar el repo en candidates que contengan `.mcp.json`: `_PROJECT_ROOT` → `~/Claude_projects/flame-mcp` → `~/Projects/flame-mcp` → `~/flame-mcp` → `~/Documents/flame-mcp`.
+- **Archivos**: `hooks/flame_mcp_bridge.py` (`_agent_loop` línea ~940 y `_action_launch_claude` línea ~1900)
+
+### Socket path resolution
+- **Causa raíz**: Bridge y server asumían que `run/flame_mcp.sock` estaba dentro del repo. Hook instalado fuera del repo no encontraba el socket.
+- **Fix**: Bridge detecta si corre desde `hooks/` (dev) o instalado, y usa `/tmp/flame_mcp.sock` como default en modo instalado. Server usa fallback: `repo/run/` → `/tmp/` → TCP.
+- **Archivos**: `hooks/flame_mcp_bridge.py` (líneas 50-56), `flame_mcp_server.py` (líneas 489-496)
+
+### rank-bm25 version
+- **Bug**: `requirements.txt` pedía `rank-bm25>=0.7.2` — esa versión no existe en PyPI (última es 0.2.2).
+- **Fix**: Cambiado a `rank-bm25>=0.2`.
+
+### install.sh — Python version discovery
+- **Bug**: Usaba `python3` sin versionar. En macOS, `python3` del Xcode CLT puede ser 3.9.
+- **Fix**: Busca `python3.13` → `python3.12` → `python3.11` en Homebrew paths y PATH antes de caer a `python3` genérico. Todos los usos de `python3` en el script reemplazados por `$PYTHON_BIN`.
+
+### Decisiones tomadas
+- Los archivos RAG (`rag/index/`) son regenerables y se excluyeron del commit.
+- Los candidates del widget usan `.mcp.json` como criterio (no solo `isdir`) para garantizar que Claude Code descubra la config del server.
+- `install.sh` no cambia los candidates — la búsqueda de Python es independiente.
+
+---
+
 ## Pendiente
 
 - Refactorizar paths hardcodeados a `~/Projects/flame-mcp/` → derivar de `FLAME_MCP_ROOT` + `Path(__file__)` (después de validar funcionalidad base)
 - Convertir test plans .md a tests automatizados (pytest con mocks del bridge)
 - Evaluar si candidates.json necesita mecanismo de review/aprobación
 - Verificar compatibilidad con Flame 2027 preview
+- Verificar widget embebido en Flame real después de los fixes (requiere máquina con Flame)
+- Considerar añadir `rag/index/` a `.gitignore` si se determina que siempre debe regenerarse
 
 ---
 
-## Última actualización: 2026-04-05 — Reestructuración de HANDOFF: separado del monolítico a HANDOFF por repo
+## Última actualización: 2026-04-05 — Fix widget embebido, socket resolution, install.sh Python discovery
