@@ -48,10 +48,12 @@ else:
                                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # A13 — Unix domain socket path (derived from project root; no new deps required)
-_BRIDGE_SOCKET_PATH = os.environ.get(
-    'FLAME_BRIDGE_SOCKET',
-    os.path.join(_PROJECT_ROOT, 'run', 'flame_mcp.sock')
-)
+# Installed hook (/opt/Autodesk/shared/python/) -> /tmp/flame_mcp.sock
+# Development (hooks/ inside repo) -> <repo>/run/flame_mcp.sock
+_DEFAULT_SOCK = (os.path.join(_PROJECT_ROOT, 'run', 'flame_mcp.sock')
+                 if os.path.basename(_HOOKS_DIR) == 'hooks'
+                 else '/tmp/flame_mcp.sock')
+_BRIDGE_SOCKET_PATH = os.environ.get('FLAME_BRIDGE_SOCKET', _DEFAULT_SOCK)
 
 # Crash recovery: written before each exec, cleared after success.
 # If Flame crashes mid-exec, this file will contain the offending code
@@ -935,7 +937,24 @@ class _FlameChat:
                 env = self._get_ollama_env(env)
 
             prompt = self._build_prompt()
-            cwd = _PROJECT_ROOT
+
+            # Resolve cwd to the repo directory that contains .mcp.json so
+            # that 'claude -p' discovers the flame MCP server definition.
+            # When the hook runs from hooks/ inside the repo, _PROJECT_ROOT
+            # already points there.  When installed to /opt/Autodesk/shared/
+            # python/, _PROJECT_ROOT is wrong — search known locations.
+            _repo_candidates = [
+                _PROJECT_ROOT,
+                os.path.expanduser('~/Claude_projects/flame-mcp'),
+                os.path.expanduser('~/Projects/flame-mcp'),
+                os.path.expanduser('~/flame-mcp'),
+                os.path.expanduser('~/Documents/flame-mcp'),
+            ]
+            cwd = next(
+                (p for p in _repo_candidates
+                 if os.path.isfile(os.path.join(p, '.mcp.json'))),
+                _PROJECT_ROOT,  # last resort fallback
+            )
 
             cmd = [claude_path, '-p', '--verbose', '--output-format', 'stream-json']
             if self._model:
@@ -1881,13 +1900,20 @@ def _action_launch_claude(selection):
     """Open a Terminal window running Claude Code with the flame MCP server."""
     import stat
 
-    # Locate the flame-mcp project directory
+    # Locate the flame-mcp project directory (must contain .mcp.json so
+    # Claude Code discovers the flame MCP server definition).
     candidates = [
         _PROJECT_ROOT,
+        os.path.expanduser('~/Claude_projects/flame-mcp'),
+        os.path.expanduser('~/Projects/flame-mcp'),
         os.path.expanduser('~/flame-mcp'),
         os.path.expanduser('~/Documents/flame-mcp'),
     ]
-    project_dir = next((p for p in candidates if os.path.isdir(p)), None)
+    project_dir = next(
+        (p for p in candidates
+         if os.path.isfile(os.path.join(p, '.mcp.json'))),
+        next((p for p in candidates if os.path.isdir(p)), None),
+    )
 
     if project_dir:
         venv_activate = os.path.join(project_dir, '.venv', 'bin', 'activate')

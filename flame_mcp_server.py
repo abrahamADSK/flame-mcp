@@ -489,9 +489,12 @@ BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via
 
 # A13 — Unix domain socket path (more secure than TCP; owner-only file permissions).
 # Override with FLAME_BRIDGE_SOCKET env var. Falls back to TCP if socket file absent.
+# Socket discovery: env var -> repo run/ -> /tmp/ (installed hook) -> TCP fallback
 _BRIDGE_SOCKET = Path(os.environ.get(
     'FLAME_BRIDGE_SOCKET',
     str(_SERVER_DIR / 'run' / 'flame_mcp.sock')
+    if (_SERVER_DIR / 'run' / 'flame_mcp.sock').exists()
+    else '/tmp/flame_mcp.sock'
 ))
 
 mcp = FastMCP(
