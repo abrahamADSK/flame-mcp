@@ -167,13 +167,13 @@ El Claude desktop app respawnea el server automáticamente con el código nuevo.
 
 ### Solo `hooks/flame_mcp_bridge.py`:
 ```bash
-git push && cp ~/Projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
+git push && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
 ```
 Luego en Flame: **MCP Bridge → Reload hook**
 
 ### Ambos ficheros:
 ```bash
-git push && pkill -f flame_mcp_server.py && cp ~/Projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
+git push && pkill -f flame_mcp_server.py && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
 ```
 Luego en Flame: **MCP Bridge → Reload hook**
 
@@ -225,7 +225,7 @@ The Python `flame` module covers most operations. Use Wiretap only when:
 ```python
 import flame, os
 
-result_file = os.path.expanduser("~/Projects/flame-mcp/logs/flame_render_result.txt")
+result_file = os.path.expanduser("~/Claude_projects/flame-mcp/logs/flame_render_result.txt")
 
 def do_render():
     try:
@@ -241,7 +241,7 @@ flame.schedule_idle_event(do_render)
 print("Render programado via idle event.")
 ```
 
-Luego leer `~/Projects/flame-mcp/logs/flame_render_result.txt` con una llamada separada para confirmar.
+Luego leer `~/Claude_projects/flame-mcp/logs/flame_render_result.txt` con una llamada separada para confirmar.
 
 ### Substance Noise crashea Flame — 2026-03-05
 **Task:** Crear clip de ruido coloreado con nodo Substance Noise en Batch

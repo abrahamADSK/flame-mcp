@@ -127,7 +127,7 @@ The status indicator updates every time you open the menu:
 
 **Claude Chat (embedded)** opens a native Qt window directly inside Flame — no terminal required. Type natural language requests and Claude responds, controlling Flame in real time.
 
-- Reads `ANTHROPIC_API_KEY` from environment or `~/Projects/flame-mcp/.env`
+- Reads `ANTHROPIC_API_KEY` from environment or `~/flame-mcp/.env`
 - Executes Flame code via the Unix socket bridge (thread-safe, non-blocking)
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
@@ -154,12 +154,12 @@ In addition to natural language, the chat input accepts these special commands:
 | `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
 | `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ ⚠️ |
 
-Selection is persisted to `~/Projects/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost → ☁` / `localhost` for the Mac backends.
+Selection is persisted to `~/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost → ☁` / `localhost` for the Mac backends.
 
 ### 3. Claude Code (terminal)
 
 ```bash
-cd ~/Projects/flame-mcp
+cd ~/flame-mcp
 source .venv/bin/activate
 claude
 ```
@@ -233,7 +233,7 @@ The system maintains a local semantic search index (`rag/index/`) built from all
 ### Manually rebuild the index
 
 ```bash
-cd ~/Projects/flame-mcp
+cd ~/flame-mcp
 source .venv/bin/activate
 python rag/build_index.py
 ```
@@ -430,7 +430,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Make sure Flame is open
 - Check `MCP Bridge → Status` in the Flame menu
 - Verify `flame_mcp_bridge.py` is in `/opt/Autodesk/shared/python/`
-- Check the Unix socket exists: `ls -la ~/Projects/flame-mcp/run/flame_mcp.sock` — should be `srw-------`
+- Check the Unix socket exists: `ls -la ~/flame-mcp/run/flame_mcp.sock` — should be `srw-------`
 - If Unix socket is absent, the bridge falls back to TCP; run `lsof -i :4444` to confirm Flame is listening
 
 **Low RAG relevance scores on common operations**
@@ -439,7 +439,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 
 **Claude Chat (embedded) doesn't open**
 - Check `logs/flame_mcp_bridge.log` for error details
-- Ensure `ANTHROPIC_API_KEY` is set in your environment or in `~/Projects/flame-mcp/.env`
+- Ensure `ANTHROPIC_API_KEY` is set in your environment or in `~/flame-mcp/.env`
 - Flame 2026+ uses PySide6; older versions use PySide2 (both supported)
 
 **Ollama model runs on CPU instead of GPU**
@@ -464,7 +464,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Check daemon logs: `journalctl --user -u ollama` (Linux) or `ollama serve` output (Mac)
 
 **Port 4444 is already in use**
-The bridge uses a Unix domain socket by default (`~/Projects/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `flame_mcp_server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
+The bridge uses a Unix domain socket by default (`~/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `flame_mcp_server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
 
 **`pip install` fails with `--user` conflict**
 Add `--no-user` to pip commands. Happens when `install.user = true` is set globally.

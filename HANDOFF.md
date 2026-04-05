@@ -64,14 +64,14 @@
 
 | Archivo | Ruta | Uso | Impacto |
 |---|---|---|---|
-| `flame_mcp_server.py` | `~/Projects/flame-mcp` | Base path para .env, config.json, socket, logs | **ALTO** — server no arranca si el repo no está ahí |
+| `flame_mcp_server.py` | `~/Claude_projects/flame-mcp` | Base path para .env, config.json, socket, logs | **ALTO** — server no arranca si el repo no está ahí |
 | `flame_mcp_server.py` | `~/flame-mcp` | Fallback search | Medio |
 | `flame_mcp_server.py` | `/opt/Autodesk/project` | List Flame projects | Bajo (path estándar de Flame) |
 | `flame_mcp_server.py` | `/opt/Autodesk/cfg/.*/sysconfig.cfg` | Project config lookup | Bajo (path estándar) |
 | `flame_mcp_server.py` | `/opt/Autodesk/wiretap/tools/current` | Wiretap tools | Bajo (path estándar) |
 | `flame_mcp_server.py` | `/opt/Autodesk/logs` | Log directory | Bajo (path estándar) |
 | `flame_mcp_server.py` | `/var/opt/Autodesk/flame/projects/{name}` | Project storage (2026+) | Bajo (path estándar) |
-| `hooks/flame_mcp_bridge.py` | `~/Projects/flame-mcp` | config.json, .env, socket | **ALTO** |
+| `hooks/flame_mcp_bridge.py` | `~/Claude_projects/flame-mcp` | config.json, .env, socket | ✅ Refactorizado (Chat 12) |
 | `hooks/flame_mcp_bridge.py` | `~/flame-mcp`, `~/Documents/flame-mcp` | Fallback search locations | Medio |
 | `hooks/flame_mcp_bridge.py` | `~/.nvm/...`, `~/.npm-global/...`, `~/.volta/...`, `~/.fnm/...`, `~/Library/pnpm` | Node.js version manager discovery | Bajo (búsqueda, no dependencia) |
 
@@ -94,8 +94,8 @@
 
 | Archivo | Rutas mencionadas |
 |---|---|
-| `README.md` | `~/Projects/flame-mcp/`, `/opt/Autodesk/shared/python/`, `~/Library/Application Support/Claude/` |
-| `CLAUDE.md` | `~/Projects/flame-mcp/`, `/opt/Autodesk/shared/python/` |
+| `README.md` | `~/flame-mcp/`, `/opt/Autodesk/shared/python/`, `~/Library/Application Support/Claude/` |
+| `CLAUDE.md` | `~/Claude_projects/flame-mcp/`, `/opt/Autodesk/shared/python/` |
 
 ---
 
@@ -103,7 +103,7 @@
 
 ### Widget embebido no detectaba tools MCP
 - **Causa raíz**: `_agent_loop` usaba `cwd = _PROJECT_ROOT` para lanzar `claude -p`. Cuando el hook está instalado en `/opt/Autodesk/shared/python/`, `_PROJECT_ROOT` resuelve a `/opt/Autodesk/shared/` → Claude Code no encuentra `.mcp.json` → no ve las tools de flame-mcp.
-- **Fix**: Buscar el repo en candidates que contengan `.mcp.json`: `_PROJECT_ROOT` → `~/Claude_projects/flame-mcp` → `~/Projects/flame-mcp` → `~/flame-mcp` → `~/Documents/flame-mcp`.
+- **Fix**: Buscar el repo en candidates que contengan `.mcp.json`: `_PROJECT_ROOT` → `~/Claude_projects/flame-mcp` → `~/flame-mcp` → `~/Documents/flame-mcp`.
 - **Archivos**: `hooks/flame_mcp_bridge.py` (`_agent_loop` línea ~940 y `_action_launch_claude` línea ~1900)
 
 ### Socket path resolution
@@ -128,7 +128,7 @@
 
 ## Pendiente
 
-- Refactorizar paths hardcodeados a `~/Projects/flame-mcp/` → derivar de `FLAME_MCP_ROOT` + `Path(__file__)` (después de validar funcionalidad base)
+- ✅ Refactorizar paths hardcodeados (legacy) → completado (Chat 12): entradas legacy eliminadas de `flame_mcp_bridge.py` candidates y toda la documentación
 - Convertir test plans .md a tests automatizados (pytest con mocks del bridge)
 - Evaluar si candidates.json necesita mecanismo de review/aprobación
 - Verificar compatibilidad con Flame 2027 preview

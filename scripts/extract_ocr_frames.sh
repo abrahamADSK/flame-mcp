@@ -1,6 +1,6 @@
 #!/bin/zsh
 # flame-mcp — OCR Frame Extraction Script
-# cd ~/Projects/flame-mcp && ./scripts/extract_ocr_frames.sh
+# cd ~/Claude_projects/flame-mcp && ./scripts/extract_ocr_frames.sh
 
 setopt NULL_GLOB  # evita error cuando *.jpg no tiene matches
 
