@@ -483,6 +483,21 @@ Add `--no-user` to pip commands. Happens when `install.user = true` is set globa
 
 ---
 
+## Ecosystem
+
+`flame-mcp` is part of a four-component VFX pipeline. Each component has a defined role:
+
+| Repo | Role |
+|------|------|
+| [flame-mcp](https://github.com/abrahamADSK/flame-mcp) | Controls Autodesk Flame for compositing, conform, and finishing |
+| [maya-mcp](https://github.com/abrahamADSK/maya-mcp) | Controls Autodesk Maya for 3D modeling, animation, and rendering |
+| [fpt-mcp](https://github.com/abrahamADSK/fpt-mcp) | Connects to Autodesk Flow Production Tracking (ShotGrid) for production tracking, asset management, and publishes |
+| [vision3d](https://github.com/abrahamADSK/vision3d) | GPU inference server for AI-powered 3D generation — the remote backend for maya-mcp's image-to-3D and text-to-3D tools |
+
+`flame-mcp` operates at the finishing stage of the pipeline. When both `fpt-mcp` and `flame-mcp` are active, Claude can query ShotGrid for shot status, resolve the correct media path, and execute Flame operations against it in a single conversation. `maya-mcp` can hand off rendered outputs that `flame-mcp` then picks up for conform and grade. `vision3d` is not directly consumed by `flame-mcp`.
+
+---
+
 ## License
 
 [MIT](LICENSE)
