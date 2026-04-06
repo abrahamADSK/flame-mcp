@@ -40,6 +40,7 @@ logs/*.json
 
 # Claude Code local settings (user-specific paths)
 .claude/
+.mcp.json
 
 # User-specific config (hostnames, backend, model selection)
 # Copy config.example.json → config.json and edit locally
@@ -63,3 +64,4 @@ docs/ocr_frames/
 # macOS HFS+ metadata artifacts (created when unzipping on macOS)
 __MACOSX/
 ._*
+rag/index/

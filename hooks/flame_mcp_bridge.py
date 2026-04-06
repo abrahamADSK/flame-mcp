@@ -72,23 +72,15 @@ MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 #   backend = "ollama_cloud" → Ollama.com cloud API (free tier, needs ollama_cloud_key)
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
-    # ── Anthropic cloud ───────────────────────────────────────────────────────
-    ("Sonnet 4.6",           "claude-sonnet-4-6",           "anthropic"),
-    ("Sonnet 4.5",           "claude-sonnet-4-5-20250929",  "anthropic"),
-    ("Haiku 4.5",            "claude-haiku-4-5-20251001",   "anthropic"),
-    # ── Self-hosted Ollama  (Linux workstation / NAS on the LAN, needs GPU) ──
-    ("qwen3-coder 30B",      "qwen3-flame",                 "ollama"),
-    ("qwen2.5-coder 14B",    "qwen2.5-coder:14b",           "ollama"),
-    # ── Ollama cloud ☁  (ollama.com free tier, needs Ollama on Mac) ──────────
-    #   Requires: brew install ollama && ollama serve   (Mac daemon as proxy)
-    #   Cloud inference runs on ollama.com — no GPU, works anywhere with internet
-    ("qwen3-coder 480B ☁",   "qwen3-coder:480b-cloud",      "ollama_cloud"),
-    # ── Mac-local offline  (small model downloaded on the Mac, no internet) ──
-    #   Requires: brew install ollama && ollama pull qwen2.5-coder:7b
-    #   ~4 GB download, works with no internet and no gpu-server
-    ("qwen2.5-coder 7B 🍎",  "qwen2.5-coder:7b",            "ollama_mac"),
-    # ── Custom ────────────────────────────────────────────────────────────────
-    ("Custom",               "",                             "anthropic"),
+    # ── Anthropic cloud (default — needs internet + API key) ─────────
+    ("Claude Sonnet 4.6",     "claude-sonnet-4-6",         "anthropic"),
+    ("Claude Opus 4.6",       "claude-opus-4-6",           "anthropic"),
+    # ── Self-hosted Ollama (glorfindel RTX 3090, LAN) ────────────────
+    ("Qwen3.5 9B 🖥",         "qwen3.5-mcp",               "ollama"),
+    ("GLM-4.7 Flash 🖥",      "glm-4.7-flash",             "ollama"),
+    # ── Mac-local Ollama (offline, no LAN) ───────────────────────────
+    ("Qwen3.5 9B 🍎",         "qwen3.5-mcp",               "ollama_mac"),
+    ("Qwen3.5 4B 🍎",         "qwen3.5:4b",                "ollama_mac"),
 ]
 DEFAULT_MODEL    = "claude-sonnet-4-6"
 DEFAULT_BACKEND  = "anthropic"

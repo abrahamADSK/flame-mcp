@@ -3,6 +3,16 @@
     "flame": {
       "command": ".venv/bin/python",
       "args": ["flame_mcp_server.py"]
+    },
+    "maya-mcp": {
+      "command": "/Users/abraham/Claude_projects/maya-mcp/.venv/bin/python",
+      "args": ["/Users/abraham/Claude_projects/maya-mcp/core/server.py"],
+      "cwd": "/Users/abraham/Claude_projects/maya-mcp"
+    },
+    "fpt-mcp": {
+      "command": "/Users/abraham/Claude_projects/fpt-mcp/.venv/bin/python",
+      "args": ["-m", "fpt_mcp.server"],
+      "cwd": "/Users/abraham/Claude_projects/fpt-mcp"
     }
   }
 }
