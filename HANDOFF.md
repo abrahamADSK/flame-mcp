@@ -30,14 +30,29 @@
 
 ## Tests existentes
 
-5 documentos de test en `tests/` (todos son planes .md, no scripts ejecutables):
+### Planes de test (documentación)
+5 documentos en `tests/` (planes .md, no scripts ejecutables):
 - `TEST_PLAN_COMPREHENSIVE.md` (31 KB) — 40+ test cases
 - `TEST_SUITE_SEQUENTIAL.md` + `_EN.md` (17 KB c/u)
 - `TEST_PLAN_QUICK_REFERENCE.md` (11 KB)
 - `TEST_PLAN_INDEX.md` (7.8 KB)
 - `TEST_PLAN_ANALYSIS_SUMMARY.txt` (14 KB)
 
-**NO hay tests automatizados** (ni pytest, ni unittest).
+### Tests automatizados (pytest) — ✅ NUEVO 2026-04-07
+**62 tests, 62 pasando, 0 fallos.** Ejecutar con:
+```bash
+ulimit -n 4096 && python -m pytest tests/ -v --tb=short -p no:cacheprovider
+```
+
+Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
+
+| Archivo | Tests | Descripción |
+|---|---|---|
+| `tests/conftest.py` | — | Path setup, MCP stubs, mock_bridge fixtures, mini Flame corpus (12 chunks), ChromaDB determinístico |
+| `tests/test_safety.py` | 10 | `_check_dangerous()`: 18 regex + AST patterns, multi-hit, safe code |
+| `tests/test_redirect.py` | 8 | `execute_python` redirect system: 5 hard redirects, 3 soft redirect supresión |
+| `tests/test_tools.py` | 24 | Tools dedicadas: ping, get_project_info, list_libraries, list_reels, list_clips, execute_python, get_flame_version, list_desktop_reels, list_batch_groups, get_clip_metadata, get_selected_clips, flame_wiretap_tree, list_flame_logs, read_flame_log |
+| `tests/test_rag_search.py` | 20 | RAG híbrido: BM25, RRF fusion, ChromaDB, cache, índice vacío, índice ausente |
 
 ---
 
@@ -126,10 +141,25 @@
 
 ---
 
+## Bugs encontrados y corregidos — 2026-04-07 (sesión tests automatizados)
+
+### Caracteres de control en `_REDIRECT_PATTERNS` (flame_mcp_server.py)
+- **Bug**: 4 patrones en `_REDIRECT_PATTERNS` contenían caracteres `\x08` (backspace, 0x08) embebidos en lugar de `\b` (word boundary). Esto hacía que los redirects no dispararan para `flame.selection`, `\.reels`, `\.clips` y `current_project`.
+- **Causa raíz**: Los raw strings `r'...\b...'` habían sido editados con un editor que sustituyó `\b` por el carácter de control backspace literal.
+- **Impacto**: execute_python no redirigía correctamente cuando el código usaba `flame.selection`, `lib.reels`, `ws.libraries[].clips`, o `current_project.name`. Las soft redirects para `\.reels` y `\.clips` tampoco funcionaban porque el string no coincidía con `_SOFT_REDIRECT_PATTERNS`.
+- **Fix**: Reemplazados los 4 `\x08` → `\b` (o eliminados donde el pattern ya funciona sin word boundary) usando operación binaria en el archivo.
+- **Archivo**: `flame_mcp_server.py` líneas ~355, ~360, ~362, ~368
+
+### `_SOFT_REDIRECT_PATTERNS` desincronizado
+- **Causa raíz**: Misma causa que arriba — los strings con `\x08` en `_REDIRECT_PATTERNS` no coincidían con los strings en `_SOFT_REDIRECT_PATTERNS` (que NO tenían `\x08`).
+- **Fix**: El fix de arriba alinea ambos sets automáticamente.
+
+---
+
 ## Pendiente
 
-- ✅ Refactorizar paths hardcodeados (legacy) → completado (Chat 12): entradas legacy eliminadas de `flame_mcp_bridge.py` candidates y toda la documentación
-- Convertir test plans .md a tests automatizados (pytest con mocks del bridge)
+- ✅ Refactorizar paths hardcodeados (legacy) → completado (Chat 12)
+- ✅ Convertir test plans .md a tests automatizados → completado (2026-04-07): 62 tests, 100% pass
 - Evaluar si candidates.json necesita mecanismo de review/aprobación
 - Verificar compatibilidad con Flame 2027 preview
 - Verificar widget embebido en Flame real después de los fixes (requiere máquina con Flame)
@@ -137,4 +167,4 @@
 
 ---
 
-## Última actualización: 2026-04-05 — Fix widget embebido, socket resolution, install.sh Python discovery
+## Última actualización: 2026-04-07 — Tests automatizados (62/62), fix \x08 en _REDIRECT_PATTERNS
