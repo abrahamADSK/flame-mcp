@@ -10,7 +10,7 @@ flowchart LR
         A3["Cowork / Chat"]
     end
 
-    subgraph SRV["flame_mcp_server.py"]
+    subgraph SRV["src/flame_mcp/server.py"]
         T1["search_flame_docs()"]
         T2["execute_python()"]
         T3["learn_pattern()"]
@@ -76,7 +76,7 @@ flowchart LR
 | Block | File | Role |
 |---|---|---|
 | **Claude** | — | Understands the request, calls MCP tools, generates Python code |
-| **MCP Server** | `flame_mcp_server.py` | 20+ tools: `execute_python`, `search_flame_docs`, `learn_pattern`, 18 dedicated tools |
+| **MCP Server** | `src/flame_mcp/server.py` | 20+ tools: `execute_python`, `search_flame_docs`, `learn_pattern`, 18 dedicated tools |
 | **HyDE expander** | `rag/search.py` | C4 — wraps query in a Flame code template before embedding; bridges NL ↔ code gap |
 | **BGE-large encoder** | `rag/` | BAAI/bge-large-en-v1.5 (~570 MB) · higher accuracy on exact API method names (C6) |
 | **BM25** | `rag/search.py` + `rag/corpus.json` | C3 — exact-match lexical retrieval; excels at `PyExporter`, `schedule_idle_event`, etc. |

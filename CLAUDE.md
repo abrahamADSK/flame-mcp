@@ -199,9 +199,9 @@ update procedures, and architecture decisions.
 
 ## Deploy workflow — after every code change
 
-### Solo `flame_mcp_server.py`:
+### Solo `src/flame_mcp/server.py`:
 ```bash
-git push && pkill -f flame_mcp_server.py
+git push && pkill -f flame_mcp.server
 ```
 El Claude desktop app respawnea el server automáticamente con el código nuevo.
 
@@ -213,7 +213,7 @@ Luego en Flame: **MCP Bridge → Reload hook**
 
 ### Ambos ficheros:
 ```bash
-git push && pkill -f flame_mcp_server.py && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
+git push && pkill -f flame_mcp.server && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
 ```
 Luego en Flame: **MCP Bridge → Reload hook**
 

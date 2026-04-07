@@ -3,7 +3,7 @@
 generate_settings.py
 ====================
 Auto-generates .claude/settings.local.json by introspecting
-flame_mcp_server.py for all @mcp.tool decorated functions.
+src/flame_mcp/server.py for all @mcp.tool decorated functions.
 
 Run once after a fresh clone, or after adding new tools to the server:
 
@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-SERVER = ROOT / "flame_mcp_server.py"
+SERVER = ROOT / "src" / "flame_mcp" / "server.py"
 SETTINGS = ROOT / ".claude" / "settings.local.json"
 
 # --- Extract tool names from server -----------------------------------------

@@ -153,17 +153,17 @@ fi
 # ── 7. Register MCP server with Claude Code ───────────────────────────────────
 info "Registering MCP server with Claude Code..."
 
-SERVER_SCRIPT="$SCRIPT_DIR/flame_mcp_server.py"
+SERVER_SCRIPT="$SCRIPT_DIR/src/flame_mcp/server.py"
 
 # Remove existing registration silently, then re-add
 claude mcp remove flame 2>/dev/null || true
-claude mcp add flame -- "$PYTHON_VENV" "$SERVER_SCRIPT"
+claude mcp add flame -- "$PYTHON_VENV" -m flame_mcp.server
 ok "MCP server 'flame' registered with Claude Code."
 
 # ── 8. Auto-approve MCP tools in Claude Code ──────────────────────────────────
 # Writes tool permissions to .claude/settings.local.json (permissions.allow).
 # Claude Code reads this file for project-level tool approvals.
-# Any future tool added to flame_mcp_server.py is auto-approved on next install.
+# Any future tool added to src/flame_mcp/server.py is auto-approved on next install.
 info "Configuring Claude Code tool auto-approval..."
 
 CLAUDE_SETTINGS="$SCRIPT_DIR/.claude/settings.local.json"

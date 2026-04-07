@@ -23,11 +23,11 @@ The system has two components:
 
 **`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local Unix domain socket server when Flame launches (falls back to TCP port 4444 if AF_UNIX is unavailable). It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result.
 
-**`flame_mcp_server.py`** — An MCP server that Claude launches. It exposes tools that Claude can call by name, translates natural language into Python code, and communicates with the bridge over the socket.
+**`src/flame_mcp/server.py`** — An MCP server that Claude launches. It exposes tools that Claude can call by name, translates natural language into Python code, and communicates with the bridge over the socket.
 
 ```
 ┌──────────────────┐    MCP (stdio)    ┌──────────────────────┐  Unix socket   ┌─────────────────┐
-│  Claude Code /   │ ◄──────────────── │   flame_mcp_server   │ ◄────────────  │  Autodesk Flame │
+│  Claude Code /   │ ◄──────────────── │  flame_mcp/server    │ ◄────────────  │  Autodesk Flame │
 │  Claude Desktop  │ ─────────────────►│   (Python, macOS)    │ ─────────────► │  Python bridge  │
 └──────────────────┘                   └──────────────────────┘  (TCP fallback) └─────────────────┘
 ```
@@ -100,7 +100,7 @@ python rag/build_index.py
 sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/
 
 # 5. Register with Claude Code
-claude mcp add flame -- "$(pwd)/.venv/bin/python" "$(pwd)/flame_mcp_server.py"
+claude mcp add flame -- "$(pwd)/.venv/bin/python" -m flame_mcp.server
 
 # 6. (Optional) Claude Desktop
 #    Copy claude_desktop_config.json to ~/Library/Application Support/Claude/
@@ -282,7 +282,7 @@ Ratings:
 
 ```
 flame-mcp/
-├── flame_mcp_server.py         # MCP server — runs on macOS, talks to Claude
+├── src/flame_mcp/server.py     # MCP server — runs on macOS, talks to Claude
 ├── hooks/
 │   └── flame_mcp_bridge.py    # Flame hook — Unix socket bridge + Qt chat widget
 ├── rag/
@@ -472,7 +472,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Check daemon logs: `journalctl --user -u ollama` (Linux) or `ollama serve` output (Mac)
 
 **Port 4444 is already in use**
-The bridge uses a Unix domain socket by default (`~/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `flame_mcp_server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
+The bridge uses a Unix domain socket by default (`~/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `src/flame_mcp/server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
 
 **`pip install` fails with `--user` conflict**
 Add `--no-user` to pip commands. Happens when `install.user = true` is set globally.

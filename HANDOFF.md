@@ -79,13 +79,13 @@ Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
 
 | Archivo | Ruta | Uso | Impacto |
 |---|---|---|---|
-| `flame_mcp_server.py` | `~/Claude_projects/flame-mcp` | Base path para .env, config.json, socket, logs | **ALTO** — server no arranca si el repo no está ahí |
-| `flame_mcp_server.py` | `~/flame-mcp` | Fallback search | Medio |
-| `flame_mcp_server.py` | `/opt/Autodesk/project` | List Flame projects | Bajo (path estándar de Flame) |
-| `flame_mcp_server.py` | `/opt/Autodesk/cfg/.*/sysconfig.cfg` | Project config lookup | Bajo (path estándar) |
-| `flame_mcp_server.py` | `/opt/Autodesk/wiretap/tools/current` | Wiretap tools | Bajo (path estándar) |
-| `flame_mcp_server.py` | `/opt/Autodesk/logs` | Log directory | Bajo (path estándar) |
-| `flame_mcp_server.py` | `/var/opt/Autodesk/flame/projects/{name}` | Project storage (2026+) | Bajo (path estándar) |
+| `src/flame_mcp/server.py` | `~/Claude_projects/flame-mcp` | Base path para .env, config.json, socket, logs | **ALTO** — server no arranca si el repo no está ahí |
+| `src/flame_mcp/server.py` | `~/flame-mcp` | Fallback search | Medio |
+| `src/flame_mcp/server.py` | `/opt/Autodesk/project` | List Flame projects | Bajo (path estándar de Flame) |
+| `src/flame_mcp/server.py` | `/opt/Autodesk/cfg/.*/sysconfig.cfg` | Project config lookup | Bajo (path estándar) |
+| `src/flame_mcp/server.py` | `/opt/Autodesk/wiretap/tools/current` | Wiretap tools | Bajo (path estándar) |
+| `src/flame_mcp/server.py` | `/opt/Autodesk/logs` | Log directory | Bajo (path estándar) |
+| `src/flame_mcp/server.py` | `/var/opt/Autodesk/flame/projects/{name}` | Project storage (2026+) | Bajo (path estándar) |
 | `hooks/flame_mcp_bridge.py` | `~/Claude_projects/flame-mcp` | config.json, .env, socket | ✅ Refactorizado (Chat 12) |
 | `hooks/flame_mcp_bridge.py` | `~/flame-mcp`, `~/Documents/flame-mcp` | Fallback search locations | Medio |
 | `hooks/flame_mcp_bridge.py` | `~/.nvm/...`, `~/.npm-global/...`, `~/.volta/...`, `~/.fnm/...`, `~/Library/pnpm` | Node.js version manager discovery | Bajo (búsqueda, no dependencia) |
@@ -124,7 +124,7 @@ Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
 ### Socket path resolution
 - **Causa raíz**: Bridge y server asumían que `run/flame_mcp.sock` estaba dentro del repo. Hook instalado fuera del repo no encontraba el socket.
 - **Fix**: Bridge detecta si corre desde `hooks/` (dev) o instalado, y usa `/tmp/flame_mcp.sock` como default en modo instalado. Server usa fallback: `repo/run/` → `/tmp/` → TCP.
-- **Archivos**: `hooks/flame_mcp_bridge.py` (líneas 50-56), `flame_mcp_server.py` (líneas 489-496)
+- **Archivos**: `hooks/flame_mcp_bridge.py` (líneas 50-56), `src/flame_mcp/server.py` (líneas 489-496)
 
 ### rank-bm25 version
 - **Bug**: `requirements.txt` pedía `rank-bm25>=0.7.2` — esa versión no existe en PyPI (última es 0.2.2).
@@ -143,12 +143,12 @@ Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
 
 ## Bugs encontrados y corregidos — 2026-04-07 (sesión tests automatizados)
 
-### Caracteres de control en `_REDIRECT_PATTERNS` (flame_mcp_server.py)
+### Caracteres de control en `_REDIRECT_PATTERNS` (src/flame_mcp/safety.py)
 - **Bug**: 4 patrones en `_REDIRECT_PATTERNS` contenían caracteres `\x08` (backspace, 0x08) embebidos en lugar de `\b` (word boundary). Esto hacía que los redirects no dispararan para `flame.selection`, `\.reels`, `\.clips` y `current_project`.
 - **Causa raíz**: Los raw strings `r'...\b...'` habían sido editados con un editor que sustituyó `\b` por el carácter de control backspace literal.
 - **Impacto**: execute_python no redirigía correctamente cuando el código usaba `flame.selection`, `lib.reels`, `ws.libraries[].clips`, o `current_project.name`. Las soft redirects para `\.reels` y `\.clips` tampoco funcionaban porque el string no coincidía con `_SOFT_REDIRECT_PATTERNS`.
 - **Fix**: Reemplazados los 4 `\x08` → `\b` (o eliminados donde el pattern ya funciona sin word boundary) usando operación binaria en el archivo.
-- **Archivo**: `flame_mcp_server.py` líneas ~355, ~360, ~362, ~368
+- **Archivo**: `src/flame_mcp/safety.py` (extraído de `flame_mcp_server.py` en refactor 2026-04-07)
 
 ### `_SOFT_REDIRECT_PATTERNS` desincronizado
 - **Causa raíz**: Misma causa que arriba — los strings con `\x08` en `_REDIRECT_PATTERNS` no coincidían con los strings en `_SOFT_REDIRECT_PATTERNS` (que NO tenían `\x08`).

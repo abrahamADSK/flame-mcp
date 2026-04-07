@@ -41,7 +41,7 @@ _THIS_FILE    = os.path.abspath(__file__)
 _HOOKS_DIR    = os.path.dirname(_THIS_FILE)
 _AUTO_ROOT    = os.path.dirname(_HOOKS_DIR)
 if (os.path.basename(_HOOKS_DIR) == 'hooks' and
-        os.path.isfile(os.path.join(_AUTO_ROOT, 'flame_mcp_server.py'))):
+        os.path.isfile(os.path.join(_AUTO_ROOT, 'src', 'flame_mcp', 'server.py'))):
     _PROJECT_ROOT = _AUTO_ROOT
 else:
     _PROJECT_ROOT = os.environ.get('FLAME_MCP_ROOT',

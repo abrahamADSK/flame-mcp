@@ -3,7 +3,7 @@
   "mcpServers": {
     "flame": {
       "command": "/Users/YOUR_USERNAME/Projects/flame-mcp/.venv/bin/python",
-      "args": ["/Users/YOUR_USERNAME/Projects/flame-mcp/flame_mcp_server.py"],
+      "args": ["-m", "flame_mcp.server"],
       "env": {}
     }
   }

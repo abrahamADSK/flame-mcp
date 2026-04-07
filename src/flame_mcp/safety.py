@@ -3,7 +3,7 @@ safety.py
 =========
 Known-crasher pattern detection for Autodesk Flame execute_python.
 
-Extracted from flame_mcp_server.py to keep the safety module independent
+Extracted from src/flame_mcp/server.py to keep the safety module independent
 and reusable.  Contains:
 
   - _DANGEROUS_PATTERNS: regex + explanation tuples for crash-prone code

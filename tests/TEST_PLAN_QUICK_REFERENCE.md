@@ -239,7 +239,7 @@ Coverage target: 100% of MCP tools × all parameter combinations × all error ca
 - [ ] Flame 2026 running on workstation
 - [ ] Bridge installed: `/opt/Autodesk/shared/python/flame_mcp_bridge.py`
 - [ ] Bridge active (check Flame menu: MCP Bridge → Status = Active)
-- [ ] MCP server running: `python flame_mcp_server.py`
+- [ ] MCP server running: `python -m flame_mcp.server`
 - [ ] RAG index built: `python rag/build_index.py` (668 chunks indexed)
 - [ ] Test project loaded with fixtures (see TEST_PLAN_COMPREHENSIVE.md section 8.3)
 - [ ] /opt/Autodesk/logs/ directory exists with recent flame.log

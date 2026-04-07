@@ -1,7 +1,7 @@
 """
 test_tools.py
 =============
-Tests for the dedicated MCP tools in flame_mcp_server.py.
+Tests for the dedicated MCP tools in src/flame_mcp/server.py.
 
 All tests mock _call_flame to avoid real Flame bridge connections.
 Tools are synchronous — no asyncio.

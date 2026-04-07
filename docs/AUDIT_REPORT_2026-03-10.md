@@ -235,7 +235,7 @@ El chunking actual (split básico por headers `##`) produce chunks variables con
 
 ## 5. Código Fuente — Evaluación
 
-### `flame_mcp_server.py` (1577 líneas) — ✅ Buena calidad
+### `src/flame_mcp/server.py` — ✅ Buena calidad
 
 - Arquitectura MCP correcta con FastMCP.
 - Safety system robusto: 18 patrones de código peligroso con regex + alternativas seguras.
@@ -385,7 +385,7 @@ git push origin main
 
 | Componente | Estado | Nota |
 |------------|--------|------|
-| MCP Server (`flame_mcp_server.py`) | ✅ Funcional | Buena calidad, safety system robusto |
+| MCP Server (`src/flame_mcp/server.py`) | ✅ Funcional | Buena calidad, safety system robusto |
 | Bridge (`hooks/flame_mcp_bridge.py`) | ✅ Funcional | Requiere Flame en ejecución |
 | RAG Search (`rag/search.py`) | ✅ Funcional | Hybrid BM25+semantic, HyDE |
 | RAG Corpus (contenido) | ✅ Completo | 525 chunks, buena cobertura temática |

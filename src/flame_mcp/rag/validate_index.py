@@ -33,7 +33,7 @@ INDEX_DIR = _PKG_DIR / 'index'
 API_DOC   = ROOT / 'FLAME_API.md'
 CONFIG    = ROOT / 'config.json'
 
-# ── Allowed model substrings (mirrors flame_mcp_server.py WRITE_ALLOWED_MODELS)
+# ── Allowed model substrings (mirrors src/flame_mcp/server.py WRITE_ALLOWED_MODELS)
 _DEFAULT_WRITE_ALLOWED = {
     "claude-opus", "claude-sonnet", "claude-3-5-sonnet",
     "claude-3-7-sonnet", "claude-sonnet-4", "claude-sonnet-4-6", "claude-opus-4",

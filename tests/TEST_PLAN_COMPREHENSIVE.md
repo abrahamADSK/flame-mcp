@@ -760,7 +760,7 @@ flame (module root)
 - Server running (stdio transport)
 - RAG index built: `python rag/build_index.py`
 - RAG corpus indexed: 668 chunks from 12 sources
-- Config loaded: `.venv/bin/python flame_mcp_server.py`
+- Config loaded: `.venv/bin/python -m flame_mcp.server`
 
 ### 8.3 Test Data Fixtures
 - Test library: "test_lib" with 3 reels ("ONLINE", "OFFLINE", "DCP")

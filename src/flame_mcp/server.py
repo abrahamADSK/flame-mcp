@@ -2,7 +2,7 @@
 server.py
 =========
 MCP server that exposes tools for controlling Autodesk Flame.
-Communicates with the TCP bridge (flame_mcp_bridge.py) running inside Flame.
+Communicates with the Flame hook bridge (flame_mcp_bridge.py) running inside Flame.
 
 Usage:
     python -m flame_mcp.server
@@ -1700,7 +1700,7 @@ def _sync_tool_permissions() -> None:
     """
     On every server start, ensure all @mcp.tool functions are listed in
     .claude/settings.local.json.  This prevents OBS-006 from recurring:
-    any new tool added to flame_mcp_server.py is auto-approved the next
+    any new tool added to src/flame_mcp/server.py is auto-approved the next
     time the server (re-)starts — no manual settings edit needed.
     """
     settings_path = _SERVER_DIR / ".claude" / "settings.local.json"
