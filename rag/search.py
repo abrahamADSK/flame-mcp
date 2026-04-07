@@ -152,6 +152,9 @@ def _rrf_fuse(
     return sorted(scores, key=lambda d: scores[d], reverse=True)
 
 
+# A12 — In-session cache: identical queries skip ChromaDB.
+_search_cache: dict[int, tuple[str, int]] = {}
+
 # ── Main search entry point ────────────────────────────────────────────────────
 
 def search(query: str, n_results: int = 3) -> tuple[str, int]:
@@ -162,6 +165,11 @@ def search(query: str, n_results: int = 3) -> tuple[str, int]:
     If the index has not been built yet, returns an actionable error message
     and max_relevance = 0.
     """
+    # A12 — cache lookup
+    cache_key = hash((query, n_results))
+    if cache_key in _search_cache:
+        return _search_cache[cache_key]
+
     from rag.config import BM25_CANDIDATES, RRF_K
 
     collection = _get_collection()
@@ -259,4 +267,12 @@ def search(query: str, n_results: int = 3) -> tuple[str, int]:
         f"~{total_chars} chars (~{total_chars//4} tokens saved vs full doc)"
     )
 
-    return "\n\n---\n\n".join(parts), max_relevance
+    result = ("\n\n---\n\n".join(parts), max_relevance)
+    # A12 — cache store
+    _search_cache[cache_key] = result
+    return result
+
+
+def clear_cache() -> None:
+    """Clear the in-session search cache."""
+    _search_cache.clear()
