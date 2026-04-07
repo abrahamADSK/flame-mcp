@@ -161,19 +161,17 @@ claude mcp add flame -- "$PYTHON_VENV" -m flame_mcp.server
 ok "MCP server 'flame' registered with Claude Code."
 
 # ── 8. Auto-approve MCP tools in Claude Code ──────────────────────────────────
-# Writes tool permissions to .claude/settings.local.json (permissions.allow).
-# Claude Code reads this file for project-level tool approvals.
+# Writes tool permissions to ~/.claude/settings.json (user-level, permissions.allow).
+# Claude Code reads this file globally — works from any project directory.
 # Any future tool added to src/flame_mcp/server.py is auto-approved on next install.
 info "Configuring Claude Code tool auto-approval..."
 
-CLAUDE_SETTINGS="$SCRIPT_DIR/.claude/settings.local.json"
-
-SERVER_SCRIPT="$SERVER_SCRIPT" CLAUDE_SETTINGS="$CLAUDE_SETTINGS" "$PYTHON_VENV" - <<'PYEOF'
+SERVER_SCRIPT="$SERVER_SCRIPT" "$PYTHON_VENV" - <<'PYEOF'
 import ast, json, os
 from pathlib import Path
 
 server_script = os.environ['SERVER_SCRIPT']
-settings_file = Path(os.environ['CLAUDE_SETTINGS'])
+settings_path = Path.home() / ".claude" / "settings.json"
 
 # Extract all @mcp.tool() decorated function names
 with open(server_script) as f:
@@ -188,22 +186,30 @@ for node in ast.walk(tree):
                     and dec.func.attr == 'tool'):
                 new_tools.append(f'mcp__flame__{node.name}')
 
-# Merge with existing settings (preserves Bash allow entries)
-settings_file.parent.mkdir(parents=True, exist_ok=True)
-if settings_file.exists():
-    settings = json.loads(settings_file.read_text())
-else:
-    settings = {}
+# Merge with existing settings (preserves entries from other servers)
+settings_path.parent.mkdir(parents=True, exist_ok=True)
+settings = {}
+if settings_path.exists():
+    try:
+        settings = json.loads(settings_path.read_text())
+    except Exception:
+        pass
 
 settings.setdefault('permissions', {}).setdefault('allow', [])
 existing = set(settings['permissions']['allow'])
-settings['permissions']['allow'] = sorted(existing | set(new_tools),
-    key=lambda x: (not x.startswith('mcp__'), x))
+new_set = set(new_tools)
+new_count = len(new_set - existing)
+merged = sorted(existing | new_set)
+settings['permissions']['allow'] = merged
 
-settings_file.write_text(json.dumps(settings, indent=2))
+tmp = str(settings_path) + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+os.replace(tmp, str(settings_path))
 
-print(f'  {len(new_tools)} flame tools auto-approved in {settings_file}')
-for t in sorted(new_tools):
+print(f'[flame-mcp] {new_count} new tools pre-approved ({len(merged)} total in ~/.claude/settings.json)')
+for t in sorted(new_set):
     print(f'    + {t}')
 PYEOF
 
