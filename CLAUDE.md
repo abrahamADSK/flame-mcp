@@ -287,3 +287,17 @@ Luego leer `~/Claude_projects/flame-mcp/logs/flame_render_result.txt` con una ll
 **Task:** Crear clip de ruido coloreado con nodo Substance Noise en Batch
 **Works:** ❌ — El nodo Substance Noise conectado a Render crashea Flame al hacer render (incluso via schedule_idle_event). El archivo de resultado nunca se crea.
 **Alternativa pendiente:** usar `Colour Source` + `Gradient` o generar frames externos e importarlos.
+
+---
+
+## MANDATORY: Tool pre-approval stays in sync automatically
+
+flame-mcp's `install.sh` (Step 8) extracts tool names dynamically from `src/flame_mcp/server.py` via `ast.parse`. New `@mcp.tool()` functions are picked up automatically on next install.
+
+**RULE — NON-NEGOTIABLE:**
+- Every `@mcp.tool()` function MUST follow the standard decorator pattern so ast.parse detects it
+- If you rename a tool function, the old name becomes orphaned in users' settings.json — note this in the commit message
+- After adding/removing tools, run `bash -n install.sh` to verify syntax
+- Run the install.sh Python snippet standalone to verify detection: `grep -c "mcp__flame__" ~/.claude/settings.json`
+
+This ensures users never get permission prompts on first use of new tools.
