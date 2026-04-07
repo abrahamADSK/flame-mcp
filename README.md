@@ -46,9 +46,17 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** �
 - A Claude account ([claude.ai](https://claude.ai)) — Pro, Max, or API key
 
 **Optional — local / free inference with Ollama:**
-- A Linux machine (same LAN or localhost) running [Ollama](https://ollama.com) 0.14+ with GPU
-- Or a free [ollama.com](https://ollama.com) cloud account (no GPU required)
-- See [Ollama setup](#ollama-setup-optional) below
+- [Ollama](https://ollama.com) >= 0.17.6 installed on your Mac, a Linux GPU server, or both
+  - macOS: `brew install ollama && brew services start ollama`
+  - Linux: see https://ollama.com/download/linux (systemd)
+  - Verify: `ollama --version`
+- Create the `qwen3.5-mcp` model (required for Ollama backends):
+  ```bash
+  ollama pull qwen3.5:9b
+  ollama create qwen3.5-mcp -f Modelfile.qwen35mcp
+  ```
+- See [Ollama setup](#ollama-setup-optional) below for backend options
+- See [MODEL_STRATEGY.md](../MODEL_STRATEGY.md) for Modelfile details, `think: false` requirement, and KEEP_ALIVE tuning
 
 > **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5).
 

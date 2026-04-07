@@ -87,6 +87,18 @@ fi
 CLAUDE_VERSION=$(claude --version 2>/dev/null | head -1)
 ok "Claude Code: $CLAUDE_VERSION"
 
+# ── 2b. Check Ollama (optional — for local/free inference) ───────────────────
+info "Checking Ollama (optional)..."
+if command -v ollama &>/dev/null; then
+    OLLAMA_VERSION=$(ollama --version 2>/dev/null | head -1)
+    ok "Ollama found: $OLLAMA_VERSION"
+else
+    warn "Ollama not found — skip if using Anthropic cloud models."
+    warn "  macOS: brew install ollama && brew services start ollama"
+    warn "  Linux: https://ollama.com/download/linux"
+    warn "  See README.md → Ollama setup for details."
+fi
+
 # ── 3. Create virtual environment ────────────────────────────────────────────
 info "Setting up Python virtual environment..."
 if [ -d "$SCRIPT_DIR/.venv" ]; then
