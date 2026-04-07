@@ -352,20 +352,20 @@ _rag_called_this_session: bool = False
 # tell the model exactly which tool to use instead.
 _REDIRECT_PATTERNS = [
     # (regex pattern in code,  redirect message)
-    (r'get_project_info|current_project.*\.(name|description|workspaces)',
+    (r'get_project_info|current_project\b.*\.(name|description|workspaces)',
      "Use get_project_info() — it returns project name, resolution, fps, "
      "bit depth via Wiretap XML. execute_python cannot access those fields."),
     (r'ws\.libraries|current_workspace\.libraries|getLibraries',
      "Use list_libraries() — it filters hidden system libraries automatically."),
-    (r'\.reels|getReels\(',
+    (r'\.reels|getReels\(',
      "Use list_reels(library_name) — returns all reels for a library in one call."),
-    (r'getEntries\(|\.clips|getClips\(',
+    (r'getEntries\(|\.clips|getClips\(',
      "Use list_clips(library_name, reel_name) — returns formatted clip list."),
     (r'reel_groups|getReelGroups|desktop.*reel',
      "Use list_desktop_reels() — returns the full desktop hierarchy with clip names."),
     (r'batch_groups|getBatchGroups|\.batch_group',
      "Use list_batch_groups() — returns batch groups with node and reel counts."),
-    (r'flame\.selection',
+    (r'flame\.selection',
      "flame.selection does not exist. "
      "Use get_selected_clips() — it uses flame.media_panel.selected_entries correctly."),
     (r'media_panel\.selected_entries',
