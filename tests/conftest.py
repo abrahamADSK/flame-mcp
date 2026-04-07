@@ -3,8 +3,8 @@ conftest.py
 ===========
 Shared fixtures and path setup for flame-mcp tests.
 
-Adds the flame-mcp repo root to sys.path so that
-``from flame_mcp_server import ...`` works without installation.
+The package is installed in editable mode (pip install -e .) so that
+``from flame_mcp.server import ...`` works directly.
 
 Stubs the MCP SDK (mcp.server.fastmcp + mcp.types) so the server module
 can be imported without the full MCP package installed.
@@ -35,18 +35,11 @@ if _soft < 4096:
         stacklevel=1,
     )
 
-# ── Path setup ────────────────────────────────────────────────────────────────
-# flame-mcp/flame_mcp_server.py  ←  module under test
-# flame-mcp/tests/conftest.py    ←  this file
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
 # ── MCP SDK stub ──────────────────────────────────────────────────────────────
-# flame_mcp_server.py imports at module level:
+# flame_mcp.server imports at module level:
 #   from mcp.server.fastmcp import FastMCP
 #   from mcp.types import ToolAnnotations  (inside try/except ImportError)
-# Install minimal stubs so ``import flame_mcp_server`` succeeds without the SDK.
+# Install minimal stubs so ``import flame_mcp.server`` succeeds without the SDK.
 
 if "mcp" not in sys.modules:
     _mcp_pkg        = _types.ModuleType("mcp")
@@ -111,7 +104,7 @@ def mock_bridge():
     Default return value: {'output': 'ok', 'error': '', '_bridge_ms': 0}
     Override per-test with:  mock_bridge.return_value = {...}
     """
-    with patch("flame_mcp_server._call_flame") as m:
+    with patch("flame_mcp.server._call_flame") as m:
         m.return_value = dict(_DEFAULT_BRIDGE_RESPONSE)
         yield m
 
@@ -119,7 +112,7 @@ def mock_bridge():
 @pytest.fixture()
 def mock_bridge_error():
     """Patch _call_flame to return a connection-refused error response."""
-    with patch("flame_mcp_server._call_flame") as m:
+    with patch("flame_mcp.server._call_flame") as m:
         m.return_value = dict(_BRIDGE_CONNECTION_ERROR)
         yield m
 
@@ -444,7 +437,7 @@ def patch_rag_singletons(rag_chroma_collection, rag_corpus_json):
     Yields (collection, bm25, corpus) for test assertions.
     """
     from rank_bm25 import BM25Okapi
-    from rag.search import search as _ensure_imported  # noqa: F401 — loads module
+    from flame_mcp.rag.search import search as _ensure_imported  # noqa: F401 — loads module
 
     collection, index_dir = rag_chroma_collection
 
@@ -453,9 +446,9 @@ def patch_rag_singletons(rag_chroma_collection, rag_corpus_json):
     tokenised = [entry["text"].lower().split() for entry in corpus]
     bm25 = BM25Okapi(tokenised)
 
-    with patch("rag.search._collection", collection), \
-         patch("rag.search._bm25", bm25), \
-         patch("rag.search._bm25_docs", corpus), \
-         patch("rag.search.INDEX_DIR", index_dir), \
-         patch("rag.search.CORPUS_PATH", rag_corpus_json):
+    with patch("flame_mcp.rag.search._collection", collection), \
+         patch("flame_mcp.rag.search._bm25", bm25), \
+         patch("flame_mcp.rag.search._bm25_docs", corpus), \
+         patch("flame_mcp.rag.search.INDEX_DIR", index_dir), \
+         patch("flame_mcp.rag.search.CORPUS_PATH", rag_corpus_json):
         yield collection, bm25, corpus

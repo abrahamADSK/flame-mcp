@@ -21,12 +21,11 @@ import sys
 import datetime
 from typing import Any
 
-ROOT        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_DIR   = os.path.join(ROOT, 'rag', 'index')
-CORPUS_PATH = os.path.join(ROOT, 'rag', 'corpus.json')
+_PKG_DIR    = os.path.dirname(os.path.abspath(__file__))            # src/flame_mcp/rag/
+ROOT        = os.path.dirname(os.path.dirname(os.path.dirname(_PKG_DIR)))  # repo root
+INDEX_DIR   = os.path.join(_PKG_DIR, 'index')
+CORPUS_PATH = os.path.join(_PKG_DIR, 'corpus.json')
 
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
 LOG_FILE = os.path.join(ROOT, 'logs', 'flame_rag.log')
 
 
@@ -50,7 +49,7 @@ def _get_embedding_fn() -> Any:
     MUST match rag/config.py — build and query must use the same model
     or cosine similarity scores will be meaningless.
     """
-    from rag.config import EMBEDDING_MODEL
+    from flame_mcp.rag.config import EMBEDDING_MODEL
     from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
     return SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
 
@@ -170,7 +169,7 @@ def search(query: str, n_results: int = 3) -> tuple[str, int]:
     if cache_key in _search_cache:
         return _search_cache[cache_key]
 
-    from rag.config import BM25_CANDIDATES, RRF_K
+    from flame_mcp.rag.config import BM25_CANDIDATES, RRF_K
 
     collection = _get_collection()
     if collection is None:

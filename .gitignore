@@ -65,3 +65,5 @@ docs/ocr_frames/
 __MACOSX/
 ._*
 rag/index/
+src/flame_mcp/rag/index/
+src/flame_mcp/rag/corpus.json

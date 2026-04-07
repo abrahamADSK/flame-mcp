@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flame-mcp"
+version = "0.1.0"
+description = "MCP server for Autodesk Flame"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.26.0",
+    "chromadb>=0.6.0",
+    "sentence-transformers>=2.7.0",
+    "rank-bm25>=0.2",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+flame-mcp = "flame_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

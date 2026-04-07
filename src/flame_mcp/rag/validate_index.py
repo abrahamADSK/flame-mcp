@@ -27,8 +27,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-ROOT      = Path(__file__).parent.parent
-INDEX_DIR = ROOT / 'rag' / 'index'
+_PKG_DIR  = Path(__file__).parent                              # src/flame_mcp/rag/
+ROOT      = _PKG_DIR.parent.parent.parent                      # repo root
+INDEX_DIR = _PKG_DIR / 'index'
 API_DOC   = ROOT / 'FLAME_API.md'
 CONFIG    = ROOT / 'config.json'
 
@@ -64,7 +65,7 @@ def _get_write_allowed() -> set:
 
 
 def _get_embedding_fn() -> Any:
-    from rag.config import EMBEDDING_MODEL
+    from flame_mcp.rag.config import EMBEDDING_MODEL
     from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
     return SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
 
@@ -225,7 +226,4 @@ def validate() -> int:
 
 
 if __name__ == "__main__":
-    # Ensure project root on sys.path so `from rag.config import ...` works
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
     sys.exit(validate())

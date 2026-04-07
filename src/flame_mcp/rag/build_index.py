@@ -44,13 +44,10 @@ import sys
 from typing import Any
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
+_PKG_DIR  = os.path.dirname(os.path.abspath(__file__))                     # src/flame_mcp/rag/
+ROOT      = os.path.dirname(os.path.dirname(os.path.dirname(_PKG_DIR)))    # repo root
+INDEX_DIR = os.path.join(_PKG_DIR, 'index')
 
-# Ensure project root is on sys.path so `from rag.config import ...` works
-# whether this script is run directly (python rag/build_index.py) or imported.
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
 DOCS_DIR  = os.path.join(ROOT, 'docs')
 
 # Documents to always index (processed first, in order)
@@ -215,7 +212,7 @@ def _make_embedding_fn() -> Any:
     Returns a ChromaDB-compatible embedding function using the BGE model.
     Downloads the model on first use (~570 MB, cached in ~/.cache/huggingface/).
     """
-    from rag.config import EMBEDDING_MODEL
+    from flame_mcp.rag.config import EMBEDDING_MODEL
     try:
         from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
         print(f"  Embedding model : {EMBEDDING_MODEL}")

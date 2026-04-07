@@ -64,7 +64,7 @@ TestReadFlameLog (2 tests):
 import pytest
 from unittest.mock import patch, MagicMock
 
-from flame_mcp_server import (
+from flame_mcp.server import (
     ping,
     get_project_info,
     list_libraries,

@@ -156,10 +156,42 @@ Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
 
 ---
 
+## Refactor: Migración a src/flame_mcp/ — 2026-04-07
+
+### Qué se hizo
+- Creado `src/flame_mcp/` con estructura de paquete Python instalable
+- Movido `flame_mcp_server.py` → `src/flame_mcp/server.py` (1760 líneas, -247 de safety extraído)
+- Extraído `src/flame_mcp/safety.py` con: `_DANGEROUS_PATTERNS`, `_check_dangerous()`, `_REDIRECT_PATTERNS`, `_SOFT_REDIRECT_PATTERNS`, `_CREATION_INTENT_RE`
+- Movido `rag/*.py` → `src/flame_mcp/rag/` (search.py, config.py, build_index.py, validate_index.py, generate_flame_api.py)
+- Creado `pyproject.toml` con entry point `flame-mcp = flame_mcp.server:main`
+- Creado `src/flame_mcp/__init__.py`
+- Actualizados TODOS los imports: `from flame_mcp_server import` → `from flame_mcp.server import`, `from rag.` → `from flame_mcp.rag.`
+- Eliminados todos los `sys.path.insert` hacks en server.py, search.py, build_index.py, validate_index.py, conftest.py
+- Actualizado `.mcp.json`: `args: ["-m", "flame_mcp.server"]`
+- Actualizado `_SERVER_DIR` a `Path(__file__).resolve().parent.parent.parent` (repo root)
+- Actualizados paths de `_CANDIDATES_PATH`, `_FAILED_PATH`, `build_script`, `_lock_file`
+- 62/62 tests pasando
+
+### Decisiones tomadas
+- `hooks/` y `scripts/` NO se movieron — ejecutan fuera del paquete MCP
+- `rag/corpus.json` e `index/` no se copiaron (generados, deben regenerarse)
+- `pyproject.toml` usa `requires-python = ">=3.10"` (sandbox usa 3.10; en producción será 3.11+)
+- `flame_mcp_server.py` original y `rag/*.py` originales necesitan ser borrados localmente (el sandbox no puede hacer `rm` en el mount)
+
+### Qué queda pendiente post-refactor
+- **Borrar archivos originales** en tu máquina local: `rm flame_mcp_server.py` y `rm rag/__init__.py rag/config.py rag/search.py rag/build_index.py rag/validate_index.py rag/generate_flame_api.py`
+- **Copiar** `rag/corpus.json` e `index/` a `src/flame_mcp/rag/` si quieres preservar el corpus (o regenerar con `python -m flame_mcp.rag.build_index`)
+- **Reinstalar** en tu máquina: `cd flame-mcp && pip install -e .`
+- **Commit** sugerido: `refactor: migrate flame-mcp to src/flame_mcp/ package layout + extract safety.py`
+
+---
+
 ## Pendiente
 
 - ✅ Refactorizar paths hardcodeados (legacy) → completado (Chat 12)
 - ✅ Convertir test plans .md a tests automatizados → completado (2026-04-07): 62 tests, 100% pass
+- ✅ Migración a src/flame_mcp/ package layout → completado (2026-04-07): 62 tests, 100% pass
+- Borrar archivos originales del root (flame_mcp_server.py, rag/*.py) — debe hacerse localmente
 - Evaluar si candidates.json necesita mecanismo de review/aprobación
 - Verificar compatibilidad con Flame 2027 preview
 - Verificar widget embebido en Flame real después de los fixes (requiere máquina con Flame)
@@ -167,4 +199,4 @@ Requiere: `pip install chromadb rank-bm25 pytest --break-system-packages`
 
 ---
 
-## Última actualización: 2026-04-07 — Tests automatizados (62/62), fix \x08 en _REDIRECT_PATTERNS
+## Última actualización: 2026-04-07 — Migración a src/flame_mcp/, extract safety.py, 62/62 tests OK

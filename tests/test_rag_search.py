@@ -38,7 +38,7 @@ class TestRagSearch:
 
     def test_basic_search(self, patch_rag_singletons):
         """search() returns a non-empty string and an integer relevance score."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, relevance = search("library workspace reels", n_results=3)
 
@@ -49,7 +49,7 @@ class TestRagSearch:
 
     def test_empty_query(self, patch_rag_singletons):
         """An empty query does not crash — returns nearest neighbours."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, relevance = search("", n_results=3)
 
@@ -59,7 +59,7 @@ class TestRagSearch:
 
     def test_n_results(self, patch_rag_singletons):
         """n_results=2 returns at most 2 chunk blocks."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, _relevance = search("batch render schedule", n_results=2)
 
@@ -69,13 +69,13 @@ class TestRagSearch:
 
     def test_no_index(self, tmp_path):
         """When the index directory does not exist, returns an actionable message."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         fake_dir = str(tmp_path / "nonexistent_index")
 
-        with patch("rag.search._collection", None), \
-             patch("rag.search._client", None), \
-             patch("rag.search.INDEX_DIR", fake_dir):
+        with patch("flame_mcp.rag.search._collection", None), \
+             patch("flame_mcp.rag.search._client", None), \
+             patch("flame_mcp.rag.search.INDEX_DIR", fake_dir):
             text, relevance = search("anything", n_results=3)
 
         assert relevance == 0, "Missing index must return relevance 0"
@@ -95,7 +95,7 @@ class TestRagSearchBasic:
 
     def test_result_contains_header(self, patch_rag_singletons):
         """Results include ### [source] section (relevance: N%) headers."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, _relevance = search("create library workspace", n_results=3)
 
@@ -104,7 +104,7 @@ class TestRagSearchBasic:
 
     def test_relevance_is_bounded(self, patch_rag_singletons):
         """max_relevance is always in [0, 100]."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         _text, relevance = search("batch group render", n_results=3)
 
@@ -112,7 +112,7 @@ class TestRagSearchBasic:
 
     def test_flame_api_content_returned(self, patch_rag_singletons):
         """Query about 'workspace libraries' returns flame_api corpus chunks."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, _relevance = search("workspace libraries flame project", n_results=5)
 
@@ -123,7 +123,7 @@ class TestRagSearchBasic:
 
     def test_batch_query_returns_batch_content(self, patch_rag_singletons):
         """Query about 'batch group render' returns flame_batch corpus chunks."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, _relevance = search("batch group render schedule_idle_event", n_results=5)
 
@@ -139,7 +139,7 @@ class TestRagSearchBm25:
 
     def test_exact_method_found(self, patch_rag_singletons):
         """Querying 'create_library' returns the create_library chunk."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text, _relevance = search("create_library workspace", n_results=5)
 
@@ -178,7 +178,7 @@ class TestRagSearchRrfFusion:
 
     def test_rrf_basic_merge(self):
         """RRF merges two disjoint lists, including all items."""
-        from rag.search import _rrf_fuse
+        from flame_mcp.rag.search import _rrf_fuse
 
         sem  = ["a", "b", "c"]
         bm25 = ["d", "e", "f"]
@@ -188,7 +188,7 @@ class TestRagSearchRrfFusion:
 
     def test_rrf_overlapping_docs_boosted(self):
         """Documents in both lists are ranked higher via score accumulation."""
-        from rag.search import _rrf_fuse
+        from flame_mcp.rag.search import _rrf_fuse
 
         sem  = ["shared", "sem_only_1", "sem_only_2"]
         bm25 = ["bm25_only_1", "shared", "bm25_only_2"]
@@ -200,7 +200,7 @@ class TestRagSearchRrfFusion:
 
     def test_rrf_preserves_order_single_list(self):
         """With only one non-empty list, relative order is preserved."""
-        from rag.search import _rrf_fuse
+        from flame_mcp.rag.search import _rrf_fuse
 
         sem = ["a", "b", "c"]
         fused = _rrf_fuse(sem, [], k=60)
@@ -209,7 +209,7 @@ class TestRagSearchRrfFusion:
 
     def test_rrf_empty_inputs(self):
         """Both empty inputs return an empty list."""
-        from rag.search import _rrf_fuse
+        from flame_mcp.rag.search import _rrf_fuse
 
         fused = _rrf_fuse([], [], k=60)
         assert fused == []
@@ -224,12 +224,12 @@ class TestRagSearchEmptyIndex:
 
     def test_empty_collection_returns_message(self, rag_empty_collection):
         """Empty ChromaDB collection returns an informative message + relevance 0."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         collection, index_dir = rag_empty_collection
 
-        with patch("rag.search._collection", collection), \
-             patch("rag.search.INDEX_DIR", index_dir):
+        with patch("flame_mcp.rag.search._collection", collection), \
+             patch("flame_mcp.rag.search.INDEX_DIR", index_dir):
             text, relevance = search("anything", n_results=3)
 
         assert relevance == 0, "Empty index must return relevance 0"
@@ -239,12 +239,12 @@ class TestRagSearchEmptyIndex:
 
     def test_empty_returns_zero_relevance(self, rag_empty_collection):
         """Relevance is exactly 0 for any query against an empty index."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         collection, index_dir = rag_empty_collection
 
-        with patch("rag.search._collection", collection), \
-             patch("rag.search.INDEX_DIR", index_dir):
+        with patch("flame_mcp.rag.search._collection", collection), \
+             patch("flame_mcp.rag.search.INDEX_DIR", index_dir):
             _text, relevance = search("batch render workspace", n_results=5)
 
         assert relevance == 0
@@ -259,7 +259,7 @@ class TestRagSearchCache:
 
     def test_cache_returns_same_result(self, patch_rag_singletons):
         """Two identical search() calls return the same result (deterministic)."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         result1 = search("workspace libraries create", n_results=3)
         result2 = search("workspace libraries create", n_results=3)
@@ -268,7 +268,7 @@ class TestRagSearchCache:
 
     def test_different_queries_not_cached(self, patch_rag_singletons):
         """Different queries return different results."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text1, _r1 = search("workspace library reels", n_results=3)
         text2, _r2 = search("batch group render schedule_idle_event", n_results=3)
@@ -277,7 +277,7 @@ class TestRagSearchCache:
 
     def test_different_n_results_not_cached(self, patch_rag_singletons):
         """Same query with different n_results returns different chunk counts."""
-        from rag.search import search
+        from flame_mcp.rag.search import search
 
         text1, _r1 = search("batch library workspace", n_results=1)
         text2, _r2 = search("batch library workspace", n_results=5)
@@ -291,7 +291,7 @@ class TestRagSearchCache:
 
     def test_clear_session_cache(self, patch_rag_singletons):
         """The server-level _search_cache can be cleared between calls."""
-        import flame_mcp_server
+        from flame_mcp import server as flame_mcp_server
 
         # Populate the server-level session cache
         flame_mcp_server._search_cache.clear()

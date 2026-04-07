@@ -24,7 +24,7 @@ TestDangerousPatterns (10 tests):
 
 import pytest
 
-from flame_mcp_server import _check_dangerous
+from flame_mcp.safety import _check_dangerous
 
 
 # ═══════════════════════════════════════════════════════════════════════════
