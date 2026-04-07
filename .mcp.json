@@ -6,7 +6,7 @@
     },
     "maya-mcp": {
       "command": "/Users/abraham/Claude_projects/maya-mcp/.venv/bin/python",
-      "args": ["/Users/abraham/Claude_projects/maya-mcp/core/server.py"],
+      "args": ["-m", "maya_mcp.server"],
       "cwd": "/Users/abraham/Claude_projects/maya-mcp"
     },
     "fpt-mcp": {
