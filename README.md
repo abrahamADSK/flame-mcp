@@ -56,7 +56,6 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** â
   ollama create qwen3.5-mcp -f Modelfile.qwen35mcp
   ```
 - See [Ollama setup](#ollama-setup-optional) below for backend options
-- See [MODEL_STRATEGY.md](MODEL_STRATEGY.md) for Modelfile details, `think: false` requirement, and KEEP_ALIVE tuning
 
 > **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5).
 

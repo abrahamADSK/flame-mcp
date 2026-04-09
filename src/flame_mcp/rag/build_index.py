@@ -58,7 +58,6 @@ PRIMARY_DOCS = [
 # docs/ files to skip — not API documentation
 DOCS_EXCLUDE = {
     'ARCHITECTURE.md',          # project metadata, not useful for RAG queries
-    'AUDIT_REPORT_2026-03-10.md',  # audit report, not API docs
 }
 
 # ── Chunking config ────────────────────────────────────────────────────────────

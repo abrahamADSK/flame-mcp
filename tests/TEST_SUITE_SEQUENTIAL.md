@@ -1,198 +1,198 @@
-# Test Suite Secuencial — flame-mcp
+# Sequential Test Suite — flame-mcp
 
-> **Instrucciones**: Ejecuta cada prueba **en orden** desde Claude (Claude Desktop, Claude Code, o Cowork).
-> Cada nivel depende de lo creado en el nivel anterior. No saltes pruebas.
-> Al final de cada prueba, verifica el resultado esperado antes de continuar.
-
----
-
-## Nivel 0 — Conexión y Diagnóstico
-
-Pruebas que no modifican nada en Flame. Solo verifican que el bridge funciona.
-
-### T0.1 · Ping al bridge
-```
-¿Está Flame conectado? Haz un ping.
-```
-**Resultado esperado**: "connected" + versión de Flame.
-**Herramienta MCP**: `ping`
-
-### T0.2 · Versión de Flame
-```
-¿Qué versión de Flame está corriendo?
-```
-**Resultado esperado**: String tipo "2026.0.1" o similar.
-**Herramienta MCP**: `get_flame_version`
-
-### T0.3 · Información del proyecto activo
-```
-Dame la información del proyecto activo: nombre, resolución, frame rate y bit depth.
-```
-**Resultado esperado**: Nombre del proyecto, resolución (ej. 1920x1080), fps (ej. 23.976), bit depth (ej. 16fp).
-**Herramienta MCP**: `get_project_info`
-
-### T0.4 · Listar todos los proyectos
-```
-¿Qué proyectos de Flame hay disponibles en esta estación?
-```
-**Resultado esperado**: Lista de proyectos con indicador de cuál está activo.
-**Herramienta MCP**: `list_all_projects`
-
-### T0.5 · Estadísticas de sesión RAG
-```
-Muéstrame las estadísticas de la sesión actual.
-```
-**Resultado esperado**: Contador de llamadas, tokens consumidos, tokens ahorrados.
-**Herramienta MCP**: `session_stats`
+> **Instructions**: Run each test **in order** from Claude (Claude Desktop, Claude Code, or Cowork).
+> Each level depends on what was created in the previous level. Do not skip tests.
+> After each test, verify the expected result before continuing.
 
 ---
 
-## Nivel 1 — Lectura del Estado Actual (Solo Inspección)
+## Level 0 — Connection & Diagnostics
 
-Pruebas de solo lectura que examinan el contenido existente en Flame.
+Tests that do not modify anything in Flame. They only verify the bridge is working.
 
-### T1.1 · Listar bibliotecas
+### T0.1 · Ping the bridge
 ```
-¿Qué bibliotecas existen en el proyecto actual?
+Is Flame connected? Ping it.
 ```
-**Resultado esperado**: Lista de bibliotecas con conteo de reels y folders.
-**Herramienta MCP**: `list_libraries`
+**Expected result**: "connected" + Flame version string.
+**MCP tool**: `ping`
 
-### T1.2 · Listar reels de una biblioteca
+### T0.2 · Flame version
 ```
-Muéstrame los reels de la primera biblioteca que encontraste.
+What version of Flame is currently running?
 ```
-**Resultado esperado**: Nombres de reels dentro de la biblioteca.
-**Herramienta MCP**: `list_reels`
+**Expected result**: Version string like "2026.0.1" or similar.
+**MCP tool**: `get_flame_version`
 
-### T1.3 · Listar clips
+### T0.3 · Active project info
 ```
-¿Qué clips hay en esa biblioteca? Muéstrame los primeros 20.
+Give me the active project information: name, resolution, frame rate, and bit depth.
 ```
-**Resultado esperado**: Lista de clips con nombres.
-**Herramienta MCP**: `list_clips`
+**Expected result**: Project name, resolution (e.g. 1920x1080), fps (e.g. 23.976), bit depth (e.g. 16fp).
+**MCP tool**: `get_project_info`
 
-### T1.4 · Estructura completa del desktop
+### T0.4 · List all projects
 ```
-Muéstrame toda la estructura del desktop: reel groups, reels y clips.
+What Flame projects are available on this workstation?
 ```
-**Resultado esperado**: Árbol jerárquico completo del desktop.
-**Herramienta MCP**: `list_desktop_reels`
+**Expected result**: List of projects with an indicator showing which one is active.
+**MCP tool**: `list_all_projects`
 
-### T1.5 · Listar batch groups
+### T0.5 · RAG session statistics
 ```
-¿Hay batch groups en el desktop? Lístalos con su número de nodos y reels.
+Show me the current session statistics.
 ```
-**Resultado esperado**: Lista de batch groups (o "No batch groups found").
-**Herramienta MCP**: `list_batch_groups`
-
-### T1.6 · Metadata de un clip (requiere T1.3)
-```
-Del primer clip que encontraste antes, dame sus metadatos completos: resolución, frame rate, duración, timecode, bit depth.
-```
-**Resultado esperado**: Detalle técnico del clip (width, height, duration, frame_rate, etc.).
-**Herramienta MCP**: `get_clip_metadata`
-
-### T1.7 · Clips seleccionados en Flame
-```
-¿Qué clips tengo seleccionados ahora mismo en Flame?
-```
-**Nota**: Selecciona algo manualmente en Flame antes de lanzar esta prueba.
-**Resultado esperado**: Nombre y tipo de los items seleccionados.
-**Herramienta MCP**: `get_selected_clips`
-
-### T1.8 · Explorar árbol Wiretap
-```
-Explora el árbol Wiretap en la raíz /projects.
-```
-**Resultado esperado**: Lista de nodos IFFFS (UUIDs de proyectos).
-**Herramienta MCP**: `flame_wiretap_tree`
+**Expected result**: Call counter, tokens consumed, tokens saved.
+**MCP tool**: `session_stats`
 
 ---
 
-## Nivel 2 — Sistema RAG y Documentación
+## Level 1 — Current State Reading (Inspection Only)
 
-Pruebas del sistema de búsqueda de conocimiento.
+Read-only tests that examine existing content in Flame.
 
-### T2.1 · Búsqueda básica en docs
+### T1.1 · List libraries
 ```
-Busca en la documentación cómo acceder a las bibliotecas de un proyecto.
+What libraries exist in the current project?
 ```
-**Resultado esperado**: Fragmentos del corpus explicando `ws.libraries` (NO `project.libraries`).
-**Herramienta MCP**: `search_flame_docs`
+**Expected result**: List of libraries with reel and folder counts.
+**MCP tool**: `list_libraries`
 
-### T2.2 · Búsqueda de patrón peligroso
+### T1.2 · List reels from a library
 ```
-Busca en la documentación cómo hacer un render en batch.
+Show me the reels in the first library you found.
 ```
-**Resultado esperado**: Debe mencionar `schedule_idle_event` y advertir contra `flame.batch.render()` directo.
-**Herramienta MCP**: `search_flame_docs`
+**Expected result**: Reel names within the library.
+**MCP tool**: `list_reels`
 
-### T2.3 · Búsqueda de operación avanzada
+### T1.3 · List clips
 ```
-Busca cómo crear nodos en un batch group y conectarlos entre sí.
+What clips are in that library? Show me the first 20.
 ```
-**Resultado esperado**: Patrones con `create_node`, `connect_nodes`, tipos de nodos disponibles.
-**Herramienta MCP**: `search_flame_docs`
+**Expected result**: List of clips with names.
+**MCP tool**: `list_clips`
 
-### T2.4 · Búsqueda de export
+### T1.4 · Full desktop structure
 ```
-Busca cómo exportar un clip con PyExporter.
+Show me the full desktop structure: reel groups, reels, and clips.
 ```
-**Resultado esperado**: Patrón con `schedule_idle_event` + `PyExporter`, nunca llamada directa.
-**Herramienta MCP**: `search_flame_docs`
+**Expected result**: Complete hierarchical tree of the desktop.
+**MCP tool**: `list_desktop_reels`
 
-### T2.5 · Búsqueda de timeline/segmentos
+### T1.5 · List batch groups
 ```
-¿Cómo puedo acceder a los segmentos de una secuencia en el timeline?
+Are there batch groups on the desktop? List them with their node and reel counts.
 ```
-**Resultado esperado**: Información sobre `PySequence`, `PySegment`, `versions`.
-**Herramienta MCP**: `search_flame_docs`
+**Expected result**: List of batch groups (or "No batch groups found").
+**MCP tool**: `list_batch_groups`
 
----
+### T1.6 · Clip metadata (requires T1.3)
+```
+From the first clip you found earlier, give me its full metadata: resolution, frame rate, duration, timecode, bit depth.
+```
+**Expected result**: Technical detail of the clip (width, height, duration, frame_rate, etc.).
+**MCP tool**: `get_clip_metadata`
 
-## Nivel 3 — Logs y Diagnóstico del Sistema
+### T1.7 · Currently selected clips in Flame
+```
+What clips do I have selected right now in Flame?
+```
+**Note**: Manually select something in Flame before running this test.
+**Expected result**: Name and type of the selected items.
+**MCP tool**: `get_selected_clips`
 
-### T3.1 · Listar logs disponibles
+### T1.8 · Explore Wiretap tree
 ```
-¿Qué archivos de log tiene Flame disponibles?
+Explore the Wiretap tree at the root /projects.
 ```
-**Resultado esperado**: Lista de archivos en /opt/Autodesk/logs con tamaño y fecha.
-**Herramienta MCP**: `list_flame_logs`
-
-### T3.2 · Leer últimas líneas del log principal
-```
-Muéstrame las últimas 30 líneas del log principal de Flame.
-```
-**Resultado esperado**: Líneas recientes del log de Flame.
-**Herramienta MCP**: `read_flame_log`
-
-### T3.3 · Filtrar errores en log
-```
-Busca errores recientes en el log de Flame (las últimas 200 líneas, filtrando por "ERROR" o "Traceback").
-```
-**Resultado esperado**: Solo líneas que contengan errores, o "no matches" si no hay.
-**Herramienta MCP**: `read_flame_log` con parámetro `grep`
+**Expected result**: List of IFFFS nodes (project UUIDs).
+**MCP tool**: `flame_wiretap_tree`
 
 ---
 
-## Nivel 4 — Ejecución de Código Simple (Solo Lectura)
+## Level 2 — RAG System & Documentation
 
-Primera vez que se usa `execute_python`. Solo operaciones de lectura.
+Tests for the knowledge search system.
 
-### T4.1 · Nombre del proyecto vía Python
+### T2.1 · Basic docs search
 ```
-Ejecuta código Python dentro de Flame para imprimir el nombre del proyecto actual.
+Search the documentation for how to access a project's libraries.
 ```
-**Resultado esperado**: `flame.projects.current_project.name` impreso correctamente.
-**Herramienta MCP**: `execute_python`
-**Validación RAG**: Debe llamar a `search_flame_docs` antes.
+**Expected result**: Corpus fragments explaining `ws.libraries` (NOT `project.libraries`).
+**MCP tool**: `search_flame_docs`
 
-### T4.2 · Contar clips en todas las bibliotecas
+### T2.2 · Dangerous pattern search
 ```
-Con Python en Flame, cuenta cuántos clips totales hay en cada biblioteca del workspace.
+Search the documentation for how to render in batch.
 ```
-**Código esperado (aproximado)**:
+**Expected result**: Must mention `schedule_idle_event` and warn against direct `flame.batch.render()`.
+**MCP tool**: `search_flame_docs`
+
+### T2.3 · Advanced operation search
+```
+Search for how to create nodes in a batch group and connect them together.
+```
+**Expected result**: Patterns with `create_node`, `connect_nodes`, available node types.
+**MCP tool**: `search_flame_docs`
+
+### T2.4 · Export search
+```
+Search for how to export a clip using PyExporter.
+```
+**Expected result**: Pattern with `schedule_idle_event` + `PyExporter`, never a direct call.
+**MCP tool**: `search_flame_docs`
+
+### T2.5 · Timeline/segments search
+```
+How can I access the segments of a sequence in the timeline?
+```
+**Expected result**: Information about `PySequence`, `PySegment`, `versions`.
+**MCP tool**: `search_flame_docs`
+
+---
+
+## Level 3 — Logs & System Diagnostics
+
+### T3.1 · List available logs
+```
+What log files does Flame have available?
+```
+**Expected result**: File list from /opt/Autodesk/logs with size and date.
+**MCP tool**: `list_flame_logs`
+
+### T3.2 · Read last lines of main log
+```
+Show me the last 30 lines of the main Flame log.
+```
+**Expected result**: Recent lines from the Flame log.
+**MCP tool**: `read_flame_log`
+
+### T3.3 · Filter errors in log
+```
+Search for recent errors in the Flame log (last 200 lines, filtering for "ERROR" or "Traceback").
+```
+**Expected result**: Only lines containing errors, or "no matches" if there are none.
+**MCP tool**: `read_flame_log` with `grep` parameter
+
+---
+
+## Level 4 — Simple Code Execution (Read-Only)
+
+First time using `execute_python`. Read-only operations only.
+
+### T4.1 · Project name via Python
+```
+Execute Python code inside Flame to print the current project name.
+```
+**Expected result**: `flame.projects.current_project.name` printed correctly.
+**MCP tool**: `execute_python`
+**RAG validation**: Must call `search_flame_docs` first.
+
+### T4.2 · Count clips across all libraries
+```
+Using Python in Flame, count how many total clips are in each library of the workspace.
+```
+**Expected code (approximate)**:
 ```python
 ws = flame.projects.current_project.current_workspace
 for lib in ws.libraries:
@@ -200,172 +200,172 @@ for lib in ws.libraries:
     print(f"{str(lib.name)}: {count} clips")
 ```
 
-### T4.3 · Inspeccionar atributos de un clip
+### T4.3 · Inspect clip attributes
 ```
-Con Python, encuentra el primer clip de la primera biblioteca y muéstrame todos sus atributos disponibles (usa dir() filtrado).
+Using Python, find the first clip in the first library and show me all its available attributes (use filtered dir()).
 ```
-**Validación**: No debe intentar acceder a `project.libraries` (patrón peligroso bloqueado).
+**Validation**: Must not attempt to access `project.libraries` (blocked dangerous pattern).
 
-### T4.4 · Listar reel groups del desktop con Python
+### T4.4 · List desktop reel groups with Python
 ```
-Con Python, lista todos los reel groups del desktop mostrando cuántos reels tiene cada uno.
+Using Python, list all desktop reel groups showing how many reels each one has.
 ```
-**Código esperado**: Acceso via `ws.desktop.reel_groups`.
-
----
-
-## Nivel 5 — Creación de Estructuras Organizativas
-
-Aquí empezamos a modificar cosas en Flame. Todo lo creado en este nivel será necesario después.
-
-### T5.1 · Crear un reel group en el desktop
-```
-Crea un reel group en el desktop llamado "MCP_Test_Group".
-```
-**Código esperado**: `ws.desktop.create_reel_group("MCP_Test_Group")`
-**Verificación**: Después pide `list_desktop_reels` para confirmar que aparece.
-
-### T5.2 · Crear reels dentro del reel group (requiere T5.1)
-```
-Dentro del reel group "MCP_Test_Group", crea 3 reels: "Sources", "Comps" y "Renders".
-```
-**Código esperado**: `rg.create_reel("Sources")` (x3)
-**Verificación**: `list_desktop_reels` debe mostrar los 3 reels.
-
-### T5.3 · Crear una carpeta en una biblioteca
-```
-En la primera biblioteca, crea una carpeta llamada "MCP_Tests".
-```
-**Código esperado**: `lib.create_folder("MCP_Tests")`
-**Verificación**: `list_libraries` o `list_reels` para confirmar.
-
-### T5.4 · Crear un reel dentro de la carpeta (requiere T5.3)
-```
-Dentro de la carpeta "MCP_Tests" que acabamos de crear, crea un reel llamado "Test_Reel_01".
-```
-**Verificación**: Confirmar que el reel existe dentro de la carpeta.
+**Expected code**: Access via `ws.desktop.reel_groups`.
 
 ---
 
-## Nivel 6 — Creación de Batch Groups y Nodos
+## Level 5 — Creating Organizational Structures
 
-### T6.1 · Crear un batch group (requiere T5.1)
+Here we start modifying things in Flame. Everything created at this level will be needed later.
+
+### T5.1 · Create a reel group on the desktop
 ```
-Crea un batch group llamado "MCP_Batch_Test" con 2 reels de schematic.
+Create a reel group on the desktop called "MCP_Test_Group".
 ```
-**Código esperado**:
+**Expected code**: `ws.desktop.create_reel_group("MCP_Test_Group")`
+**Verification**: Then ask `list_desktop_reels` to confirm it appears.
+
+### T5.2 · Create reels inside the reel group (requires T5.1)
+```
+Inside the reel group "MCP_Test_Group", create 3 reels: "Sources", "Comps", and "Renders".
+```
+**Expected code**: `rg.create_reel("Sources")` (x3)
+**Verification**: `list_desktop_reels` should show all 3 reels.
+
+### T5.3 · Create a folder in a library
+```
+In the first library, create a folder called "MCP_Tests".
+```
+**Expected code**: `lib.create_folder("MCP_Tests")`
+**Verification**: `list_libraries` or `list_reels` to confirm.
+
+### T5.4 · Create a reel inside the folder (requires T5.3)
+```
+Inside the "MCP_Tests" folder we just created, create a reel called "Test_Reel_01".
+```
+**Verification**: Confirm the reel exists inside the folder.
+
+---
+
+## Level 6 — Batch Group & Node Creation
+
+### T6.1 · Create a batch group (requires T5.1)
+```
+Create a batch group called "MCP_Batch_Test" with 2 schematic reels.
+```
+**Expected code**:
 ```python
 ws = flame.projects.current_project.current_workspace
 bg = ws.desktop.create_batch_group("MCP_Batch_Test", nb_reels=2)
-print(f"Batch group creado: {str(bg.name)}")
+print(f"Batch group created: {str(bg.name)}")
 ```
-**Verificación**: `list_batch_groups` debe mostrar "MCP_Batch_Test".
+**Verification**: `list_batch_groups` should show "MCP_Batch_Test".
 
-### T6.2 · Abrir el batch group y entrar (requiere T6.1)
+### T6.2 · Open and enter the batch group (requires T6.1)
 ```
-Abre el batch group "MCP_Batch_Test" y entra en él con go_to.
+Open the batch group "MCP_Batch_Test" and enter it with go_to.
 ```
-**Código esperado**:
+**Expected code**:
 ```python
 bg.open()
 flame.batch.go_to(bg)
 ```
-**Nota crítica**: El corpus documenta que `go_to()` requiere `open()` previo.
+**Critical note**: The corpus documents that `go_to()` requires a prior `open()`.
 
-### T6.3 · Crear nodos en el batch (requiere T6.2)
+### T6.3 · Create nodes in batch (requires T6.2)
 ```
-En el batch group abierto, crea un nodo Write File y un nodo Resize.
+In the currently open batch group, create a Write File node and a Resize node.
 ```
-**Código esperado**: `flame.batch.create_node("Write File")`, `flame.batch.create_node("Resize")`
-**Verificación**: Pedir `list_batch_groups` — debe mostrar nodos.
+**Expected code**: `flame.batch.create_node("Write File")`, `flame.batch.create_node("Resize")`
+**Verification**: Ask `list_batch_groups` — should show nodes.
 
-### T6.4 · Conectar nodos (requiere T6.3)
+### T6.4 · Connect nodes (requires T6.3)
 ```
-Conecta el nodo Resize al nodo Write File en el batch group activo.
+Connect the Resize node to the Write File node in the active batch group.
 ```
-**Código esperado**: `flame.batch.connect_nodes(resize_node, write_node)`
-**Verificación**: Confirmar visualmente en Flame o con query Python.
+**Expected code**: `flame.batch.connect_nodes(resize_node, write_node)`
+**Verification**: Confirm visually in Flame or with a Python query.
 
-### T6.5 · Listar todos los nodos del batch (requiere T6.2)
+### T6.5 · List all nodes in the batch (requires T6.2)
 ```
-Muéstrame todos los nodos que hay ahora en el batch group "MCP_Batch_Test", con sus tipos.
+Show me all the nodes currently in the "MCP_Batch_Test" batch group, with their types.
 ```
-**Código esperado**: Iteración sobre `flame.batch.nodes` imprimiendo `name` y `type`.
-
----
-
-## Nivel 7 — Operaciones con Clips y Secuencias
-
-### T7.1 · Crear una secuencia vacía (requiere T5.2)
-```
-Crea una secuencia vacía llamada "MCP_Sequence_Test" en el reel "Comps" del reel group "MCP_Test_Group".
-```
-**Código esperado**: `reel.create_sequence("MCP_Sequence_Test")`
-
-### T7.2 · Inspeccionar la secuencia creada (requiere T7.1)
-```
-Muéstrame las propiedades de la secuencia "MCP_Sequence_Test": duración, frame rate, resolución, número de versiones.
-```
-**Validación**: Debe usar `search_flame_docs` para encontrar atributos de PySequence.
-
-### T7.3 · Duplicar un clip existente
-```
-Si hay clips en alguna biblioteca, duplica el primero y ponle el nombre "MCP_Clip_Copy".
-```
-**Código esperado**: `flame.duplicate(clip)` + renombrar con `new_clip.name = "MCP_Clip_Copy"`.
-**Nota**: Si no hay clips, esta prueba se salta (el sistema debe detectarlo).
-
-### T7.4 · Leer metadatos de segmentos de timeline (requiere clip existente)
-```
-Si hay alguna secuencia en el proyecto, muéstrame los segmentos de su timeline principal con sus shot names, duraciones y timecodes.
-```
-**Código esperado**: Acceso a `seq.versions[0].tracks[0].segments` iterando atributos.
+**Expected code**: Iteration over `flame.batch.nodes` printing `name` and `type`.
 
 ---
 
-## Nivel 8 — Operaciones sobre Atributos y Metadatos
+## Level 7 — Clip & Sequence Operations
 
-### T8.1 · Renombrar un reel (requiere T5.2)
+### T7.1 · Create an empty sequence (requires T5.2)
 ```
-Renombra el reel "Sources" del reel group "MCP_Test_Group" a "Source_Material".
+Create an empty sequence called "MCP_Sequence_Test" in the "Comps" reel of the "MCP_Test_Group" reel group.
 ```
-**Código esperado**: `reel.name = "Source_Material"`
-**Verificación**: `list_desktop_reels` para confirmar.
+**Expected code**: `reel.create_sequence("MCP_Sequence_Test")`
 
-### T8.2 · Cambiar el shot_name de un segmento (requiere secuencia existente)
+### T7.2 · Inspect the created sequence (requires T7.1)
 ```
-Si hay una secuencia con segmentos, cambia el shot_name del primer segmento a "VFX_010".
+Show me the properties of "MCP_Sequence_Test": duration, frame rate, resolution, number of versions.
 ```
-**Código esperado**: `segment.shot_name = "VFX_010"`
+**Validation**: Must use `search_flame_docs` to find PySequence attributes.
 
-### T8.3 · Leer y modificar el comment de un clip (requiere clip existente)
+### T7.3 · Duplicate an existing clip
 ```
-Lee el campo comment del primer clip que encuentres. Si está vacío, escribe "Tested via MCP".
+If there are clips in any library, duplicate the first one and name it "MCP_Clip_Copy".
 ```
-**Código esperado**: `clip.comment = "Tested via MCP"` si estaba vacío.
+**Expected code**: `flame.duplicate(clip)` + rename with `new_clip.name = "MCP_Clip_Copy"`.
+**Note**: If no clips exist, this test is skipped (the system should detect this).
 
-### T8.4 · Consultar colour space de un clip
+### T7.4 · Read timeline segment metadata (requires existing clip)
 ```
-Del primer clip disponible, dime su colour space, scan format y aspect ratio.
+If there is any sequence in the project, show me the segments of its main timeline with their shot names, durations, and timecodes.
 ```
-**Validación**: Debe acceder a atributos como `colour_space`, `scan_format`, `ratio`.
+**Expected code**: Access `seq.versions[0].tracks[0].segments` iterating attributes.
 
 ---
 
-## Nivel 9 — Operaciones Avanzadas y Batch Setup
+## Level 8 — Attribute & Metadata Operations
 
-### T9.1 · Guardar un batch setup (requiere T6.2)
+### T8.1 · Rename a reel (requires T5.2)
 ```
-Guarda el setup del batch group "MCP_Batch_Test" en /var/tmp/mcp_test_setup.batch.
+Rename the "Sources" reel in the "MCP_Test_Group" reel group to "Source_Material".
 ```
-**Código esperado**: `bg.save_setup("/var/tmp/mcp_test_setup.batch")`
-**Verificación**: Confirmar que el archivo existe con `os.path.exists`.
+**Expected code**: `reel.name = "Source_Material"`
+**Verification**: `list_desktop_reels` to confirm.
 
-### T9.2 · Crear un nuevo batch group y cargar el setup (requiere T9.1)
+### T8.2 · Change a segment's shot_name (requires existing sequence)
 ```
-Crea un nuevo batch group llamado "MCP_Batch_Loaded", ábrelo, y carga el setup guardado en /var/tmp/mcp_test_setup.batch.
+If there is a sequence with segments, change the first segment's shot_name to "VFX_010".
 ```
-**Código esperado**:
+**Expected code**: `segment.shot_name = "VFX_010"`
+
+### T8.3 · Read and modify a clip's comment (requires existing clip)
+```
+Read the comment field of the first clip you find. If it's empty, write "Tested via MCP".
+```
+**Expected code**: `clip.comment = "Tested via MCP"` if it was empty.
+
+### T8.4 · Query clip colour space
+```
+From the first available clip, tell me its colour space, scan format, and aspect ratio.
+```
+**Validation**: Must access attributes like `colour_space`, `scan_format`, `ratio`.
+
+---
+
+## Level 9 — Advanced Operations & Batch Setup
+
+### T9.1 · Save a batch setup (requires T6.2)
+```
+Save the "MCP_Batch_Test" batch group setup to /var/tmp/mcp_test_setup.batch.
+```
+**Expected code**: `bg.save_setup("/var/tmp/mcp_test_setup.batch")`
+**Verification**: Confirm the file exists with `os.path.exists`.
+
+### T9.2 · Create a new batch group and load the setup (requires T9.1)
+```
+Create a new batch group called "MCP_Batch_Loaded", open it, and load the setup saved at /var/tmp/mcp_test_setup.batch.
+```
+**Expected code**:
 ```python
 bg2 = ws.desktop.create_batch_group("MCP_Batch_Loaded")
 bg2.open()
@@ -373,142 +373,142 @@ flame.batch.go_to(bg2)
 bg2.load_setup("/var/tmp/mcp_test_setup.batch")
 ```
 
-### T9.3 · Iterar un batch setup (requiere T9.2)
+### T9.3 · Iterate a batch setup (requires T9.2)
 ```
-Crea una iteración del batch group "MCP_Batch_Loaded".
+Create an iteration of the "MCP_Batch_Loaded" batch group.
 ```
-**Código esperado**: `bg.iterate()`
+**Expected code**: `bg.iterate()`
 
-### T9.4 · Consultar contexts de un batch group
+### T9.4 · Query batch group contexts
 ```
-Muéstrame los contexts (vistas) registrados en "MCP_Batch_Test".
+Show me the contexts (views) registered in "MCP_Batch_Test".
 ```
-**Código esperado**: `bg.contexts()` — devuelve diccionario de Context IDs.
-
----
-
-## Nivel 10 — Pruebas de Seguridad (Patrones Peligrosos)
-
-Estas pruebas verifican que el sistema **bloquea** operaciones peligrosas.
-
-### T10.1 · Intentar iterar flame.projects (DEBE FALLAR)
-```
-Ejecuta este código en Flame: for p in flame.projects: print(p.name)
-```
-**Resultado esperado**: BLOQUEADO con mensaje explicando que `flame.projects` no es iterable.
-
-### T10.2 · Intentar flame.batch.render() directo (DEBE FALLAR)
-```
-Ejecuta: flame.batch.render()
-```
-**Resultado esperado**: BLOQUEADO con alternativa `schedule_idle_event`.
-
-### T10.3 · Intentar import wiretap (DEBE FALLAR)
-```
-Ejecuta: import wiretap
-```
-**Resultado esperado**: BLOQUEADO por patrón peligroso.
-
-### T10.4 · Intentar project.libraries (DEBE FALLAR)
-```
-Ejecuta: libs = flame.projects.current_project.libraries
-```
-**Resultado esperado**: BLOQUEADO con alternativa `ws.libraries`.
-
-### T10.5 · Intentar flame.projects[0] (DEBE FALLAR)
-```
-Ejecuta: p = flame.projects[0]
-```
-**Resultado esperado**: BLOQUEADO — `flame.projects` no es subscriptable.
-
-### T10.6 · Intentar replace_desktop (DEBE FALLAR)
-```
-Ejecuta: ws.replace_desktop(ws.desktop)
-```
-**Resultado esperado**: BLOQUEADO — método interno que puede corromper el workspace.
+**Expected code**: `bg.contexts()` — returns dictionary of Context IDs.
 
 ---
 
-## Nivel 11 — Limpieza (Deshacer Todo lo Creado)
+## Level 10 — Security Tests (Dangerous Patterns)
 
-> **IMPORTANTE**: Ejecuta este nivel al terminar todas las pruebas para dejar Flame limpio.
+These tests verify that the system **blocks** dangerous operations.
 
-### T11.1 · Eliminar batch groups de test
+### T10.1 · Attempt to iterate flame.projects (MUST FAIL)
 ```
-Elimina los batch groups "MCP_Batch_Test" y "MCP_Batch_Loaded" del desktop.
+Execute this code in Flame: for p in flame.projects: print(p.name)
 ```
-**Código esperado**: `flame.delete(bg)` para cada batch group encontrado.
+**Expected result**: BLOCKED with message explaining `flame.projects` is not iterable.
 
-### T11.2 · Eliminar el reel group de test (requiere T11.1)
+### T10.2 · Attempt direct flame.batch.render() (MUST FAIL)
 ```
-Elimina el reel group "MCP_Test_Group" del desktop.
+Execute: flame.batch.render()
 ```
-**Código esperado**: `flame.delete(rg)`
+**Expected result**: BLOCKED with `schedule_idle_event` alternative.
 
-### T11.3 · Eliminar la carpeta de test de la biblioteca
+### T10.3 · Attempt import wiretap (MUST FAIL)
 ```
-Elimina la carpeta "MCP_Tests" de la primera biblioteca.
+Execute: import wiretap
 ```
-**Código esperado**: `flame.delete(folder)`
+**Expected result**: BLOCKED by dangerous pattern.
 
-### T11.4 · Eliminar el clip duplicado (si se creó en T7.3)
+### T10.4 · Attempt project.libraries (MUST FAIL)
 ```
-Si existe el clip "MCP_Clip_Copy", elimínalo.
+Execute: libs = flame.projects.current_project.libraries
 ```
-**Código esperado**: `flame.delete(clip)` con búsqueda previa.
+**Expected result**: BLOCKED with `ws.libraries` alternative.
 
-### T11.5 · Limpiar archivos temporales
+### T10.5 · Attempt flame.projects[0] (MUST FAIL)
 ```
-Elimina el archivo /var/tmp/mcp_test_setup.batch si existe.
+Execute: p = flame.projects[0]
 ```
-**Código esperado**: `os.remove("/var/tmp/mcp_test_setup.batch")`
+**Expected result**: BLOCKED — `flame.projects` is not subscriptable.
 
-### T11.6 · Verificación final
+### T10.6 · Attempt replace_desktop (MUST FAIL)
 ```
-Muéstrame la estructura completa del desktop y las bibliotecas para confirmar que todo quedó limpio.
+Execute: ws.replace_desktop(ws.desktop)
 ```
-**Herramientas MCP**: `list_desktop_reels` + `list_libraries`
+**Expected result**: BLOCKED — internal method that can corrupt the workspace.
 
 ---
 
-## Resumen de Cobertura
+## Level 11 — Cleanup (Undo Everything Created)
 
-| Nivel | Pruebas | Herramientas MCP Cubiertas | Tipo |
-|-------|---------|---------------------------|------|
-| 0 | 5 | ping, get_flame_version, get_project_info, list_all_projects, session_stats | Diagnóstico |
-| 1 | 8 | list_libraries, list_reels, list_clips, list_desktop_reels, list_batch_groups, get_clip_metadata, get_selected_clips, flame_wiretap_tree | Inspección |
+> **IMPORTANT**: Run this level after finishing all tests to leave Flame clean.
+
+### T11.1 · Delete test batch groups
+```
+Delete the "MCP_Batch_Test" and "MCP_Batch_Loaded" batch groups from the desktop.
+```
+**Expected code**: `flame.delete(bg)` for each batch group found.
+
+### T11.2 · Delete the test reel group (requires T11.1)
+```
+Delete the "MCP_Test_Group" reel group from the desktop.
+```
+**Expected code**: `flame.delete(rg)`
+
+### T11.3 · Delete the test folder from the library
+```
+Delete the "MCP_Tests" folder from the first library.
+```
+**Expected code**: `flame.delete(folder)`
+
+### T11.4 · Delete the duplicated clip (if created in T7.3)
+```
+If the clip "MCP_Clip_Copy" exists, delete it.
+```
+**Expected code**: `flame.delete(clip)` with prior search.
+
+### T11.5 · Clean up temporary files
+```
+Delete the file /var/tmp/mcp_test_setup.batch if it exists.
+```
+**Expected code**: `os.remove("/var/tmp/mcp_test_setup.batch")`
+
+### T11.6 · Final verification
+```
+Show me the full desktop structure and libraries to confirm everything is clean.
+```
+**MCP tools**: `list_desktop_reels` + `list_libraries`
+
+---
+
+## Coverage Summary
+
+| Level | Tests | MCP Tools Covered | Type |
+|-------|-------|-------------------|------|
+| 0 | 5 | ping, get_flame_version, get_project_info, list_all_projects, session_stats | Diagnostics |
+| 1 | 8 | list_libraries, list_reels, list_clips, list_desktop_reels, list_batch_groups, get_clip_metadata, get_selected_clips, flame_wiretap_tree | Inspection |
 | 2 | 5 | search_flame_docs (x5) | RAG |
 | 3 | 3 | list_flame_logs, read_flame_log (x2) | Logs |
-| 4 | 4 | execute_python (solo lectura, x4) | Código RO |
-| 5 | 4 | execute_python (crear estructuras, x4) | Creación |
-| 6 | 5 | execute_python (batch/nodos, x5) | Batch |
-| 7 | 4 | execute_python (clips/secuencias, x4) | Timeline |
-| 8 | 4 | execute_python (atributos, x4) | Metadatos |
-| 9 | 4 | execute_python (setup avanzado, x4) | Avanzado |
-| 10 | 6 | execute_python (bloqueos de seguridad, x6) | Seguridad |
-| 11 | 6 | execute_python + herramientas dedicadas (limpieza, x6) | Limpieza |
-| **Total** | **58** | **18/18 herramientas** (100%) | |
+| 4 | 4 | execute_python (read-only, x4) | Code RO |
+| 5 | 4 | execute_python (create structures, x4) | Creation |
+| 6 | 5 | execute_python (batch/nodes, x5) | Batch |
+| 7 | 4 | execute_python (clips/sequences, x4) | Timeline |
+| 8 | 4 | execute_python (attributes, x4) | Metadata |
+| 9 | 4 | execute_python (advanced setup, x4) | Advanced |
+| 10 | 6 | execute_python (security blocks, x6) | Security |
+| 11 | 6 | execute_python + dedicated tools (cleanup, x6) | Cleanup |
+| **Total** | **58** | **18/18 tools** (100%) | |
 
-## Dependencias entre Niveles
+## Level Dependencies
 
 ```
-Nivel 0 ──→ Nivel 1 ──→ Nivel 2 (independiente)
-                │         Nivel 3 (independiente)
+Level 0 ──→ Level 1 ──→ Level 2 (independent)
+                │         Level 3 (independent)
                 │
-                └──→ Nivel 4 ──→ Nivel 5 ──→ Nivel 6 ──→ Nivel 9
+                └──→ Level 4 ──→ Level 5 ──→ Level 6 ──→ Level 9
                                     │           │
-                                    └──→ Nivel 7 ┘──→ Nivel 8
+                                    └──→ Level 7 ┘──→ Level 8
                                                          │
-                            Nivel 10 (independiente) ─────┘
+                            Level 10 (independent) ──────┘
                                                          │
-                                                    Nivel 11 (final)
+                                                    Level 11 (final)
 ```
 
-## Notas de Ejecución
+## Execution Notes
 
-1. **Antes de empezar**: Asegúrate de que Flame está abierto con un proyecto cargado.
-2. **Niveles 2, 3, 10**: Pueden ejecutarse en cualquier momento (son independientes).
-3. **Niveles 5-9**: Son secuenciales y acumulativos — no saltar.
-4. **Nivel 11**: SIEMPRE ejecutar al final para limpiar.
-5. **Si una prueba falla**: Anota el error exacto y continúa con la siguiente del mismo nivel si es posible.
-6. **Tiempo estimado**: 30-45 minutos para la suite completa.
+1. **Before starting**: Make sure Flame is open with a project loaded.
+2. **Levels 2, 3, 10**: Can be run at any time (they are independent).
+3. **Levels 5-9**: Sequential and cumulative — do not skip.
+4. **Level 11**: ALWAYS run at the end to clean up.
+5. **If a test fails**: Note the exact error and continue with the next test in the same level if possible.
+6. **Estimated time**: 30-45 minutes for the full suite.

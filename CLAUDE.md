@@ -191,31 +191,27 @@ ollama pull qwen3.5:9b
 ollama pull qwen3.5:4b
 ```
 
-### Full LLM strategy
-See `MODEL_STRATEGY.md` in the ecosystem root for hardware configs, VRAM management,
-update procedures, and architecture decisions.
-
 ---
 
 ## Deploy workflow — after every code change
 
-### Solo `src/flame_mcp/server.py`:
+### `src/flame_mcp/server.py` only:
 ```bash
 git push && pkill -f flame_mcp.server
 ```
-El Claude desktop app respawnea el server automáticamente con el código nuevo.
+Claude Desktop respawns the server automatically with the new code.
 
-### Solo `hooks/flame_mcp_bridge.py`:
+### `hooks/flame_mcp_bridge.py` only:
 ```bash
-git push && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
+git push && cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
 ```
-Luego en Flame: **MCP Bridge → Reload hook**
+Then in Flame: **MCP Bridge → Reload hook**
 
-### Ambos ficheros:
+### Both files:
 ```bash
-git push && pkill -f flame_mcp.server && cp ~/Claude_projects/flame-mcp/hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
+git push && pkill -f flame_mcp.server && cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
 ```
-Luego en Flame: **MCP Bridge → Reload hook**
+Then in Flame: **MCP Bridge → Reload hook**
 
 ---
 
@@ -259,34 +255,34 @@ The Python `flame` module covers most operations. Use Wiretap only when:
 <!-- Claude appends new entries below this line -->
 
 ### Render batch via schedule_idle_event — 2026-03-05
-**Task:** Renderizar un batch group (ej. Substance Noise) desde el bridge
-**Works:** ✅ (llamada directa a `flame.batch.render()` crashea Flame ❌)
+**Task:** Render a batch group (e.g. Substance Noise) from the bridge
+**Works:** ✅ (calling `flame.batch.render()` directly crashes Flame ❌)
 
 ```python
 import flame, os
 
-result_file = os.path.expanduser("~/Claude_projects/flame-mcp/logs/flame_render_result.txt")
+result_file = os.path.expanduser("~/flame_render_result.txt")
 
 def do_render():
     try:
         flame.batch.render(render_option="Background Reactor")
-        msg = "OK: render lanzado"
+        msg = "OK: render started"
     except Exception as e:
         msg = f"ERROR: {e}"
     with open(result_file, 'w') as f:
         f.write(msg)
 
-# Asegurarse de que el batch correcto está abierto antes de llamar esto
+# Make sure the correct batch is open before calling this
 flame.schedule_idle_event(do_render)
-print("Render programado via idle event.")
+print("Render scheduled via idle event.")
 ```
 
-Luego leer `~/Claude_projects/flame-mcp/logs/flame_render_result.txt` con una llamada separada para confirmar.
+Then read `~/flame_render_result.txt` in a separate call to confirm.
 
-### Substance Noise crashea Flame — 2026-03-05
-**Task:** Crear clip de ruido coloreado con nodo Substance Noise en Batch
-**Works:** ❌ — El nodo Substance Noise conectado a Render crashea Flame al hacer render (incluso via schedule_idle_event). El archivo de resultado nunca se crea.
-**Alternativa pendiente:** usar `Colour Source` + `Gradient` o generar frames externos e importarlos.
+### Substance Noise crashes Flame — 2026-03-05
+**Task:** Create a coloured noise clip with a Substance Noise node in Batch
+**Works:** ❌ — A Substance Noise node connected to Render crashes Flame when rendering (even via schedule_idle_event). The result file is never created.
+**Pending alternative:** use `Colour Source` + `Gradient` or generate frames externally and import them.
 
 ---
 
