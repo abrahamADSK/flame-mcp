@@ -3423,3 +3423,40 @@ else:
 # bg.open()
 # flame.batch.go_to()
 ```
+
+## Auto-learned Patterns
+
+# ── Auto-learned: Create sequence from all clips in a desktop reel and append them sequentially 
+<!-- model:claude-sonnet-4-6 date:2026-03-16 -->
+```python
+import flame
+
+ws = flame.projects.current_project.current_workspace
+desktop = ws.desktop
+
+media_reel = None
+seq_reel = None
+for rg in desktop.reel_groups:
+    for reel in rg.reels:
+        name = str(reel.name).strip("'")
+        if name == "MEDIA":
+            media_reel = reel
+        elif name == "Sequences":
+            seq_reel = reel
+
+clips = list(media_reel.clips)
+seq = seq_reel.create_sequence(name="All_Clips_SEQ")
+print(f"Created: {str(seq.name).strip(chr(39))}")
+
+position = 0
+for clip in clips:
+    dur = clip.duration.frame   # PyTime.frame gives integer frame count
+    seq.overwrite(clip, flame.PyTime(position))
+    position += dur
+    print(f"  + {str(clip.name).strip(chr(39))} ({dur}f)")
+
+print(f"Done — {position} total frames")
+# Key: use clip.duration.frame (NOT int(clip.duration)) to get frame count
+# Key: seq.overwrite(clip, flame.PyTime(frame_position)) to place each clip
+```
+
