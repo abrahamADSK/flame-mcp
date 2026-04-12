@@ -438,10 +438,18 @@ class TestFlameWiretapTree:
     def test_cli_not_found(self):
         """When the wiretap CLI binary is absent, returns a graceful error.
 
-        In the test sandbox /opt/Autodesk/ does not exist, so FileNotFoundError
-        is raised by subprocess.run and the tool must handle it gracefully.
+        We mock ``subprocess.run`` to raise ``FileNotFoundError`` — the exact
+        exception that surfaces when ``/opt/Autodesk/wiretap/tools/current/wiretap_print_tree``
+        is not installed on the host. This keeps the test deterministic and
+        independent of the test machine: earlier versions relied on Autodesk
+        tools NOT being present in the sandbox, which broke on developer
+        machines where Flame is actually installed and wiretap responds.
         """
-        result = flame_wiretap_tree("/")
+        with patch("subprocess.run") as mock_sub:
+            mock_sub.side_effect = FileNotFoundError(
+                "No such file or directory: 'wiretap_print_tree'"
+            )
+            result = flame_wiretap_tree("/")
 
         assert isinstance(result, str)
         # Should report that the CLI is not found or IFFFS is unreachable
