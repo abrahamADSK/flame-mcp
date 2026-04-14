@@ -423,3 +423,45 @@ class TestRagRealIndex:
                 f"'### [source] section (relevance: N%)' header. Got: "
                 f"{text[:200]}"
             )
+
+    def test_wiretap_cli_layer_indexed(self, _reset_rag_singletons):
+        """Wiretap CLI reference must be in the corpus.
+
+        The three Flame API layers (Python API, Wiretap CLI, Wiretap SDK
+        Python bindings) are all valid in Flame 2026 and should all be
+        searchable. This guards against an accidental rebuild that
+        leaves out docs/wiretap_cli_reference.md.
+        """
+        from flame_mcp.rag.search import search
+
+        for tool in ("wiretap_print_tree", "wiretap_create_node", "wiretap_get_metadata"):
+            text, relevance = search(tool, n_results=2)
+            assert relevance > 0, (
+                f"search({tool!r}) returned relevance=0; Wiretap CLI "
+                f"reference appears to be missing from the corpus. "
+                f"Rebuild with `python -m flame_mcp.rag.build_index`."
+            )
+            assert "wiretap_cli_reference" in text, (
+                f"search({tool!r}) returned content but not from "
+                f"wiretap_cli_reference.md. Text head: {text[:200]}"
+            )
+
+    def test_wiretap_sdk_python_layer_indexed(self, _reset_rag_singletons):
+        """Wiretap SDK Python bindings reference must be in the corpus.
+
+        Symbols like WireTapServerHandle and WireTapClientInit are the
+        canonical entry points for standalone scripts talking to IFFFS.
+        """
+        from flame_mcp.rag.search import search
+
+        for symbol in ("WireTapServerHandle", "WireTapClientInit"):
+            text, relevance = search(symbol, n_results=2)
+            assert relevance > 0, (
+                f"search({symbol!r}) returned relevance=0; Wiretap SDK "
+                f"Python reference appears to be missing from the corpus. "
+                f"Rebuild with `python -m flame_mcp.rag.build_index`."
+            )
+            assert "wiretap_sdk_python_reference" in text, (
+                f"search({symbol!r}) returned content but not from "
+                f"wiretap_sdk_python_reference.md. Text head: {text[:200]}"
+            )
