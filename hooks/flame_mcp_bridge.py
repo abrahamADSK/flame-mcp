@@ -888,6 +888,18 @@ class _FlameChat:
                     "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
+            # Harden reasoning quality on every claude subprocess spawned
+            # from the Flame panel: adaptive thinking off, effort level max.
+            # Prevents Anthropic's adaptive-thinking feature from allocating
+            # zero reasoning tokens on turns it judges as simple, which
+            # produces hallucinated API calls when execute_python needs
+            # fresh code paths. Applies unconditionally — Ollama ignores
+            # the vars. The user controls their own top-level claude
+            # session via /effort; these overrides affect the MCP-spawned
+            # subprocess only.
+            env["CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"] = "1"
+            env["CLAUDE_CODE_EFFORT_LEVEL"] = "max"
+
             # ── Ollama backend routing ────────────────────────────────────────
             # Four backends, two physical paths:
             #
