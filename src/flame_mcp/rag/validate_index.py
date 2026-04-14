@@ -29,7 +29,9 @@ from typing import Any
 
 _PKG_DIR  = Path(__file__).parent                              # src/flame_mcp/rag/
 ROOT      = _PKG_DIR.parent.parent.parent                      # repo root
-INDEX_DIR = _PKG_DIR / 'index'
+# INDEX_DIR must match search.py's INDEX_DIR exactly — both live at
+# <repo>/rag/index, not at _PKG_DIR/index. See search.py for rationale.
+INDEX_DIR = ROOT / 'rag' / 'index'
 API_DOC   = ROOT / 'FLAME_API.md'
 CONFIG    = ROOT / 'config.json'
 

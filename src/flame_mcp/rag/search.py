@@ -23,8 +23,15 @@ from typing import Any
 
 _PKG_DIR    = os.path.dirname(os.path.abspath(__file__))            # src/flame_mcp/rag/
 ROOT        = os.path.dirname(os.path.dirname(os.path.dirname(_PKG_DIR)))  # repo root
-INDEX_DIR   = os.path.join(_PKG_DIR, 'index')
-CORPUS_PATH = os.path.join(_PKG_DIR, 'corpus.json')
+# RAG data lives at <repo>/rag/, outside the Python package, so it is
+# shared with build_index.py and validate_index.py and travels with the
+# repo (not with the installed wheel). The src/ refactor moved the RAG
+# code into src/flame_mcp/rag/ but left the corpus and ChromaDB index
+# where they were — this constant pair must point at the canonical
+# <repo>/rag/ location, not at _PKG_DIR, or search() silently returns
+# "index not found" for every query.
+INDEX_DIR   = os.path.join(ROOT, 'rag', 'index')
+CORPUS_PATH = os.path.join(ROOT, 'rag', 'corpus.json')
 
 LOG_FILE = os.path.join(ROOT, 'logs', 'flame_rag.log')
 

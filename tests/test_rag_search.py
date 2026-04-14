@@ -25,6 +25,9 @@ TestRagSearchCache (4 tests):
   8. test_clear_session_cache             -- server _search_cache can be cleared
 """
 
+import os
+from pathlib import Path
+
 import pytest
 from unittest.mock import patch
 
@@ -303,3 +306,120 @@ class TestRagSearchCache:
         assert len(flame_mcp_server._search_cache) == 0, (
             "Server _search_cache should be empty after .clear()"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestRagRealIndex — regression guard against the src/ refactor path bug.
+#
+# The existing mock-based tests patch INDEX_DIR and CORPUS_PATH via
+# patch_rag_singletons, so they validate the search logic but never
+# exercise the real on-disk path resolution. When the src/ refactor moved
+# the RAG code to src/flame_mcp/rag/ and left the corpus and ChromaDB
+# index under <repo>/rag/, every mock test kept passing while the live
+# `search_flame_docs` tool silently returned "index not found" for every
+# query. These tests would have caught that.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REAL_CORPUS = _REPO_ROOT / "rag" / "corpus.json"
+_REAL_INDEX = _REPO_ROOT / "rag" / "index"
+
+_real_data_missing = not (_REAL_CORPUS.is_file() and _REAL_INDEX.is_dir())
+
+
+@pytest.fixture
+def _reset_rag_singletons():
+    """Give each real-index test a fresh view of the search module state.
+
+    The mock-based tests in this file patch `_collection`, `_bm25`, and
+    `_bm25_docs` via context managers — those are reverted on teardown,
+    but subsequent real tests may still see a cached real ChromaDB
+    client from an earlier real test. This fixture snapshots and
+    resets the module globals around each real-index test so test
+    order never matters.
+    """
+    from flame_mcp.rag import search as S
+
+    saved = (
+        S._client,
+        S._collection,
+        S._bm25,
+        list(S._bm25_docs),
+        dict(S._search_cache),
+    )
+    S._client = None
+    S._collection = None
+    S._bm25 = None
+    S._bm25_docs = []
+    S._search_cache.clear()
+    try:
+        yield
+    finally:
+        S._client, S._collection, S._bm25, bm25_docs, cache = saved
+        S._bm25_docs = bm25_docs
+        S._search_cache.clear()
+        S._search_cache.update(cache)
+
+
+@pytest.mark.skipif(
+    _real_data_missing,
+    reason=(
+        "Real RAG corpus or index not present under <repo>/rag/ — "
+        "run `python rag/build_index.py` to enable the regression guard."
+    ),
+)
+class TestRagRealIndex:
+    """Exercises the real module globals end-to-end without any mocking."""
+
+    def test_module_paths_point_at_real_data(self):
+        """search.py's INDEX_DIR / CORPUS_PATH must resolve to the real data.
+
+        This assertion is the guardrail that the src/ refactor should
+        have enforced: moving or renaming the RAG directory requires an
+        update to the module-level path constants. Without this check
+        the mock-based tests keep passing while the live tool is broken.
+        """
+        from flame_mcp.rag import search as S
+
+        assert os.path.isdir(S.INDEX_DIR), (
+            f"INDEX_DIR={S.INDEX_DIR} does not exist on disk. If the RAG "
+            f"directory moved, update INDEX_DIR in search.py, "
+            f"build_index.py and validate_index.py to agree."
+        )
+        assert os.path.isfile(S.CORPUS_PATH), (
+            f"CORPUS_PATH={S.CORPUS_PATH} does not exist on disk. "
+            f"Update CORPUS_PATH in search.py to point at the real file."
+        )
+        # INDEX_DIR and CORPUS_PATH must live in the SAME parent dir —
+        # the canonical invariant for the build_index.py output layout.
+        assert Path(S.INDEX_DIR).parent == Path(S.CORPUS_PATH).parent, (
+            "INDEX_DIR and CORPUS_PATH must share a parent directory "
+            "so build_index.py can write both in one place."
+        )
+
+    def test_search_returns_nonzero_relevance_for_known_terms(
+        self, _reset_rag_singletons
+    ):
+        """Verbatim corpus symbols must return hits with relevance > 0.
+
+        ``schedule_idle_event`` and ``flame.batch.render`` are canonical
+        patterns indexed multiple times in the Flame API corpus. If
+        these return relevance = 0, the path resolution is broken or
+        the corpus lost the terms (content regression).
+        """
+        from flame_mcp.rag.search import search
+
+        for term in ("schedule_idle_event", "flame.batch.render"):
+            text, relevance = search(term, n_results=3)
+            assert relevance > 0, (
+                f"search({term!r}) returned relevance={relevance}; "
+                f"expected > 0 from the real index. First line: "
+                f"{text.splitlines()[0] if text else '<empty>'}"
+            )
+            assert "relevance:" in text, (
+                f"search({term!r}) returned a non-header string; the "
+                f"real search pipeline should format results with the "
+                f"'### [source] section (relevance: N%)' header. Got: "
+                f"{text[:200]}"
+            )

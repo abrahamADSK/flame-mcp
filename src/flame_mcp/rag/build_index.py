@@ -46,7 +46,9 @@ from typing import Any
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _PKG_DIR  = os.path.dirname(os.path.abspath(__file__))                     # src/flame_mcp/rag/
 ROOT      = os.path.dirname(os.path.dirname(os.path.dirname(_PKG_DIR)))    # repo root
-INDEX_DIR = os.path.join(_PKG_DIR, 'index')
+# INDEX_DIR must match search.py's INDEX_DIR exactly — both live at
+# <repo>/rag/index, not at _PKG_DIR/index. See search.py for rationale.
+INDEX_DIR = os.path.join(ROOT, 'rag', 'index')
 
 DOCS_DIR  = os.path.join(ROOT, 'docs')
 
