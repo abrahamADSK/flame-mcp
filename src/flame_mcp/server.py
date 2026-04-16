@@ -547,6 +547,7 @@ def _fmt(result: dict) -> str:
 def execute_python(
     code: str,
     timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+    dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
 ) -> str:
     """
     Execute arbitrary Python code inside Autodesk Flame.
@@ -583,10 +584,13 @@ def execute_python(
         code:    Python code to execute inside Flame.
         timeout: TCP socket timeout in seconds (default 15). Increase for
                  long-running operations like media imports or batch renders.
+        dry_run: If true, show what would happen without executing the code.
+                 Returns safety check results, redirect matches, and RAG status.
 
     Example:
         execute_python("print(flame.projects.current_project.name)")
         execute_python(long_import_code, timeout=60)
+        execute_python(risky_code, dry_run=True)  # preview without executing
     """
     danger = _check_dangerous(code)
     if danger:
@@ -599,9 +603,13 @@ def execute_python(
     print(
         f"[flame-mcp] execute_python called — "
         f"redirect_check=active  patterns={len(_REDIRECT_PATTERNS)}  "
-        f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}",
+        f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}"
+        f"  dry_run={dry_run}",
         file=_sys2.stderr, flush=True
     )
+
+    # Collect redirect matches for dry_run report
+    redirect_match = None
     for _pattern, _msg in _REDIRECT_PATTERNS:
         if _re.search(_pattern, code):
             if _has_creation and _pattern in _SOFT_REDIRECT_PATTERNS:
@@ -611,20 +619,58 @@ def execute_python(
                 )
                 continue
             print(f"[flame-mcp] REDIRECT matched pattern: {_pattern}", file=_sys2.stderr, flush=True)
-            return (
+            redirect_match = (
                 f"🚫 REDIRECT — a dedicated tool handles this query:\n"
                 f"   {_msg}\n"
                 f"   Call the dedicated tool instead of execute_python."
             )
+            if not dry_run:
+                return redirect_match
+            break  # capture for dry_run report but continue
 
-    # OBS-013: nudge the model to use search_flame_docs if it hasn't in this session
-    rag_nudge = ""
+    # ── Architecture 3.4: Hard RAG-before-exec gate ──────────────────────────
+    # Block execute_python entirely if search_flame_docs has not been called
+    # this session.  The previous "nudge" was a soft reminder that models
+    # routinely ignored, leading to hallucinated API calls.
+    rag_gate_blocked = False
     if not _rag_called_this_session:
-        rag_nudge = (
-            "⚠️  REMINDER: Call search_flame_docs before execute_python. "
-            "Also check if a dedicated tool (get_project_info, list_libraries, "
-            "list_clips, get_selected_clips, etc.) already answers this question.\n"
+        rag_gate_blocked = True
+        rag_gate_msg = (
+            "🚫 RAG GATE — You must call search_flame_docs before execute_python.\n"
+            "   This is a hard requirement, not a suggestion. Flame's Python API has\n"
+            "   many traps (flame.selection doesn't exist, project.libraries returns\n"
+            "   None, flame.batch.render() crashes Flame). search_flame_docs returns\n"
+            "   the correct patterns in ~200 tokens.\n"
+            "   Also check if a dedicated tool already answers this question."
         )
+        if not dry_run:
+            return rag_gate_msg + _stats_footer()
+
+    # ── Architecture 3.3: dry_run mode ───────────────────────────────────────
+    if dry_run:
+        lines = ["── DRY RUN — execute_python preview ──\n"]
+        lines.append(f"Code ({len(code)} chars, ~{_tok(code)} tokens):")
+        lines.append(f"  {code[:200]}{'...' if len(code) > 200 else ''}\n")
+        lines.append(f"Timeout: {timeout}s")
+        lines.append(f"RAG called this session: {_rag_called_this_session}")
+        lines.append(f"Last RAG score: {_last_rag_score}/100")
+        lines.append(f"Model: {_get_current_model()}")
+        lines.append(f"Model can write: {_model_can_write()}")
+        if danger:
+            lines.append(f"\n⛔ SAFETY BLOCK: {danger}")
+        if redirect_match:
+            lines.append(f"\n{redirect_match}")
+        if rag_gate_blocked:
+            lines.append(f"\n{rag_gate_msg}")
+        if not danger and not redirect_match and not rag_gate_blocked:
+            lines.append("\n✅ All checks pass — code would execute.")
+        else:
+            lines.append("\n❌ Code would NOT execute due to above blocks.")
+        return '\n'.join(lines)
+
+    # OBS-013: soft nudge (post-gate, only fires after RAG was called but
+    # score was low — the hard gate above catches the no-RAG case)
+    rag_nudge = ""
 
     # B4 — Low-confidence warning when a read-only model has weak RAG grounding
     # Execution still proceeds; the operator sees the warning and can intervene.
@@ -1692,6 +1738,301 @@ def read_flame_log(
 
     except Exception as e:
         return f"❌ Error reading {log_name}: {e}"
+
+
+# ─── Architecture 3.1: resolve_concept ────────────────────────────────────────
+
+@mcp.tool(annotations=_RO)
+def resolve_concept(query: str) -> str:
+    """
+    Fast static lookup: map a user concept to the correct API path and tool.
+
+    Use this BEFORE search_flame_docs when you have a clear operation in mind
+    (e.g., "list libraries", "get clip metadata", "render batch").  Returns
+    the recommended tool, API layer, code pattern, and gotchas — no RAG search
+    needed, no tokens spent.
+
+    Returns None-match if the concept is not in the map; fall back to
+    search_flame_docs in that case.
+
+    Args:
+        query: Natural-language description of the operation, e.g.
+               "list all libraries", "delete a clip", "browse wiretap tree"
+    """
+    from flame_mcp.concept_map import resolve_concept as _resolve
+    _track_dedicated()
+    match = _resolve(query)
+    if match is None:
+        return (
+            f"No concept match for: {query!r}\n"
+            f"Fall back to search_flame_docs('{query}') for RAG-based search."
+        )
+    lines = [
+        f"✅ Concept: {match['concept']}",
+        f"   API layer : {match['api_layer']}",
+        f"   Tool      : {match['tool']}",
+        f"   API path  : {match['api_path']}",
+    ]
+    if match.get('notes'):
+        lines.append(f"   Notes     : {match['notes']}")
+    return '\n'.join(lines)
+
+
+# ─── Architecture 3.5: dedicated tools for common multi-step operations ──────
+
+@mcp.tool(annotations=_RO)
+def get_source_path(
+    library_name: str,
+    reel_name: str = "",
+    clip_name: str = "",
+) -> str:
+    """
+    Get the filesystem source path of a clip, reel, or library.
+
+    Returns the on-disk path (from Wiretap node or clip metadata) without
+    requiring execute_python.  Useful for publish workflows, media collection,
+    and path validation.
+
+    Args:
+        library_name: Name of the library.
+        reel_name:    Name of the reel (optional — returns library path if omitted).
+        clip_name:    Name of the clip (optional — returns reel path if omitted).
+    """
+    _track_dedicated()
+    # Build the inspection code targeting the deepest specified level
+    if clip_name and reel_name:
+        code = (
+            f"import flame\n"
+            f"ws = flame.projects.current_project.current_workspace\n"
+            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"if not lib: print('ERROR: library not found: {library_name}')\n"
+            f"else:\n"
+            f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+            f"  if not reel: print('ERROR: reel not found: {reel_name}')\n"
+            f"  else:\n"
+            f"    clip = next((c for c in reel.clips if str(c.name) == {clip_name!r}), None)\n"
+            f"    if not clip: print('ERROR: clip not found: {clip_name}')\n"
+            f"    else:\n"
+            f"      versions = clip.versions\n"
+            f"      if versions:\n"
+            f"        v = versions[0]\n"
+            f"        tracks = v.tracks\n"
+            f"        if tracks:\n"
+            f"          segs = tracks[0].segments\n"
+            f"          if segs: print(str(segs[0].file_path))\n"
+            f"          else: print('(no segments)')\n"
+            f"        else: print('(no tracks)')\n"
+            f"      else: print('(no versions)')\n"
+        )
+    elif reel_name:
+        code = (
+            f"import flame\n"
+            f"ws = flame.projects.current_project.current_workspace\n"
+            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"if not lib: print('ERROR: library not found: {library_name}')\n"
+            f"else:\n"
+            f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+            f"  if not reel: print('ERROR: reel not found: {reel_name}')\n"
+            f"  else: print('Reel: ' + str(reel.name) + ' — clips: ' + str(len(reel.clips)))\n"
+        )
+    else:
+        code = (
+            f"import flame\n"
+            f"ws = flame.projects.current_project.current_workspace\n"
+            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"if not lib: print('ERROR: library not found: {library_name}')\n"
+            f"else: print('Library: ' + str(lib.name) + ' — reels: ' + str(len(lib.reels)))\n"
+        )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_DST)
+def rename_segments(
+    library_name: str,
+    reel_name: str,
+    clip_name: str,
+    new_name: str,
+) -> str:
+    """
+    Rename a clip (all its segments) in a Flame library/reel.
+
+    This is a destructive operation — the clip name changes in-place.
+
+    Args:
+        library_name: Library containing the clip.
+        reel_name:    Reel containing the clip.
+        clip_name:    Current clip name.
+        new_name:     New name to assign.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+        f"  if not reel: print('ERROR: reel not found')\n"
+        f"  else:\n"
+        f"    clip = next((c for c in reel.clips if str(c.name) == {clip_name!r}), None)\n"
+        f"    if not clip: print('ERROR: clip not found: {clip_name}')\n"
+        f"    else:\n"
+        f"      clip.name = {new_name!r}\n"
+        f"      print('Renamed: {clip_name} → {new_name}')\n"
+    )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_DST)
+def create_sequence(
+    library_name: str,
+    reel_name: str,
+    sequence_name: str,
+) -> str:
+    """
+    Create a new empty sequence in a Flame library/reel.
+
+    Args:
+        library_name: Target library.
+        reel_name:    Target reel within the library.
+        sequence_name: Name for the new sequence.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+        f"  if not reel: print('ERROR: reel not found')\n"
+        f"  else:\n"
+        f"    seq = flame.media_panel.create_sequence(name={sequence_name!r})\n"
+        f"    print('Created sequence: ' + str(seq.name))\n"
+    )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def get_write_node_settings() -> str:
+    """
+    Get the Write File node settings from the current Batch setup.
+
+    Returns render resolution, file format, codec, destination path,
+    and frame range. Useful before rendering to verify output settings.
+    """
+    _track_dedicated()
+    code = (
+        "import flame\n"
+        "nodes = [n for n in flame.batch.nodes if n.type == 'Write File']\n"
+        "if not nodes: print('No Write File nodes in current Batch')\n"
+        "else:\n"
+        "  for wf in nodes:\n"
+        "    print(f'Write File: {wf.name}')\n"
+        "    try: print(f'  Format: {wf.format}')\n"
+        "    except: pass\n"
+        "    try: print(f'  Destination: {wf.destination}')\n"
+        "    except: pass\n"
+        "    try: print(f'  Range: {wf.range_start} - {wf.range_end}')\n"
+        "    except: pass\n"
+    )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_RO)
+def collect_media_paths(
+    library_name: str,
+    reel_name: str = "",
+) -> str:
+    """
+    Collect filesystem paths for all clips in a library or reel.
+
+    Returns a list of source file paths, useful for media management,
+    archival, and external processing workflows.
+
+    Args:
+        library_name: Library to scan.
+        reel_name:    Optional reel filter. If omitted, scans all reels.
+    """
+    _track_dedicated()
+    reel_filter = f"if str(r.name) == {reel_name!r}" if reel_name else ""
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  paths = []\n"
+        f"  for r in lib.reels:\n"
+        f"    {reel_filter}\n" if reel_name else ""
+        f"    for c in r.clips:\n"
+        f"      try:\n"
+        f"        v = c.versions[0]\n"
+        f"        t = v.tracks[0]\n"
+        f"        s = t.segments[0]\n"
+        f"        paths.append(str(c.name) + ': ' + str(s.file_path))\n"
+        f"      except: paths.append(str(c.name) + ': (no path)')\n"
+        f"  print(chr(10).join(paths) if paths else '(no clips found)')\n"
+    )
+    result = _call_flame(code, timeout=30, dedicated_tool=True)
+    return _fmt(result)
+
+
+# ─── Architecture 3.6: operation journaling + undo ────────────��──────────────
+
+# Singleton journal instance — lives for the server process lifetime
+from flame_mcp.journal import Journal as _Journal, UndoCodeGenerator as _UndoGen
+_journal = _Journal()
+
+
+@mcp.tool(annotations=_RO)
+def operation_history(
+    count: Annotated[int, Field(ge=1, le=50, description="Number of recent operations to show")] = 10,
+) -> str:
+    """
+    Show the last N execute_python operations recorded this session.
+
+    Each entry shows: timestamp, operation ID, code snippet, result summary,
+    and whether the operation is undoable.
+
+    Args:
+        count: Number of operations to show (default 10, max 50).
+    """
+    _track_dedicated()
+    if len(_journal) == 0:
+        return "No operations recorded this session."
+    return _journal.history(count)
+
+
+@mcp.tool(annotations=_DST)
+def undo_last_operation() -> str:
+    """
+    Undo the last undoable execute_python operation.
+
+    Only works for operations that have auto-generated undo code (create,
+    rename, move). Delete operations are NOT undoable.
+
+    Returns the undo code that will be executed and its result.
+    """
+    undo_code = _journal.get_undo_code()
+    if undo_code is None:
+        last = _journal.last_operation()
+        if last is None:
+            return "❌ No operations to undo — journal is empty."
+        return (
+            f"❌ Last operation is not undoable.\n"
+            f"   Operation: {last['code'][:100]}...\n"
+            f"   Reason: no auto-generated undo code for this pattern."
+        )
+
+    result = _call_flame(undo_code, timeout=15, dedicated_tool=True)
+    output = _fmt(result)
+    _journal.record(f"[UNDO] {undo_code}", output)
+    return f"↩️  Undo executed:\n   Code: {undo_code[:200]}\n   Result: {output}"
 
 
 # ─── Startup: auto-sync tool permissions ─────────────────────────────────────

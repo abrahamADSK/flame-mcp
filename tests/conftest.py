@@ -106,7 +106,11 @@ def mock_bridge():
     """
     with patch("flame_mcp.server._call_flame") as m:
         m.return_value = dict(_DEFAULT_BRIDGE_RESPONSE)
-        yield m
+        # Satisfy the hard RAG gate (Architecture 3.4) so execute_python tests
+        # are not blocked.  Tests that specifically need the gate OFF should
+        # patch _rag_called_this_session back to False.
+        with patch("flame_mcp.server._rag_called_this_session", True):
+            yield m
 
 
 @pytest.fixture()
@@ -114,7 +118,8 @@ def mock_bridge_error():
     """Patch _call_flame to return a connection-refused error response."""
     with patch("flame_mcp.server._call_flame") as m:
         m.return_value = dict(_BRIDGE_CONNECTION_ERROR)
-        yield m
+        with patch("flame_mcp.server._rag_called_this_session", True):
+            yield m
 
 
 # ── Mini Flame RAG corpus ─────────────────────────────────────────────────────
