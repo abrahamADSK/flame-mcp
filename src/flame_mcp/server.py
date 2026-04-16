@@ -547,6 +547,7 @@ def _fmt(result: dict) -> str:
 def execute_python(
     code: str,
     timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+    dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
 ) -> str:
     """
     Execute arbitrary Python code inside Autodesk Flame.
@@ -583,10 +584,13 @@ def execute_python(
         code:    Python code to execute inside Flame.
         timeout: TCP socket timeout in seconds (default 15). Increase for
                  long-running operations like media imports or batch renders.
+        dry_run: If true, show what would happen without executing the code.
+                 Returns safety check results, redirect matches, and RAG status.
 
     Example:
         execute_python("print(flame.projects.current_project.name)")
         execute_python(long_import_code, timeout=60)
+        execute_python(risky_code, dry_run=True)  # preview without executing
     """
     danger = _check_dangerous(code)
     if danger:
@@ -599,9 +603,13 @@ def execute_python(
     print(
         f"[flame-mcp] execute_python called — "
         f"redirect_check=active  patterns={len(_REDIRECT_PATTERNS)}  "
-        f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}",
+        f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}"
+        f"  dry_run={dry_run}",
         file=_sys2.stderr, flush=True
     )
+
+    # Collect redirect matches for dry_run report
+    redirect_match = None
     for _pattern, _msg in _REDIRECT_PATTERNS:
         if _re.search(_pattern, code):
             if _has_creation and _pattern in _SOFT_REDIRECT_PATTERNS:
@@ -611,20 +619,58 @@ def execute_python(
                 )
                 continue
             print(f"[flame-mcp] REDIRECT matched pattern: {_pattern}", file=_sys2.stderr, flush=True)
-            return (
+            redirect_match = (
                 f"🚫 REDIRECT — a dedicated tool handles this query:\n"
                 f"   {_msg}\n"
                 f"   Call the dedicated tool instead of execute_python."
             )
+            if not dry_run:
+                return redirect_match
+            break  # capture for dry_run report but continue
 
-    # OBS-013: nudge the model to use search_flame_docs if it hasn't in this session
-    rag_nudge = ""
+    # ── Architecture 3.4: Hard RAG-before-exec gate ──────────────────────────
+    # Block execute_python entirely if search_flame_docs has not been called
+    # this session.  The previous "nudge" was a soft reminder that models
+    # routinely ignored, leading to hallucinated API calls.
+    rag_gate_blocked = False
     if not _rag_called_this_session:
-        rag_nudge = (
-            "⚠️  REMINDER: Call search_flame_docs before execute_python. "
-            "Also check if a dedicated tool (get_project_info, list_libraries, "
-            "list_clips, get_selected_clips, etc.) already answers this question.\n"
+        rag_gate_blocked = True
+        rag_gate_msg = (
+            "🚫 RAG GATE — You must call search_flame_docs before execute_python.\n"
+            "   This is a hard requirement, not a suggestion. Flame's Python API has\n"
+            "   many traps (flame.selection doesn't exist, project.libraries returns\n"
+            "   None, flame.batch.render() crashes Flame). search_flame_docs returns\n"
+            "   the correct patterns in ~200 tokens.\n"
+            "   Also check if a dedicated tool already answers this question."
         )
+        if not dry_run:
+            return rag_gate_msg + _stats_footer()
+
+    # ── Architecture 3.3: dry_run mode ───────────────────────────────────────
+    if dry_run:
+        lines = ["── DRY RUN — execute_python preview ──\n"]
+        lines.append(f"Code ({len(code)} chars, ~{_tok(code)} tokens):")
+        lines.append(f"  {code[:200]}{'...' if len(code) > 200 else ''}\n")
+        lines.append(f"Timeout: {timeout}s")
+        lines.append(f"RAG called this session: {_rag_called_this_session}")
+        lines.append(f"Last RAG score: {_last_rag_score}/100")
+        lines.append(f"Model: {_get_current_model()}")
+        lines.append(f"Model can write: {_model_can_write()}")
+        if danger:
+            lines.append(f"\n⛔ SAFETY BLOCK: {danger}")
+        if redirect_match:
+            lines.append(f"\n{redirect_match}")
+        if rag_gate_blocked:
+            lines.append(f"\n{rag_gate_msg}")
+        if not danger and not redirect_match and not rag_gate_blocked:
+            lines.append("\n✅ All checks pass — code would execute.")
+        else:
+            lines.append("\n❌ Code would NOT execute due to above blocks.")
+        return '\n'.join(lines)
+
+    # OBS-013: soft nudge (post-gate, only fires after RAG was called but
+    # score was low — the hard gate above catches the no-RAG case)
+    rag_nudge = ""
 
     # B4 — Low-confidence warning when a read-only model has weak RAG grounding
     # Execution still proceeds; the operator sees the warning and can intervene.
