@@ -1,0 +1,3 @@
+# This directory holds the ChromaDB vector index for RAG search.
+# Index files are generated and should not be committed to git.
+# Rebuild with: python -m flame_mcp.rag.build_index

@@ -12,8 +12,8 @@
 #   5. Registers the MCP server with Claude Code
 #
 # Usage:
-#   chmod +x install.sh
-#   ./install.sh
+#   ./install.sh            # full install
+#   ./install.sh --doctor   # health check (no changes)
 # =============================================================================
 
 set -e
@@ -39,6 +39,126 @@ echo ""
 # ── Locate script directory ───────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info "Project directory: $SCRIPT_DIR"
+
+# ── --doctor: health check subcommand ────────────────────────────────────────
+if [ "${1:-}" = "--doctor" ]; then
+    echo ""
+    echo "================================================="
+    echo "  flame-mcp doctor"
+    echo "================================================="
+    echo ""
+
+    WORST=0  # 0=pass, 1=fail
+
+    doctor_pass() { echo -e "  ${GREEN}[PASS]${NC} $1"; }
+    doctor_fail() { echo -e "  ${RED}[FAIL]${NC} $1"; WORST=1; }
+    doctor_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; }
+    doctor_skip() { echo -e "  ${BLUE}[SKIP]${NC} $1"; }
+
+    # ── a) claude.json registration ──────────────────────────────────────────
+    # Claude Code stores MCP servers in ~/.claude.json (global) or .mcp.json (project)
+    CLAUDE_JSON="$HOME/.claude.json"
+    MCP_JSON="$SCRIPT_DIR/.mcp.json"
+    FOUND_REG=0
+    for cfg_file in "$MCP_JSON" "$CLAUDE_JSON"; do
+        if [ -f "$cfg_file" ] && python3 -c "
+import json, sys
+with open('$cfg_file') as f:
+    cfg = json.load(f)
+servers = cfg.get('mcpServers', {})
+if 'flame' in servers or 'flame-mcp' in servers:
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+            FOUND_REG=1
+            doctor_pass "MCP registration: flame-mcp found in $(basename "$cfg_file")"
+            break
+        fi
+    done
+    if [ "$FOUND_REG" -eq 0 ]; then
+        doctor_fail "MCP registration: flame-mcp NOT found in .mcp.json or ~/.claude.json"
+        echo -e "         ${NC}Run: claude mcp add flame -- \"\$(pwd)/.venv/bin/python\" -m flame_mcp.server"
+    fi
+
+    # ── b) Bridge symlink valid ──────────────────────────────────────────────
+    HOOK_PATH="/opt/Autodesk/shared/python/flame_mcp_bridge.py"
+    HOOK_SRC="$SCRIPT_DIR/hooks/flame_mcp_bridge.py"
+    if [ -e "$HOOK_PATH" ]; then
+        if [ -L "$HOOK_PATH" ]; then
+            LINK_TARGET="$(readlink "$HOOK_PATH")"
+            if [ "$LINK_TARGET" = "$HOOK_SRC" ]; then
+                doctor_pass "Bridge symlink: $HOOK_PATH -> $HOOK_SRC"
+            else
+                doctor_fail "Bridge symlink: points to $LINK_TARGET (expected $HOOK_SRC)"
+                echo -e "         ${NC}Run: sudo ln -sf $HOOK_SRC $HOOK_PATH"
+            fi
+        else
+            # Regular file, not a symlink — acceptable but less ideal
+            doctor_warn "Bridge hook: $HOOK_PATH exists (regular file, not a symlink)"
+            echo -e "         ${NC}Consider: sudo ln -sf $HOOK_SRC $HOOK_PATH"
+        fi
+    elif [ -d "/opt/Autodesk" ]; then
+        doctor_fail "Bridge hook: $HOOK_PATH not found"
+        echo -e "         ${NC}Run: sudo ln -sf $HOOK_SRC $HOOK_PATH"
+    else
+        doctor_skip "Bridge hook: /opt/Autodesk not found (Flame not installed on this machine)"
+    fi
+
+    # ── c) .env check ────────────────────────────────────────────────────────
+    ENV_FILE="$SCRIPT_DIR/.env"
+    if [ -f "$ENV_FILE" ]; then
+        # Check for placeholder values
+        if grep -qE '(your[-_]?key|PLACEHOLDER|CHANGEME|xxx|TODO)' "$ENV_FILE" 2>/dev/null; then
+            doctor_warn ".env: exists but contains placeholder values"
+            echo -e "         ${NC}Edit $ENV_FILE and set real values"
+        else
+            doctor_pass ".env: present with values configured"
+        fi
+    else
+        doctor_fail ".env: file not found at $ENV_FILE"
+        echo -e "         ${NC}Copy .env.example to .env and fill in your keys"
+    fi
+
+    # ── d) Venv importability ────────────────────────────────────────────────
+    PYTHON_VENV="$SCRIPT_DIR/.venv/bin/python"
+    if [ -x "$PYTHON_VENV" ]; then
+        if "$PYTHON_VENV" -c "import flame_mcp" 2>/dev/null; then
+            doctor_pass "Venv: 'import flame_mcp' succeeds"
+        else
+            doctor_fail "Venv: 'import flame_mcp' fails"
+            echo -e "         ${NC}Run: source .venv/bin/activate && pip install -e . (or pip install -r requirements.txt)"
+        fi
+    else
+        doctor_fail "Venv: .venv/bin/python not found"
+        echo -e "         ${NC}Run: ./install.sh  (creates the virtual environment)"
+    fi
+
+    # ── e) RAG index present ─────────────────────────────────────────────────
+    RAG_INDEX="$SCRIPT_DIR/rag/index"
+    if [ -d "$RAG_INDEX" ]; then
+        # Count non-hidden files (exclude .gitkeep)
+        FILE_COUNT=$(find "$RAG_INDEX" -mindepth 1 -not -name '.*' -not -name '.gitkeep' | head -1)
+        if [ -n "$FILE_COUNT" ]; then
+            doctor_pass "RAG index: index files present in rag/index/"
+        else
+            doctor_warn "RAG index: rag/index/ is empty (no index built)"
+            echo -e "         ${NC}Run: .venv/bin/python -m flame_mcp.rag.build_index"
+        fi
+    else
+        doctor_warn "RAG index: rag/index/ directory not found"
+        echo -e "         ${NC}Run: .venv/bin/python -m flame_mcp.rag.build_index"
+    fi
+
+    echo ""
+    if [ "$WORST" -eq 0 ]; then
+        echo -e "  ${GREEN}All checks passed.${NC}"
+    else
+        echo -e "  ${RED}Some checks failed. See remediation steps above.${NC}"
+    fi
+    echo ""
+    exit "$WORST"
+fi
+
 
 # ── 1. Check Python 3.11+ ─────────────────────────────────────────────────────
 # macOS ships python3 via Xcode CLT which may be 3.9.  Search for a newer
@@ -138,15 +258,15 @@ fi
 RAG_INDEX="$SCRIPT_DIR/rag/index"
 if [ -d "$RAG_INDEX" ] && [ "$(ls -A "$RAG_INDEX" 2>/dev/null)" ]; then
     ok "RAG index already present (pre-built). Skipping rebuild."
-    info "To force a rebuild: python rag/build_index.py"
+    info "To force a rebuild: python -m flame_mcp.rag.build_index"
 else
     info "Building RAG documentation index..."
     info "(Downloads embedding model ~130 MB from HuggingFace on first run)"
-    if "$PYTHON_VENV" "$SCRIPT_DIR/rag/build_index.py"; then
+    if "$PYTHON_VENV" -m flame_mcp.rag.build_index; then
         ok "RAG index built."
     else
         warn "RAG index build failed — search_flame_docs will show an error."
-        warn "Fix with: source .venv/bin/activate && python rag/build_index.py"
+        warn "Fix with: source .venv/bin/activate && python -m flame_mcp.rag.build_index"
     fi
 fi
 

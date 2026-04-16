@@ -80,6 +80,16 @@ The installer will:
 5. Build the RAG documentation index
 6. Generate `.claude/settings.local.json` with all 18 MCP tools allowed
 
+### Verify installation
+
+After installing, run the health check to confirm everything is in place:
+
+```bash
+./install.sh --doctor
+```
+
+This runs a 5-check sweep (venv, dependencies, hook, Claude registration, RAG index) and prints PASS/FAIL/WARN/SKIP with remediation hints for each check. Recommended before first use.
+
 ### Manual
 
 ```bash
@@ -93,7 +103,7 @@ source .venv/bin/activate
 pip install -r requirements.txt --no-user
 
 # 3. Build the RAG index
-python rag/build_index.py
+python -m flame_mcp.rag.build_index
 
 # 4. Install the Flame hook
 sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/
@@ -182,7 +192,7 @@ Then talk naturally:
 
 ---
 
-## MCP Tools
+## MCP Tools (18)
 
 | Tool | Description |
 |------|-------------|
@@ -190,10 +200,20 @@ Then talk naturally:
 | `get_project_info` | Return name, frame rate, resolution, bit depth of the active project |
 | `list_libraries` | List all libraries in the project with reel counts |
 | `list_reels` | List reels in a library, or across all libraries |
+| `list_clips` | List clips in a library/reel, or across all libraries |
+| `list_desktop_reels` | List the full desktop structure: reel groups, reels, and clip names |
+| `list_batch_groups` | List all batch groups in the active desktop with their reel counts |
+| `list_all_projects` | List all Flame projects available on this workstation |
+| `get_clip_metadata` | Get detailed metadata for a specific clip (resolution, frame rate, duration, etc.) |
+| `get_selected_clips` | Return the clips currently selected in the Flame media panel or desktop |
+| `flame_wiretap_tree` | Inspect the Wiretap IFFFS node tree at a given path |
 | `get_flame_version` | Return the running Flame version string |
-| `search_flame_docs` | Semantic RAG search over FLAME_API.md — call before execute_python |
+| `ping` | Check whether the bridge to Autodesk Flame is reachable |
+| `search_flame_docs` | Semantic RAG search over Flame API documentation — call before execute_python |
 | `learn_pattern` | Add a new working pattern to FLAME_API.md and rebuild the index |
 | `session_stats` | Show token usage and RAG savings for the current session |
+| `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
+| `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
 
 ### Tool workflow
 
@@ -242,7 +262,7 @@ The system maintains a local semantic search index (`rag/index/`) built from all
 ```bash
 cd ~/flame-mcp
 source .venv/bin/activate
-python rag/build_index.py
+python -m flame_mcp.rag.build_index
 ```
 
 ### RAG log
@@ -442,7 +462,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 
 **Low RAG relevance scores on common operations**
 - If a pattern scores < 60%, Claude will auto-learn it after a successful run
-- You can also manually rebuild the index: `python rag/build_index.py`
+- You can also manually rebuild the index: `python -m flame_mcp.rag.build_index`
 
 **Claude Chat (embedded) doesn't open**
 - Check `logs/flame_mcp_bridge.log` for error details
