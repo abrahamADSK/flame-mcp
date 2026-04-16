@@ -1,0 +1,208 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+- Stop tracking `rag/index/` generated files; added `.gitkeep` placeholder
+- Fix stale `python rag/build_index.py` references to `python -m flame_mcp.rag.build_index`
+
+## [1.2.1] - 2026-04-14
+
+### Fixed
+- Harden reasoning on Flame panel claude subprocess to prevent bridge crashes
+
+## [1.2.0] - 2026-04-14
+
+### Added
+- Index Wiretap CLI (37 tools) and Wiretap SDK Python bindings (22 classes) in RAG
+
+## [1.1.2] - 2026-04-14
+
+### Fixed
+- Align `INDEX_DIR` and `CORPUS_PATH` with real on-disk data layout
+- Make `test_cli_not_found` deterministic by mocking `subprocess.run`
+
+### Changed
+- Rebuild RAG index after adding auto-learned sequence-from-reel pattern
+
+## [1.1.1] - 2026-04-10
+
+### Added
+- Migrate tool pre-approval to user-level `~/.claude/settings.json` (auto-detected via `ast.parse`)
+
+### Fixed
+- Update maya-mcp entry from `core/server.py` to `-m maya_mcp.server`
+
+### Changed
+- Clean internal artifacts and translate Spanish content to English
+
+## [1.1.0] - 2026-04-08
+
+### Added
+- In-session RAG cache (A12) consistent with maya-mcp and fpt-mcp
+
+### Changed
+- **Breaking:** Migrate to `src/flame_mcp/` package layout; extract `safety.py` as separate module
+- Update all `flame_mcp_server.py` references to new `src/flame_mcp/` layout
+
+## [1.0.0] - 2026-04-07
+
+### Added
+- Automated test suite with 62 tests covering safety, redirect, tools, and RAG
+- `MODEL_STRATEGY.md` with Ollama setup, Modelfile, and `KEEP_ALIVE` config
+- Ollama as optional prerequisite in README and `install.sh`
+
+### Fixed
+- Tighten redirect pattern regexes to avoid false positives
+
+## [0.10.0] - 2026-04-07
+
+### Added
+- LLM Strategy v2: Qwen3.5-mcp as primary local model with updated `AVAILABLE_MODELS`
+- `.env.example` for ecosystem consistency
+- Ecosystem section with cross-repo links in README
+- Timing profiling at each pipeline stage boundary (REC-001)
+- Log first 200 chars of assistant response in bridge log (REC-002)
+- `.mcp.json` so `claude -p` discovers MCP server (OBS-024)
+- QA test plans from audit agent (Level 0-1 coverage)
+- `NOTICE.md` for third-party license attributions
+- Smart method-group chunking in `build_index.py`
+- Phase D: YouTube transcript patterns, OCR frames, GitHub pattern fetcher
+
+### Fixed
+- Remove all legacy `~/Projects/flame-mcp` hardcoded paths from docs and bridge
+- `install.sh` Python 3.11+ discovery on macOS
+- Widget cwd resolution and socket path for installed hook
+- Dynamic `_PROJECT_ROOT` resolution replacing 11 hardcoded paths
+- Suppress structural redirects when creation intent is detected
+- Three-level path resolution for project `.cfg` fallback (OBS-028)
+- Root cause fixes for systemic tool-selection failure (OBS-011/013)
+- Apply all Level 0 and Level 1 QA observations (OBS-002 to OBS-023)
+- Remove `husky.py` (Autodesk proprietary)
+- Bridge-only redirect via `# DT\n` code prefix (OBS-025)
+
+### Changed
+- Rewrite `ARCHITECTURE.md` for v0.9.0 current state
+- Rebuild RAG index multiple times with improved chunking (668 chunks)
+
+## [0.9.0] - 2026-03-09
+
+### Added
+- Hybrid BM25 + semantic search (C3)
+- HyDE query expansion (C4)
+- Three-level learning system (C5): trusted models auto-learn, read-only models stage for review
+- Mandatory citation rule (C2)
+
+### Changed
+- Upgrade embedding model to `bge-large-en-v1.5` (C6)
+- Rebuild FLAME_API.md from live Flame introspection (B7)
+
+### Fixed
+- Block `PyExporter.export()` deadlock and export hang post-mortem
+- Remove personal paths and untrack `crash_recovery.json`
+
+## [0.8.0] - 2026-03-09
+
+### Added
+- 18 MCP tools total: log reader (`list_flame_logs`, `read_flame_log`), pagination, timeout param
+- `ollama_mac` backend for fully offline local inference
+- `/undo` and `/undo N` chat commands for instant Flame undo
+- `/wrong` and `/wrong <reason>` chat commands for correction feedback
+- Warn bubble type (amber) for `ollama_mac` tool-use limitations
+- Runtime config keys (B5) and RAG index validator (B6)
+- Self-healing: dedicated tools warn on empty fields and prompt `learn_pattern`
+
+### Fixed
+- Model update to Sonnet 4.6 with A4/A9/A13/A14 bug fixes
+- Ollama: cap agentic turns, replace `/no_think` prefix with think-block stream filtering
+- Crash recovery and bridge connection rule for Ollama
+- `config.json` fail-safe JSON reads in all save functions
+- `get_project_info`: use `wiretap_get_metadata` XML for accurate frame rate/resolution
+- Full audit: `sys` import, desktop clips, `openWorldHint`, Pydantic, `CLAUDE.md`
+- Wiretap SDK section added to `FLAME_API.md`
+- Crash on `lib.folders` access in `list_libraries`
+- Library delete pattern: add `str()` cast and `None` default
+- Filter hidden system libraries (`Timeline FX`, `Grabbed References`) from all list tools
+- Strip JSON envelope leak from `tool_result` content
+- `ollama_cloud`: route through local Ollama server with `:cloud` model tag
+
+### Changed
+- Recalibrate token rating thresholds (low<500, medium<2000, high>=2000)
+- Suppress token warnings for Ollama backends
+
+## [0.7.0] - 2026-03-06
+
+### Added
+- Ollama cloud API key field in the UI
+- Editable Ollama server URL field in the chat widget
+- Ollama local/cloud backend support in the bridge
+
+### Fixed
+- Reduce `num_ctx` 32K to 24K to keep inference on GPU
+- Pre-load model via native API to force `num_ctx`
+- Correct qwen3-coder model tag references
+- Show server/key in combo labels; fix Ollama cloud URL; extend cloud watchdog
+
+## [0.6.0] - 2026-03-06
+
+### Added
+- Model selector dropdown in Qt chat widget
+- `ping()` tool for bridge connectivity checks
+- `list_clips` and `list_desktop_reels` dedicated tools
+- Auto-approve all MCP tools in `~/.claude/settings.json` via install.sh
+
+### Fixed
+- Track dedicated tool savings; fix `None` attrs; block `.startswith` on `PyAttribute`
+- Enforce RAG call before every `execute_python`, no exceptions
+- Remove 'when unsure' escape from `search_flame_docs` docstring
+
+### Changed
+- Simplify `ARCHITECTURE.md` Mermaid diagram for clean GitHub rendering
+
+## [0.5.0] - 2026-03-06
+
+### Added
+- Pre-built RAG index shipped with repo (BAAI/bge-small-en-v1.5)
+- Action, Color Management, Conform, Segment and Timeline API reference docs
+- Official cookbook and community workflow docs for RAG enrichment
+- Knowledge base documentation in README (~340 chunks)
+
+### Fixed
+- Add `ROOT` to `sys.path` so `rag.config` imports correctly when run directly
+
+## [0.4.0] - 2026-03-06
+
+### Changed
+- Replace `all-MiniLM` with `BAAI/bge-small-en-v1.5` embedding model
+- Add vocabulary doc and Ollama embeddings; fix timeline/crash patterns
+
+## [0.1.0] - 2026-03-06
+
+### Added
+- Initial release: MCP server with `execute_python` and `search_flame_docs` tools
+- Flame Python hook (`flame_mcp_bridge.py`) with Unix socket bridge
+- Qt chat widget embedded in Flame
+- RAG semantic search over FLAME_API.md
+- Safety validator with crash-prevention patterns
+- Complete reference documentation (README + PDF guide)
+
+[Unreleased]: https://github.com/abrahamADSK/flame-mcp/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.1.2...v1.2.0
+[1.1.2]: https://github.com/abrahamADSK/flame-mcp/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.10.0...v1.0.0
+[0.10.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/abrahamADSK/flame-mcp/compare/v0.1.0...v0.4.0
+[0.1.0]: https://github.com/abrahamADSK/flame-mcp/releases/tag/v0.1.0
