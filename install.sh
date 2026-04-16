@@ -14,6 +14,7 @@
 # Usage:
 #   ./install.sh            # full install
 #   ./install.sh --doctor   # health check (no changes)
+#   ./install.sh -d         # short form of --doctor
 # =============================================================================
 
 set -e
@@ -40,123 +41,225 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info "Project directory: $SCRIPT_DIR"
 
-# ── --doctor: health check subcommand ────────────────────────────────────────
-if [ "${1:-}" = "--doctor" ]; then
-    echo ""
-    echo "================================================="
-    echo "  flame-mcp doctor"
-    echo "================================================="
-    echo ""
-
-    WORST=0  # 0=pass, 1=fail
-
-    doctor_pass() { echo -e "  ${GREEN}[PASS]${NC} $1"; }
-    doctor_fail() { echo -e "  ${RED}[FAIL]${NC} $1"; WORST=1; }
-    doctor_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; }
-    doctor_skip() { echo -e "  ${BLUE}[SKIP]${NC} $1"; }
-
-    # ── a) claude.json registration ──────────────────────────────────────────
-    # Claude Code stores MCP servers in ~/.claude.json (global) or .mcp.json (project)
-    CLAUDE_JSON="$HOME/.claude.json"
-    MCP_JSON="$SCRIPT_DIR/.mcp.json"
-    FOUND_REG=0
-    for cfg_file in "$MCP_JSON" "$CLAUDE_JSON"; do
-        if [ -f "$cfg_file" ] && python3 -c "
-import json, sys
-with open('$cfg_file') as f:
-    cfg = json.load(f)
-servers = cfg.get('mcpServers', {})
-if 'flame' in servers or 'flame-mcp' in servers:
-    sys.exit(0)
-sys.exit(1)
-" 2>/dev/null; then
-            FOUND_REG=1
-            doctor_pass "MCP registration: flame-mcp found in $(basename "$cfg_file")"
-            break
-        fi
-    done
-    if [ "$FOUND_REG" -eq 0 ]; then
-        doctor_fail "MCP registration: flame-mcp NOT found in .mcp.json or ~/.claude.json"
-        echo -e "         ${NC}Run: claude mcp add flame -- \"\$(pwd)/.venv/bin/python\" -m flame_mcp.server"
-    fi
-
-    # ── b) Bridge symlink valid ──────────────────────────────────────────────
-    HOOK_PATH="/opt/Autodesk/shared/python/flame_mcp_bridge.py"
-    HOOK_SRC="$SCRIPT_DIR/hooks/flame_mcp_bridge.py"
-    if [ -e "$HOOK_PATH" ]; then
-        if [ -L "$HOOK_PATH" ]; then
-            LINK_TARGET="$(readlink "$HOOK_PATH")"
-            if [ "$LINK_TARGET" = "$HOOK_SRC" ]; then
-                doctor_pass "Bridge symlink: $HOOK_PATH -> $HOOK_SRC"
-            else
-                doctor_fail "Bridge symlink: points to $LINK_TARGET (expected $HOOK_SRC)"
-                echo -e "         ${NC}Run: sudo ln -sf $HOOK_SRC $HOOK_PATH"
-            fi
-        else
-            # Regular file, not a symlink — acceptable but less ideal
-            doctor_warn "Bridge hook: $HOOK_PATH exists (regular file, not a symlink)"
-            echo -e "         ${NC}Consider: sudo ln -sf $HOOK_SRC $HOOK_PATH"
-        fi
-    elif [ -d "/opt/Autodesk" ]; then
-        doctor_fail "Bridge hook: $HOOK_PATH not found"
-        echo -e "         ${NC}Run: sudo ln -sf $HOOK_SRC $HOOK_PATH"
-    else
-        doctor_skip "Bridge hook: /opt/Autodesk not found (Flame not installed on this machine)"
-    fi
-
-    # ── c) .env check ────────────────────────────────────────────────────────
-    ENV_FILE="$SCRIPT_DIR/.env"
-    if [ -f "$ENV_FILE" ]; then
-        # Check for placeholder values
-        if grep -qE '(your[-_]?key|PLACEHOLDER|CHANGEME|xxx|TODO)' "$ENV_FILE" 2>/dev/null; then
-            doctor_warn ".env: exists but contains placeholder values"
-            echo -e "         ${NC}Edit $ENV_FILE and set real values"
-        else
-            doctor_pass ".env: present with values configured"
-        fi
-    else
-        doctor_fail ".env: file not found at $ENV_FILE"
-        echo -e "         ${NC}Copy .env.example to .env and fill in your keys"
-    fi
-
-    # ── d) Venv importability ────────────────────────────────────────────────
+# ── --doctor / -d: health check subcommand ───────────────────────────────────
+# Usage: ./install.sh --doctor   OR   ./install.sh -d
+#
+# Runs 5 independent checks using an inline Python script with the same
+# visual format as maya-mcp and fpt-mcp:
+#   1. MCP registration in claude.json
+#   2. Bridge symlink to /opt/Autodesk/shared/python/
+#   3. .env file with real values
+#   4. Venv importability (import flame_mcp)
+#   5. RAG index presence
+#
+# 4-state severity: PASS=0, SKIP=1, WARN=2, FAIL=3
+# Exit code: 0 on PASS/WARN/SKIP, 1 on any FAIL.
+# ─────────────────────────────────────────────────────────────────────────────
+if [ "${1:-}" = "--doctor" ] || [ "${1:-}" = "-d" ]; then
     PYTHON_VENV="$SCRIPT_DIR/.venv/bin/python"
-    if [ -x "$PYTHON_VENV" ]; then
-        if "$PYTHON_VENV" -c "import flame_mcp" 2>/dev/null; then
-            doctor_pass "Venv: 'import flame_mcp' succeeds"
-        else
-            doctor_fail "Venv: 'import flame_mcp' fails"
-            echo -e "         ${NC}Run: source .venv/bin/activate && pip install -e . (or pip install -r requirements.txt)"
-        fi
-    else
-        doctor_fail "Venv: .venv/bin/python not found"
-        echo -e "         ${NC}Run: ./install.sh  (creates the virtual environment)"
+    if [ ! -x "$PYTHON_VENV" ]; then
+        echo ""
+        echo -e "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        echo -e "\033[1m  flame-mcp — doctor\033[0m"
+        echo -e "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        echo ""
+        echo -e "  \033[0;31m✗\033[0m Venv is missing: $PYTHON_VENV"
+        echo -e "    Run './install.sh' to create it."
+        echo ""
+        exit 1
     fi
 
-    # ── e) RAG index present ─────────────────────────────────────────────────
-    RAG_INDEX="$SCRIPT_DIR/rag/index"
-    if [ -d "$RAG_INDEX" ]; then
-        # Count non-hidden files (exclude .gitkeep)
-        FILE_COUNT=$(find "$RAG_INDEX" -mindepth 1 -not -name '.*' -not -name '.gitkeep' | head -1)
-        if [ -n "$FILE_COUNT" ]; then
-            doctor_pass "RAG index: index files present in rag/index/"
-        else
-            doctor_warn "RAG index: rag/index/ is empty (no index built)"
-            echo -e "         ${NC}Run: .venv/bin/python -m flame_mcp.rag.build_index"
-        fi
-    else
-        doctor_warn "RAG index: rag/index/ directory not found"
-        echo -e "         ${NC}Run: .venv/bin/python -m flame_mcp.rag.build_index"
-    fi
+    "$PYTHON_VENV" - "$SCRIPT_DIR" "$HOME/.claude.json" <<'PYEOF'
+"""
+Doctor implementation — flame-mcp
+Each check returns (status, message) where status is PASS/FAIL/WARN/SKIP.
+Visual format aligned with maya-mcp and fpt-mcp ecosystem.
+"""
+import json
+import os
+import re
+import sys
+from pathlib import Path
 
-    echo ""
-    if [ "$WORST" -eq 0 ]; then
-        echo -e "  ${GREEN}All checks passed.${NC}"
-    else
-        echo -e "  ${RED}Some checks failed. See remediation steps above.${NC}"
-    fi
-    echo ""
-    exit "$WORST"
+REPO_ROOT = Path(sys.argv[1])
+CLAUDE_JSON = Path(sys.argv[2])
+
+RESET = "\033[0m"
+RED = "\033[0;31m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+CYAN = "\033[0;36m"
+BOLD = "\033[1m"
+
+
+def _symbol(status: str) -> str:
+    return {
+        "PASS": f"{GREEN}✓{RESET}",
+        "FAIL": f"{RED}✗{RESET}",
+        "WARN": f"{YELLOW}⚠{RESET}",
+        "SKIP": f"{CYAN}·{RESET}",
+    }[status]
+
+
+# ── Check 1: MCP registration ───────────────────────────────────────────────
+def check_claude_json() -> tuple[str, str]:
+    mcp_json = REPO_ROOT / ".mcp.json"
+    for cfg_path in [mcp_json, CLAUDE_JSON]:
+        if not cfg_path.is_file():
+            continue
+        try:
+            data = json.loads(cfg_path.read_text())
+        except json.JSONDecodeError:
+            continue
+        servers = data.get("mcpServers", {})
+        if "flame" in servers or "flame-mcp" in servers:
+            return ("PASS", f"flame-mcp found in {cfg_path.name}")
+    return (
+        "FAIL",
+        "flame-mcp NOT found in .mcp.json or ~/.claude.json. "
+        "Run: claude mcp add flame -- \"$(pwd)/.venv/bin/python\" -m flame_mcp.server",
+    )
+
+
+# ── Check 2: Bridge symlink ─────────────────────────────────────────────────
+def check_bridge_symlink() -> tuple[str, str]:
+    hook_path = Path("/opt/Autodesk/shared/python/flame_mcp_bridge.py")
+    hook_src = REPO_ROOT / "hooks" / "flame_mcp_bridge.py"
+    if hook_path.exists():
+        if hook_path.is_symlink():
+            target = Path(os.readlink(str(hook_path)))
+            if target == hook_src:
+                return ("PASS", f"{hook_path} -> {hook_src}")
+            return (
+                "FAIL",
+                f"Symlink points to {target} (expected {hook_src}). "
+                f"Run: sudo ln -sf {hook_src} {hook_path}",
+            )
+        # Regular file, not a symlink
+        return (
+            "WARN",
+            f"{hook_path} exists as a regular file, not a symlink. "
+            f"Consider: sudo ln -sf {hook_src} {hook_path}",
+        )
+    if Path("/opt/Autodesk").is_dir():
+        return (
+            "FAIL",
+            f"{hook_path} not found. "
+            f"Run: sudo ln -sf {hook_src} {hook_path}",
+        )
+    return (
+        "SKIP",
+        "/opt/Autodesk not found (Flame not installed on this machine)",
+    )
+
+
+# ── Check 3: .env file ──────────────────────────────────────────────────────
+def check_env_file() -> tuple[str, str]:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        return (
+            "FAIL",
+            f".env not found at {env_file}. "
+            f"Copy .env.example to .env and fill in your keys.",
+        )
+    content = env_file.read_text(errors="replace")
+    placeholder_patterns = [
+        r"your[-_]?key",
+        r"PLACEHOLDER",
+        r"CHANGEME",
+        r"xxx",
+        r"TODO",
+    ]
+    for pat in placeholder_patterns:
+        if re.search(pat, content, re.IGNORECASE):
+            return (
+                "WARN",
+                f".env exists but contains placeholder values. "
+                f"Edit {env_file} and set real values.",
+            )
+    return ("PASS", f".env present with values configured")
+
+
+# ── Check 4: Venv importability ──────────────────────────────────────────────
+def check_venv_import() -> tuple[str, str]:
+    try:
+        import flame_mcp  # noqa: F401
+    except Exception as exc:
+        return (
+            "FAIL",
+            f"'import flame_mcp' fails: {type(exc).__name__}: {exc}. "
+            f"Run: source .venv/bin/activate && pip install -e . "
+            f"(or pip install -r requirements.txt)",
+        )
+    return ("PASS", "'import flame_mcp' succeeds from venv")
+
+
+# ── Check 5: RAG index ──────────────────────────────────────────────────────
+def check_rag_index() -> tuple[str, str]:
+    rag_index = REPO_ROOT / "rag" / "index"
+    if not rag_index.is_dir():
+        return (
+            "WARN",
+            f"rag/index/ directory not found. "
+            f"Run: .venv/bin/python -m flame_mcp.rag.build_index",
+        )
+    # Check for non-hidden files (exclude .gitkeep)
+    contents = [
+        f for f in rag_index.iterdir()
+        if not f.name.startswith(".") and f.name != ".gitkeep"
+    ]
+    if not contents:
+        return (
+            "WARN",
+            f"rag/index/ is empty (no index built). "
+            f"Run: .venv/bin/python -m flame_mcp.rag.build_index",
+        )
+    return ("PASS", "RAG index files present in rag/index/")
+
+
+# ── Run all checks ──────────────────────────────────────────────────────────
+CHECKS = [
+    ("MCP registration", check_claude_json),
+    ("Bridge symlink", check_bridge_symlink),
+    (".env file", check_env_file),
+    ("Venv importability", check_venv_import),
+    ("RAG index", check_rag_index),
+]
+
+
+def main() -> int:
+    print("")
+    print(f"{BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+    print(f"{BOLD}  flame-mcp — doctor{RESET}")
+    print(f"{BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+    print("")
+
+    worst = "PASS"
+    rank = {"PASS": 0, "SKIP": 1, "WARN": 2, "FAIL": 3}
+
+    for i, (label, fn) in enumerate(CHECKS, start=1):
+        try:
+            status, msg = fn()
+        except Exception as exc:
+            status, msg = "FAIL", f"check raised {type(exc).__name__}: {exc}"
+        print(f"  {_symbol(status)} [{i}/{len(CHECKS)}] {BOLD}{label}{RESET}: {msg}")
+        if rank[status] > rank[worst]:
+            worst = status
+
+    print("")
+    if worst == "PASS":
+        print(f"{GREEN}{BOLD}All checks passed — install is ready.{RESET}")
+        return 0
+    if worst in ("WARN", "SKIP"):
+        print(f"{YELLOW}{BOLD}Install is usable but has warnings — review above.{RESET}")
+        return 0
+    print(f"{RED}{BOLD}Install is incomplete — fix the FAIL items above.{RESET}")
+    return 1
+
+
+sys.exit(main())
+PYEOF
+    exit $?
 fi
 
 
