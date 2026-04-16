@@ -138,15 +138,15 @@ fi
 RAG_INDEX="$SCRIPT_DIR/rag/index"
 if [ -d "$RAG_INDEX" ] && [ "$(ls -A "$RAG_INDEX" 2>/dev/null)" ]; then
     ok "RAG index already present (pre-built). Skipping rebuild."
-    info "To force a rebuild: python rag/build_index.py"
+    info "To force a rebuild: python -m flame_mcp.rag.build_index"
 else
     info "Building RAG documentation index..."
     info "(Downloads embedding model ~130 MB from HuggingFace on first run)"
-    if "$PYTHON_VENV" "$SCRIPT_DIR/rag/build_index.py"; then
+    if "$PYTHON_VENV" -m flame_mcp.rag.build_index; then
         ok "RAG index built."
     else
         warn "RAG index build failed — search_flame_docs will show an error."
-        warn "Fix with: source .venv/bin/activate && python rag/build_index.py"
+        warn "Fix with: source .venv/bin/activate && python -m flame_mcp.rag.build_index"
     fi
 fi
 

@@ -93,7 +93,7 @@ source .venv/bin/activate
 pip install -r requirements.txt --no-user
 
 # 3. Build the RAG index
-python rag/build_index.py
+python -m flame_mcp.rag.build_index
 
 # 4. Install the Flame hook
 sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/
@@ -242,7 +242,7 @@ The system maintains a local semantic search index (`rag/index/`) built from all
 ```bash
 cd ~/flame-mcp
 source .venv/bin/activate
-python rag/build_index.py
+python -m flame_mcp.rag.build_index
 ```
 
 ### RAG log
@@ -442,7 +442,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 
 **Low RAG relevance scores on common operations**
 - If a pattern scores < 60%, Claude will auto-learn it after a successful run
-- You can also manually rebuild the index: `python rag/build_index.py`
+- You can also manually rebuild the index: `python -m flame_mcp.rag.build_index`
 
 **Claude Chat (embedded) doesn't open**
 - Check `logs/flame_mcp_bridge.log` for error details
