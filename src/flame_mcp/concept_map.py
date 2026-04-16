@@ -397,6 +397,155 @@ CONCEPT_MAP: list[dict[str, str]] = [
         "notes": "Shows exec calls, RAG calls, tokens used/saved. No side effects.",
     },
 
+    # ── Flame Object Model — entity hierarchy ──────────────────────────────
+    # These entries describe Flame's Python API entity types, their access
+    # paths from the hierarchy, and key methods/behaviors.  They complement
+    # the operation entries above: operations say "what to do", entity entries
+    # say "what things are and how to reach them."
+    {
+        "concept": "flame entity: Project",
+        "api_layer": "python_api",
+        "entity_type": "Project",
+        "tool": "get_project_info",
+        "api_path": "flame.projects.current_project",
+        "notes": (
+            "Properties: .name, .nickname, .current_workspace. "
+            "flame.projects is NOT iterable and NOT subscriptable — "
+            "only .current_project is accessible."
+        ),
+    },
+    {
+        "concept": "flame entity: Workspace",
+        "api_layer": "python_api",
+        "entity_type": "Workspace",
+        "tool": "execute_python",
+        "api_path": "project.current_workspace",
+        "notes": (
+            "Properties: .libraries, .desktop. "
+            "The workspace is the entry point to all media and desktop structures. "
+            "NEVER access libraries via project.libraries (returns None)."
+        ),
+    },
+    {
+        "concept": "flame entity: Library",
+        "api_layer": "python_api",
+        "entity_type": "Library",
+        "tool": "list_libraries",
+        "api_path": "workspace.libraries[i]",
+        "notes": (
+            "Properties: .name (PyAttribute — use str()), .reels. "
+            "NOT name-subscriptable — use index access or iterate. "
+            "Filter out hidden system libraries: 'Timeline FX', 'Grabbed References'."
+        ),
+    },
+    {
+        "concept": "flame entity: Reel",
+        "api_layer": "python_api",
+        "entity_type": "Reel",
+        "tool": "list_reels",
+        "api_path": "library.reels[i]",
+        "notes": (
+            "Properties: .name (PyAttribute — use str()), .clips. "
+            "NOT name-subscriptable — iterate and filter by str(name)."
+        ),
+    },
+    {
+        "concept": "flame entity: Clip",
+        "api_layer": "python_api",
+        "entity_type": "Clip",
+        "tool": "list_clips",
+        "api_path": "reel.clips[i]",
+        "notes": (
+            "Properties: .name (PyAttribute — use str()), .duration, .width, .height, "
+            ".versions. Name returns PyAttribute object, NOT a plain string — "
+            "clip.name == 'shot_01' is ALWAYS False. Use str(clip.name) == 'shot_01'."
+        ),
+    },
+    {
+        "concept": "flame entity: Desktop",
+        "api_layer": "python_api",
+        "entity_type": "Desktop",
+        "tool": "list_desktop_reels",
+        "api_path": "workspace.desktop",
+        "notes": (
+            "Properties: .reel_groups, .width, .height. "
+            "The desktop is the visual workspace area in Flame. "
+            "Contains reel groups (which contain reels) and batch groups."
+        ),
+    },
+    {
+        "concept": "flame entity: ReelGroup",
+        "api_layer": "python_api",
+        "entity_type": "ReelGroup",
+        "tool": "list_desktop_reels",
+        "api_path": "desktop.reel_groups[i]",
+        "notes": (
+            "Properties: .name, .reels. "
+            "A ReelGroup is a visual container on the Desktop that holds Reels."
+        ),
+    },
+    {
+        "concept": "flame entity: BatchGroup",
+        "api_layer": "python_api",
+        "entity_type": "BatchGroup",
+        "tool": "list_batch_groups",
+        "api_path": "desktop.batch_groups[i]",
+        "notes": (
+            "Properties: .name, .nodes, .reels. "
+            "Contains Batch nodes (compositing graph). "
+            "Rendering MUST use flame.schedule_idle_event() — never call "
+            "flame.batch.render() directly."
+        ),
+    },
+    {
+        "concept": "flame entity: Node",
+        "api_layer": "python_api",
+        "entity_type": "Node",
+        "tool": "execute_python",
+        "api_path": "batch_group.nodes[i]",
+        "notes": (
+            "Properties: .name (PyAttribute — use str()), .type, .attributes, "
+            ".sockets, .input_sockets, .output_sockets. "
+            "Common node types: 'Write File', 'Read File', 'Action', 'Resize'."
+        ),
+    },
+    {
+        "concept": "flame entity: Sequence",
+        "api_layer": "python_api",
+        "entity_type": "Sequence",
+        "tool": "execute_python",
+        "api_path": "clip (via timeline) or reel.sequences[i]",
+        "notes": (
+            "Properties: .versions, .current_version. "
+            "A Sequence contains Versions, each with Tracks and Segments. "
+            "Export/render MUST use flame.schedule_idle_event()."
+        ),
+    },
+    {
+        "concept": "flame entity: Segment",
+        "api_layer": "python_api",
+        "entity_type": "Segment",
+        "tool": "execute_python",
+        "api_path": "sequence.versions[v].tracks[t].segments[s]",
+        "notes": (
+            "Properties: .name, .record_in, .record_out, .record_duration, "
+            ".source_in, .source_out, .file_path. "
+            "Deep in the hierarchy: Sequence → Version → Track → Segment."
+        ),
+    },
+    {
+        "concept": "flame entity: Selected items",
+        "api_layer": "dedicated_tool",
+        "entity_type": "Selection",
+        "tool": "get_selected_clips",
+        "api_path": "flame.media_panel.selected_entries",
+        "notes": (
+            "Returns a list of mixed types (clips, sequences, reels). "
+            "CRITICAL: flame.selection does NOT exist — raises AttributeError. "
+            "Always use flame.media_panel.selected_entries or the dedicated tool."
+        ),
+    },
+
     # ── Common mistakes / gotchas ────────────────────────────────────────────
     {
         "concept": "flame.selection does not exist",
@@ -460,6 +609,41 @@ CONCEPT_MAP: list[dict[str, str]] = [
         ),
     },
 ]
+
+# ---------------------------------------------------------------------------
+# Critical API behaviors — structured reference block
+# ---------------------------------------------------------------------------
+# These are the most common traps in Flame's Python API.  The resolve_concept
+# tool appends relevant behaviors when the matched entry has an entity_type
+# that appears in a behavior's applies_to list.
+
+CRITICAL_BEHAVIORS: list[dict] = [
+    {
+        "id": "str_wrap",
+        "summary": "Name attributes are NOT strings — wrap with str()",
+        "applies_to": ["Clip", "Reel", "Library", "Node"],
+        "example": "name = str(clip.name)  # NOT clip.name directly",
+    },
+    {
+        "id": "projects_not_iterable",
+        "summary": "flame.projects is NOT iterable, NOT subscriptable",
+        "applies_to": ["Project"],
+        "example": "project = flame.projects.current_project  # NOT flame.projects[0]",
+    },
+    {
+        "id": "no_name_subscript",
+        "summary": "Collections are index-accessible but NOT name-subscriptable",
+        "applies_to": ["Library", "Reel"],
+        "example": "lib = workspace.libraries[0]  # NOT workspace.libraries['MyLib']",
+    },
+    {
+        "id": "schedule_idle_event",
+        "summary": "All export/render MUST use flame.schedule_idle_event()",
+        "applies_to": ["Clip", "Sequence", "BatchGroup"],
+        "example": "flame.schedule_idle_event(do_export)  # NOT do_export() directly",
+    },
+]
+
 
 # Required keys for validation
 _REQUIRED_KEYS = frozenset({"concept", "api_layer", "tool", "api_path", "notes"})

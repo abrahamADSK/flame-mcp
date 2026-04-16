@@ -16,6 +16,7 @@ import pytest
 
 from flame_mcp.concept_map import (
     CONCEPT_MAP,
+    CRITICAL_BEHAVIORS,
     _REQUIRED_KEYS,
     resolve_concept,
 )
@@ -223,3 +224,106 @@ class TestResolveConceptResultStructure:
         """No-match result must be exactly None, not an empty dict."""
         result = resolve_concept("xyzzy plugh qwfp")
         assert result is None
+
+
+# ── Entity hierarchy entries ──────────────────────────────────────────────
+
+
+_EXPECTED_ENTITY_TYPES = {
+    "Project", "Workspace", "Library", "Reel", "Clip",
+    "Desktop", "ReelGroup", "BatchGroup", "Node",
+    "Sequence", "Segment", "Selection",
+}
+
+
+class TestEntityHierarchy:
+    """Verify the Flame Object Model entity entries from Section 3.1."""
+
+    def test_entity_entries_exist(self):
+        """All 12 entity types have dedicated entries in the concept map."""
+        entity_types_in_map = {
+            e.get("entity_type") for e in CONCEPT_MAP if e.get("entity_type")
+        }
+        missing = _EXPECTED_ENTITY_TYPES - entity_types_in_map
+        assert not missing, f"Missing entity types: {missing}"
+
+    def test_resolve_concept_returns_entity(self):
+        """resolve_concept('Library') returns an entry with entity_type."""
+        result = resolve_concept("flame entity: Library")
+        assert result is not None
+        assert result.get("entity_type") == "Library"
+        assert "libraries" in result["api_path"].lower()
+
+    def test_resolve_clip_entity(self):
+        """resolve_concept for Clip returns hierarchy path + str() note."""
+        result = resolve_concept("flame entity: Clip")
+        assert result is not None
+        assert result.get("entity_type") == "Clip"
+        assert "str()" in result["notes"] or "PyAttribute" in result["notes"]
+
+    def test_resolve_sequence_entity(self):
+        """resolve_concept for Sequence returns timeline hierarchy."""
+        result = resolve_concept("flame entity: Sequence")
+        assert result is not None
+        assert result.get("entity_type") == "Sequence"
+        assert "versions" in result["notes"].lower()
+
+    def test_resolve_batch_group_entity(self):
+        """resolve_concept for BatchGroup returns desktop path."""
+        result = resolve_concept("flame entity: BatchGroup")
+        assert result is not None
+        assert result.get("entity_type") == "BatchGroup"
+        assert "schedule_idle_event" in result["notes"]
+
+    def test_entity_type_field_values(self):
+        """All entity_type values are valid Flame class names."""
+        for entry in CONCEPT_MAP:
+            et = entry.get("entity_type")
+            if et is not None:
+                assert et in _EXPECTED_ENTITY_TYPES, (
+                    f"Unknown entity_type '{et}' in concept '{entry['concept']}'"
+                )
+
+
+# ── Critical behaviors ────────────────────────────────────────────────────
+
+
+class TestCriticalBehaviors:
+    """Verify the CRITICAL_BEHAVIORS structured reference block."""
+
+    def test_critical_behaviors_complete(self):
+        """All 4 critical behaviors are present."""
+        assert len(CRITICAL_BEHAVIORS) == 4
+        ids = {b["id"] for b in CRITICAL_BEHAVIORS}
+        assert ids == {"str_wrap", "projects_not_iterable", "no_name_subscript", "schedule_idle_event"}
+
+    def test_behavior_structure(self):
+        """Each behavior has required keys."""
+        for b in CRITICAL_BEHAVIORS:
+            assert "id" in b
+            assert "summary" in b
+            assert "applies_to" in b
+            assert isinstance(b["applies_to"], list)
+            assert len(b["applies_to"]) > 0
+            assert "example" in b
+
+    def test_str_wrap_applies_to_clip(self):
+        """str_wrap behavior applies to Clip."""
+        b = next(b for b in CRITICAL_BEHAVIORS if b["id"] == "str_wrap")
+        assert "Clip" in b["applies_to"]
+
+    def test_schedule_idle_applies_to_batch(self):
+        """schedule_idle_event behavior applies to BatchGroup."""
+        b = next(b for b in CRITICAL_BEHAVIORS if b["id"] == "schedule_idle_event")
+        assert "BatchGroup" in b["applies_to"]
+
+    def test_all_applies_to_reference_valid_entities(self):
+        """Every entity referenced in applies_to exists in entity map."""
+        entity_types_in_map = {
+            e.get("entity_type") for e in CONCEPT_MAP if e.get("entity_type")
+        }
+        for b in CRITICAL_BEHAVIORS:
+            for et in b["applies_to"]:
+                assert et in entity_types_in_map, (
+                    f"Behavior '{b['id']}' references '{et}' but no entity entry exists"
+                )

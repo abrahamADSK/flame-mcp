@@ -1759,7 +1759,7 @@ def resolve_concept(query: str) -> str:
         query: Natural-language description of the operation, e.g.
                "list all libraries", "delete a clip", "browse wiretap tree"
     """
-    from flame_mcp.concept_map import resolve_concept as _resolve
+    from flame_mcp.concept_map import resolve_concept as _resolve, CRITICAL_BEHAVIORS
     _track_dedicated()
     match = _resolve(query)
     if match is None:
@@ -1770,11 +1770,26 @@ def resolve_concept(query: str) -> str:
     lines = [
         f"✅ Concept: {match['concept']}",
         f"   API layer : {match['api_layer']}",
+    ]
+    if match.get('entity_type'):
+        lines.append(f"   Entity    : {match['entity_type']}")
+    lines.extend([
         f"   Tool      : {match['tool']}",
         f"   API path  : {match['api_path']}",
-    ]
+    ])
     if match.get('notes'):
         lines.append(f"   Notes     : {match['notes']}")
+
+    # Surface critical API behaviors relevant to this entity type
+    entity_type = match.get('entity_type')
+    if entity_type:
+        relevant = [b for b in CRITICAL_BEHAVIORS if entity_type in b['applies_to']]
+        if relevant:
+            lines.append("\n⚠️  Critical API behaviors:")
+            for b in relevant:
+                lines.append(f"   - {b['summary']}")
+                lines.append(f"     Example: {b['example']}")
+
     return '\n'.join(lines)
 
 
