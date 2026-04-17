@@ -54,6 +54,10 @@ rag/failed.json
 docs/transcripts/
 docs/ocr_frames/
 
+# Local learning material — Autodesk Flame 2027 Help web transcriptions
+# Used locally to learn new API features; not part of the codebase
+flame2027_docs/
+
 # Phase D — generated patterns file starts as local-only until reviewed
 # docs/flame_youtube_patterns.md  # uncomment to exclude until reviewed
 
