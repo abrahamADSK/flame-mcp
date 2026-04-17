@@ -51,11 +51,12 @@ except ImportError:
 # API paths that contaminate the knowledge base and cause future failures.
 
 WRITE_ALLOWED_MODELS = {
-    "claude-opus",        # any Opus version (opus-4-5, opus-4-6, future…)
-    "claude-sonnet",      # any Sonnet version (sonnet-4-5, sonnet-4-6, future…)
-    "claude-sonnet-4",    # explicit prefix for Sonnet 4.x family
-    "claude-sonnet-4-6",  # explicit current release
-    "claude-opus-4-5",    # Opus 4.5
+    # Forward-compatible prefixes — any Opus / Sonnet release satisfies these.
+    "claude-opus",
+    "claude-sonnet",
+    # Explicit current releases (canonical source: ~/Projects/.external_versions.yml).
+    "claude-sonnet-4-6",
+    "claude-opus-4-7",
 }
 
 
@@ -211,7 +212,16 @@ def _validate(output: str, required: list[str]) -> str:
 
 
 def _rating(tokens: int) -> str:
-    """Return an emoji rating based on token count for a single call."""
+    """Return an emoji rating based on token count for a single call.
+
+    Suppressed for local/free backends (ollama, ollama_mac, ollama_cloud):
+    there are no rate limits or per-token costs to warn about, so showing
+    🟡 / 🔴 is noise. The README documents this behaviour in the
+    "Token cost warnings" section.
+    """
+    backend = _get_config().get("backend", "anthropic")
+    if backend.startswith("ollama"):
+        return ""
     if tokens < 500:
         return "🟢 low"
     elif tokens < 2000:

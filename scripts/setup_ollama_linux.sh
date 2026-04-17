@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# setup_linux.sh
-# ==============
+# setup_ollama_linux.sh
+# =====================
 # Run this on the Linux machine (Rocky 9 / Ubuntu / Debian) that will host
-# the Ollama server for the Flame MCP bridge.
+# the Ollama server for the Flame MCP bridge. NOT the Mac installer — see
+# install.sh in the repo root for that.
 #
 # What it does:
 #   1. Installs Ollama (if not already present)
@@ -14,7 +15,7 @@
 #   6. Prints the URL to paste into the Mac's install.sh
 #
 # Usage:
-#   bash setup_linux.sh
+#   bash setup_ollama_linux.sh
 #
 # Requirements:
 #   - NVIDIA GPU with drivers installed  (check: nvidia-smi)

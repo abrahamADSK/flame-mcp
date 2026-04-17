@@ -1,0 +1,260 @@
+# Cross-cutting concept registry for flame-mcp.
+#
+# Purpose: declare every load-bearing concept that is replicated across code,
+# docs, configs, or external systems, together with a machine-checkable
+# invariant. The invariant is evaluated by `python scripts/verify_concepts.py`
+# and enforced by the pre-commit hook.
+#
+# Soft-launch mode: while `strict: false`, drifts are reported but commits are
+# NOT blocked. Flip to `strict: true` after all known drifts are resolved.
+#
+# Schema reference:
+#   schema_version : int
+#   repo           : str
+#   strict         : bool
+#   concepts       : mapping of <concept_name> -> concept definition
+#
+# Concept definition:
+#   description    : short human explanation (1 line)
+#   source_of_truth: optional pointer to the canonical location
+#   mirrors        : optional list of doc/config locations that replicate it
+#   invariants     : list of checks (see scripts/invariant_types.py)
+#
+# Each invariant has:
+#   id    : stable identifier, shown in the report
+#   type  : one of {tool_count, subset, file_exists, version_match,
+#                   claim_verifies, review_expiry}
+#   plus the type-specific parameters documented in invariant_types.py.
+
+schema_version: 1
+repo: flame-mcp
+
+# Soft-launch: report drift, do not block commits.
+# After Paso 2 resolves the 10 known drifts, flip to true.
+strict: false
+
+# Registry starts empty. Concepts are added TDD-style in Paso 2:
+#   1. Declare the concept + invariant here.
+#   2. Run `python scripts/verify_concepts.py` → should FAIL (drift confirmed).
+#   3. Fix the drift in code / docs.
+#   4. Run `python scripts/verify_concepts.py` → should PASS.
+#   5. Commit the three changes together (code fix + doc fix + registry entry).
+
+concepts:
+
+  mcp_tool_inventory:
+    description: >
+      @mcp.tool()-decorated functions in server.py must match the count
+      declared in the README heading ("## MCP Tools (N)") and each function
+      name must appear in the README tool table (bidirectional).
+    source_of_truth:
+      file: src/flame_mcp/server.py
+      symbol: "@mcp.tool() decorators"
+    mirrors:
+      - file: README.md
+        section: "## MCP Tools"
+        anchors: [mcp_tool_count, mcp_tool_table]
+      - file: install.sh
+        kind: generated  # auto-extracted via ast.parse — no drift possible
+    invariants:
+
+      - id: readme_tool_count_matches_code
+        type: tool_count
+        code_file: src/flame_mcp/server.py
+        decorator: mcp.tool
+        doc_file: README.md
+        concept_id: mcp_tool_count
+
+      - id: readme_tool_names_bidirectional
+        type: subset
+        direction: bidirectional
+        a_source:
+          type: ast_decorator_functions
+          file: src/flame_mcp/server.py
+          decorator: mcp.tool
+        b_source:
+          type: anchor_list
+          file: README.md
+          concept_id: mcp_tool_table
+          item_pattern: '`([a-z_][a-z0-9_]*)`'
+
+  llm_models_inventory:
+    description: >
+      AVAILABLE_MODELS in hooks/flame_mcp_bridge.py is the canonical source
+      of model IDs exposed in the chat widget's selector. README.md's backend/
+      model table must list every one of them (and vice versa). CLAUDE.md is
+      audited separately (next drift).
+    source_of_truth:
+      file: hooks/flame_mcp_bridge.py
+      symbol: AVAILABLE_MODELS
+    mirrors:
+      - file: README.md
+        section: "Model selector dropdown"
+        anchors: [llm_backend_table]
+    invariants:
+
+      - id: readme_models_bidirectional
+        type: subset
+        direction: bidirectional
+        a_source:
+          type: ast_tuple_list_column
+          file: hooks/flame_mcp_bridge.py
+          symbol: AVAILABLE_MODELS
+          column: 1          # model ID column
+        b_source:
+          type: anchor_list
+          file: README.md
+          concept_id: llm_backend_table
+          # Match any backtick-wrapped identifier that starts with a letter
+          # and may contain digits / dots / colons / dashes (model IDs shape).
+          item_pattern: '`([a-z][a-z0-9._:-]+)`'
+
+  anthropic_models:
+    description: >
+      Anthropic model IDs hardcoded in flame-mcp code must match the
+      "current" block in ~/Projects/.external_versions.yml, and that block
+      must have been reviewed within its expiry_days (default 14).
+      Forces periodic human check against the Anthropic model catalogue.
+    source_of_truth:
+      file: ~/Projects/.external_versions.yml
+      key: anthropic_models.current
+    mirrors:
+      - file: hooks/flame_mcp_bridge.py
+        symbol: AVAILABLE_MODELS (rows where backend == "anthropic")
+      - file: src/flame_mcp/server.py
+        symbol: WRITE_ALLOWED_MODELS
+    invariants:
+
+      - id: anthropic_model_review_fresh
+        type: review_expiry
+        file: .external_versions.yml
+        key: anthropic_models
+
+      - id: bridge_anthropic_models_in_catalogue
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: ast_tuple_list_column
+          file: hooks/flame_mcp_bridge.py
+          symbol: AVAILABLE_MODELS
+          column: 1
+          filter_column: 2
+          filter_value: anthropic
+        b_source:
+          type: yaml_values
+          file: .external_versions.yml
+          key: anthropic_models.current
+
+  modelfile_references:
+    description: >
+      Documentation must not reference Modelfile filenames (e.g.
+      `Modelfile.qwen35mcp`) that are not tracked in the repo. The bridge
+      handles num_ctx at runtime; custom Modelfiles are unnecessary.
+    invariants:
+      - id: no_dangling_modelfile_reference
+        type: claim_verifies
+        claim: "No '-f Modelfile.<name>' references in README (the bridge overrides num_ctx at runtime)"
+        code_grep:
+          regex: '-f Modelfile\.'
+          file_pattern: 'README.md'
+        expected: not_found
+
+  pyproject_version:
+    description: >
+      pyproject.toml version field must match the latest annotated git tag.
+      Prevents the release-vs-install drift seen at Chat 43 (code at v1.2.1
+      while pyproject stuck at v0.1.0, breaking `pip show` and `pip install -e .`).
+    source_of_truth:
+      file: git
+      command: "git describe --tags --abbrev=0"
+    mirrors:
+      - file: pyproject.toml
+        field: '[project].version'
+    invariants:
+      - id: pyproject_matches_latest_tag
+        type: version_match
+        a:
+          source: file_regex
+          file: pyproject.toml
+          pattern: '^version\s*=\s*"([^"]+)"'
+        b:
+          source: command
+          cmd: "git describe --tags --abbrev=0 | sed 's/^v//'"
+
+  single_install_script_at_root:
+    description: >
+      Ecosystem rule (Chat 34, ratified Chat 44): each MCP repo has exactly
+      ONE install script at the repo root (`install.sh`). Helper scripts that
+      install something OTHER than the MCP itself (e.g. Ollama on Linux) live
+      under scripts/ with an explicit name.
+    source_of_truth:
+      file: ~/Projects/.ecosystem_concepts.yml
+      key: single_install_script_per_repo
+    invariants:
+      - id: one_install_script_at_root
+        type: glob_count
+        patterns:
+          - "install*.sh"
+          - "setup*.sh"
+        expected: 1
+
+  undo_chat_command:
+    description: >
+      The `/undo` chat command in the flame-mcp Qt widget calls
+      flame.execute_shortcut("Undo"). README documents this; the
+      implementation must exist.
+    source_of_truth:
+      file: hooks/flame_mcp_bridge.py
+      symbol: "/undo handler"
+    invariants:
+      - id: undo_shortcut_implementation_present
+        type: claim_verifies
+        claim: "/undo chat command invokes flame.execute_shortcut('Undo') in the bridge"
+        code_grep:
+          regex: 'execute_shortcut\([^)]*Undo'
+          file_pattern: 'hooks/flame_mcp_bridge.py'
+        expected: found
+
+  token_cost_warnings_suppressed_on_ollama:
+    description: >
+      README claims token-cost warnings (🟡 🔴) are suppressed for Ollama
+      backends. Implementation: src/flame_mcp/server.py::_rating returns ""
+      when backend startswith 'ollama'.
+    source_of_truth:
+      file: src/flame_mcp/server.py
+      symbol: _rating
+    invariants:
+      - id: rating_skips_ollama
+        type: claim_verifies
+        claim: "_rating() returns empty string for Ollama backends"
+        code_grep:
+          regex: 'backend.*startswith.*ollama'
+          file_pattern: 'src/flame_mcp/server.py'
+        expected: found
+
+  rag_corpus_docs:
+    description: >
+      The 'Knowledge base' table in README.md must list exactly the
+      `.md` files present as metadata.source in rag/corpus.json.
+      Chunk count shown in the table is illustrative ("~N") and not
+      enforced, only the filename inventory is.
+    source_of_truth:
+      file: rag/corpus.json
+      field: metadata.source
+    mirrors:
+      - file: README.md
+        anchors: [rag_corpus_docs]
+    invariants:
+      - id: readme_docs_match_corpus
+        type: subset
+        direction: bidirectional
+        a_source:
+          type: json_array_field
+          file: rag/corpus.json
+          field: metadata.source
+        b_source:
+          type: anchor_list
+          file: README.md
+          concept_id: rag_corpus_docs
+          # Match any backtick-wrapped .md filename inside the anchored block.
+          item_pattern: '`([A-Za-z][A-Za-z0-9_./-]+\.md)`'

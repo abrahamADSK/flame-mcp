@@ -143,6 +143,21 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     errors. Call `session_stats()` when the user asks about efficiency or after
     long multi-step tasks.
 
+15. **Concept registry — read before cross-cutting edits.**
+    Before editing any of:
+      - `src/flame_mcp/server.py` (tool decorators, WRITE_ALLOWED_MODELS, RAG threshold)
+      - `hooks/flame_mcp_bridge.py` (AVAILABLE_MODELS, DEFAULT_MODEL, port, socket path)
+      - `README.md` (tool table, backend table, knowledge-base list)
+      - `pyproject.toml` version, `install.sh`, `CHANGELOG.md`
+
+    Read `.concepts.yml` at the repo root. It lists every load-bearing
+    cross-cutting concept together with its mirrors and machine-checkable
+    invariants. Any change to a source-of-truth must update the declared
+    mirrors IN THE SAME COMMIT; otherwise `scripts/verify_concepts.py` and
+    the pre-commit hook will block the push. Drift (not code bugs) is the
+    most common failure mode that a fresh Claude session fixes wrongly — the
+    registry exists to prevent exactly that.
+
 ---
 
 ## Flame Environment
@@ -166,11 +181,12 @@ flame-mcp supports multiple LLM backends via the model selector widget in the Fl
 - **Context window**: 262K tokens
 - **Memory**: 6.6 GB (Q4_K_M)
 - **Multimodal**: vision-capable
-- **Modelfile**: `qwen3.5-mcp` is a custom Modelfile derived from `qwen3.5:9b` with
-  `num_ctx 8192`, `temperature 0.7`, `top_p 0.8`, `top_k 20`.
-  Available on glorfindel and Mac M5 Pro.
-- **Mac 24GB fallback**: `qwen3.5:4b` (direct, no custom Modelfile)
-- **Ollama API note**: requires `"think": false` in each request to disable thinking mode.
+- **Tag name**: `qwen3.5-mcp` is an alias of `qwen3.5:9b` created via
+  `ollama cp qwen3.5:9b qwen3.5-mcp`. No custom Modelfile is needed — the
+  bridge forces `num_ctx=24576` at runtime (pre-flight POST to
+  `/api/generate`), because Ollama's Anthropic-compat endpoint ignores
+  Modelfile settings. Available on glorfindel and Mac M5 Pro.
+- **Mac 24GB fallback**: `qwen3.5:4b` (direct, no alias needed).
 
 ### Available backends
 | Backend | Label in combo | URL | Notes |

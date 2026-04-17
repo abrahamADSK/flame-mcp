@@ -442,7 +442,7 @@ ok "Tool auto-approval configured — no permission prompts on first use."
 # Flame + this bridge run on THIS Mac.
 # Ollama runs on a SEPARATE Linux machine (RTX 3090 etc.) on the same LAN.
 # This step stores the Linux box's IP/port in config.json so the bridge can
-# reach it. To set up the Linux machine itself, run setup_linux.sh there.
+# reach it. To set up the Linux machine itself, run scripts/setup_ollama_linux.sh there.
 echo ""
 echo -e "${YELLOW}─── Step 9: Ollama server setup (optional) ──────────────────────${NC}"
 echo "  Ollama must be installed on your Linux machine, NOT on this Mac."
@@ -501,9 +501,9 @@ PYEOF
 
     ok "Ollama backend configured."
     echo ""
-    echo "  To set up the Linux machine, copy setup_linux.sh and run it there:"
-    echo "    scp $SCRIPT_DIR/setup_linux.sh user@<linux-ip>:~/"
-    echo "    ssh user@<linux-ip> 'bash setup_linux.sh'"
+    echo "  To set up the Linux machine, copy scripts/setup_ollama_linux.sh and run it there:"
+    echo "    scp $SCRIPT_DIR/scripts/setup_ollama_linux.sh user@<linux-ip>:~/"
+    echo "    ssh user@<linux-ip> 'bash setup_ollama_linux.sh'"
 
 else
     echo "  Skipped. Anthropic cloud models remain active."

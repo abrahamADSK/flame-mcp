@@ -50,11 +50,17 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** �
   - macOS: `brew install ollama && brew services start ollama`
   - Linux: see https://ollama.com/download/linux (systemd)
   - Verify: `ollama --version`
-- Create the `qwen3.5-mcp` model (required for Ollama backends):
+- Create the `qwen3.5-mcp` tag (required — `AVAILABLE_MODELS` in
+  `hooks/flame_mcp_bridge.py` expects this exact name):
   ```bash
   ollama pull qwen3.5:9b
-  ollama create qwen3.5-mcp -f Modelfile.qwen35mcp
+  ollama cp qwen3.5:9b qwen3.5-mcp
   ```
+  The bridge forces `num_ctx=24576` at runtime via a pre-flight POST to
+  Ollama's native `/api/generate` endpoint, so a custom Modelfile with
+  `PARAMETER num_ctx` is **not needed** — the Anthropic-compat endpoint
+  ignores Modelfile settings anyway. If you want different defaults on
+  `num_ctx` for some reason, see the advanced Ollama setup below.
 - See [Ollama setup](#ollama-setup-optional) below for backend options
 
 > **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5).
@@ -162,16 +168,17 @@ In addition to natural language, the chat input accepts these special commands:
 
 > **Tip:** `/undo` and `/wrong` can be combined. If Claude deleted something it shouldn't have, type `/undo N` first to reverse the Flame action, then `/wrong <reason>` so it doesn't repeat the mistake.
 
-**Model selector dropdown** — four backends, switch without leaving Flame:
+**Model selector dropdown** — backends defined in `hooks/flame_mcp_bridge.py :: AVAILABLE_MODELS`, switch without leaving Flame:
 
-| Backend | Model | Requires | Works offline? |
-|---------|-------|----------|----------------|
-| `anthropic` | Sonnet 4.6, Sonnet 4.5, Haiku 4.5 | Claude account | ✗ |
-| `ollama` | qwen3-coder 30B | gpu-server on LAN + GPU | ✗ |
-| `ollama_cloud` ☁ | qwen3-coder 480B | Ollama on Mac + internet | ✗ |
-| `ollama_mac` 🍎 | qwen2.5-coder 7B | Ollama on Mac | ✓ ⚠️ |
+<!-- concept:llm_backend_table start -->
+| Backend | Models available (model IDs in backticks) | Requires | Works offline? |
+|---------|-------------------------------------------|----------|----------------|
+| anthropic | Claude Sonnet 4.6 (`claude-sonnet-4-6`), Claude Opus 4.7 (`claude-opus-4-7`) | Anthropic API key | ✗ |
+| ollama | Qwen3.5 9B (`qwen3.5-mcp`), GLM-4.7 Flash (`glm-4.7-flash`) | gpu-server on LAN + GPU, LAN reachable at `config.json → ollama_url` | ✗ |
+| ollama_mac 🍎 | Qwen3.5 9B (`qwen3.5-mcp`), Qwen3.5 4B (`qwen3.5:4b`) | Ollama on Mac (`brew install ollama`), models pulled locally | ✓ |
+<!-- concept:llm_backend_table end -->
 
-Selection is persisted to `~/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost → ☁` / `localhost` for the Mac backends.
+Selection is persisted to `~/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost` for `ollama_mac`. Anthropic model IDs are reviewed every 14 days against the [Anthropic model catalogue](https://docs.anthropic.com/claude/docs/models-overview) via `~/Projects/.external_versions.yml` (enforced by `verify_concepts.py`).
 
 ### 3. Claude Code (terminal)
 
@@ -192,8 +199,11 @@ Then talk naturally:
 
 ---
 
-## MCP Tools (18)
+<!-- concept:mcp_tool_count start -->
+## MCP Tools (26)
+<!-- concept:mcp_tool_count end -->
 
+<!-- concept:mcp_tool_table start -->
 | Tool | Description |
 |------|-------------|
 | `execute_python` | Execute arbitrary Python code inside Flame with full API access |
@@ -206,14 +216,23 @@ Then talk naturally:
 | `list_all_projects` | List all Flame projects available on this workstation |
 | `get_clip_metadata` | Get detailed metadata for a specific clip (resolution, frame rate, duration, etc.) |
 | `get_selected_clips` | Return the clips currently selected in the Flame media panel or desktop |
+| `get_source_path` | Get the filesystem source path of a clip, reel, or library |
+| `collect_media_paths` | Collect filesystem paths for all clips in a library or reel |
+| `get_write_node_settings` | Get the Write File node settings from the current Batch setup |
 | `flame_wiretap_tree` | Inspect the Wiretap IFFFS node tree at a given path |
 | `get_flame_version` | Return the running Flame version string |
 | `ping` | Check whether the bridge to Autodesk Flame is reachable |
 | `search_flame_docs` | Semantic RAG search over Flame API documentation — call before execute_python |
+| `resolve_concept` | Fast static lookup: map a user concept to the correct API path and tool |
 | `learn_pattern` | Add a new working pattern to FLAME_API.md and rebuild the index |
 | `session_stats` | Show token usage and RAG savings for the current session |
 | `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
 | `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
+| `create_sequence` | Create a new empty sequence in a Flame library/reel |
+| `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
+| `operation_history` | Show the last N execute_python operations recorded this session |
+| `undo_last_operation` | Undo the last undoable execute_python operation |
+<!-- concept:mcp_tool_table end -->
 
 ### Tool workflow
 
@@ -234,17 +253,26 @@ session_stats()                   ← show token summary
 
 The system maintains a local semantic search index (`rag/index/`) built from all documents in the `docs/` folder plus `FLAME_API.md`. Before every `execute_python` call, Claude searches this index to find the correct API pattern — avoiding guesswork and saving tokens.
 
-### Knowledge base (~340 chunks total)
+### Knowledge base (≈800 chunks across 14 documents)
 
+<!-- concept:rag_corpus_docs start -->
 | File | Chunks | Content |
 |---|---|---|
-| `FLAME_API.md` | ~73 | Core Flame Python API — PyClip, PyReel, PyBatch, PyLibrary, connectors, markers, PyTime, import/export code samples. Auto-extended by `learn_pattern`. |
-| `docs/flame_advanced_api.md` | ~78 | Action node (PyActionNode, output types, FBX import), Color Management (CDL/LUT/CTF via PyClrMgmtNode), Exporter (safe schedule_idle_event pattern), MediaHub, Conform/AAF workflow patterns, Timeline FX/BFX, Python hooks reference, operator-phrase → API lookup table. |
-| `docs/flame_api_full.md` | ~71 | Extended API reference — PySequence, PyTrack, PyVersion, PyMarker, PyProject, PyWorkspace, batch nodes, render pipeline, archive. |
-| `docs/flame_segment_timeline_api.md` | ~61 | Full PySegment API (trim, slip, create_effect, connected_segments), corrected PyClip.render() signature, PyBatch.create_batch_group(), PySequence methods, post-conform batch group creation patterns. |
-| `docs/flame_community_workflows.md` | ~23 | Logik Forum operator terminology → API mapping. Conform jargon, batch compositing terms, render/delivery slang, 35-row operator→API lookup table. |
-| `docs/flame_cookbook_official.md` | ~22 | Official Autodesk Python API code samples — clip import/reformat/render, Timeline FX create/bypass/save/load, batch group creation, node wiring, multi-pass render, Action compass nodes. |
-| `docs/flame_vocabulary.md` | ~8 | Flame-specific terminology glossary — how operators refer to things vs. the Python API names. |
+| `FLAME_API.md` | ~295 | Core Flame Python API — PyClip, PyReel, PyBatch, PyLibrary, connectors, markers, PyTime, import/export code samples. Auto-extended by `learn_pattern`. |
+| `flame_advanced_api.md` | ~78 | Action node (PyActionNode, output types, FBX import), Color Management (CDL/LUT/CTF), Exporter (safe schedule_idle_event pattern), MediaHub, Conform/AAF workflow, Timeline FX/BFX, Python hooks reference. |
+| `flame_segment_timeline_api.md` | ~61 | Full PySegment API (trim, slip, create_effect, connected_segments), corrected PyClip.render() signature, PyBatch.create_batch_group(), PySequence methods, post-conform batch group creation patterns. |
+| `flame_code_samples.md` | ~46 | Extracted Autodesk official zip samples — clip ops, render, Timeline FX wiring, Action compass nodes. |
+| `flame_youtube_patterns.md` | ~60 | Patterns extracted from Logik-TV / YouTube tutorials (OCR + transcript mining). |
+| `flame_community_workflows.md` | ~23 | Logik Forum operator terminology → API mapping. Conform jargon, batch compositing terms, render/delivery slang. |
+| `flame_cookbook_official.md` | ~22 | Official Autodesk Python API code samples. |
+| `flame_reference_guide.md` | ~30 | Troubleshooting + env-setup reference. |
+| `flame_ocr_patterns.md` | ~15 | OCR-extracted patterns (v1 pipeline). |
+| `flame_ocr_patterns_v2.md` | ~23 | OCR-extracted patterns (v2 pipeline). |
+| `flame_openclip_patterns.md` | ~8 | OpenCLIP pattern extractor outputs. |
+| `flame_vocabulary.md` | ~8 | Flame-specific terminology glossary — operators vs. the Python API names. |
+| `wiretap_sdk_python_reference.md` | ~76 | Wiretap Python SDK — low-level bridge from `flame` module to the Wiretap server. |
+| `wiretap_cli_reference.md` | ~38 | Wiretap command-line reference — `wiretap_print_tree`, `wiretap_duplicate_node`, etc. |
+<!-- concept:rag_corpus_docs end -->
 
 ### How it learns (3-level system)
 
@@ -366,22 +394,18 @@ sudo systemctl edit ollama --force --full
 #   Environment="OLLAMA_NEW_ENGINE=true"
 sudo systemctl restart ollama
 
-# Pull and create a custom model with the correct context window
-ollama pull qwen3-coder:30b-a3b-q4_K_M
-cat > ~/Modelfile <<'EOF'
-FROM qwen3-coder:30b-a3b-q4_K_M
-PARAMETER num_ctx 24576
-PARAMETER num_keep 4
-EOF
-ollama create qwen3-flame -f ~/Modelfile
+# Pull the two models defined in AVAILABLE_MODELS (hooks/flame_mcp_bridge.py)
+ollama pull qwen3.5:9b
+ollama cp qwen3.5:9b qwen3.5-mcp          # matches the `qwen3.5-mcp` tag
+ollama pull glm-4.7-flash                  # matches the `glm-4.7-flash` tag
 ```
 
 **In the Flame widget:**
-1. Select **qwen3-coder 30B** from the model dropdown
+1. Select **Qwen3.5 9B 🖥** (or **GLM-4.7 Flash 🖥**) from the model dropdown
 2. Enter the server URL (e.g. `http://192.168.1.50:11434`) and press Enter
 3. The combo label updates to show `· gpu-server` confirming the server is saved
 
-> **GPU requirements:** qwen3-coder 30B (Q4_K_M, ~18.5 GB) fits in a 24 GB GPU (e.g. RTX 3090) with a 24K context window. Reduce `num_ctx` if you have less VRAM.
+> **GPU requirements:** Qwen3.5 9B (~6.6 GB Q4_K_M) and GLM-4.7 Flash fit comfortably in a 24 GB GPU (RTX 3090) with `num_ctx=24576` set at runtime by the bridge. The bridge pre-flight overrides Modelfile `num_ctx` on every session (Ollama's Anthropic-compat endpoint ignores it otherwise).
 
 ### Option 2 — Ollama cloud proxy (ollama_cloud backend)
 
