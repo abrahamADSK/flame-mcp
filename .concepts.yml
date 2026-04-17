@@ -109,6 +109,37 @@ concepts:
           # and may contain digits / dots / colons / dashes (model IDs shape).
           item_pattern: '`([a-z][a-z0-9._:-]+)`'
 
+      # install.sh model recommendations must be a subset of AVAILABLE_MODELS
+      # (Ollama-only: the install prompts advise what to pull on the LAN box).
+      - id: install_sh_ollama_models_subset
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: anchor_list
+          file: install.sh
+          concept_id: ollama_gpu_models_install
+          item_pattern: '`([a-z][a-z0-9._:-]+)`'
+        b_source:
+          type: ast_tuple_list_column
+          file: hooks/flame_mcp_bridge.py
+          symbol: AVAILABLE_MODELS
+          column: 1
+
+      # Same check for the Linux-side Ollama setup helper.
+      - id: setup_linux_ollama_models_subset
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: anchor_list
+          file: scripts/setup_ollama_linux.sh
+          concept_id: ollama_gpu_models_linux
+          item_pattern: '`([a-z][a-z0-9._:-]+)`'
+        b_source:
+          type: ast_tuple_list_column
+          file: hooks/flame_mcp_bridge.py
+          symbol: AVAILABLE_MODELS
+          column: 1
+
   anthropic_models:
     description: >
       Anthropic model IDs hardcoded in flame-mcp code must match the

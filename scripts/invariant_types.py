@@ -38,15 +38,28 @@ def _read(path: str | Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def _extract_concept_block(markdown: str, concept_id: str) -> str | None:
-    """Find content between `<!-- concept:<id> start -->` and `<!-- concept:<id> end -->`."""
-    pattern = (
+def _extract_concept_block(text: str, concept_id: str) -> str | None:
+    """Find content between concept start/end markers.
+
+    Supports two comment styles (flexibility across file types):
+        Markdown / HTML : <!-- concept:<id> start --> ... <!-- concept:<id> end -->
+        Shell / Python  : # concept:<id> start             ... # concept:<id> end
+
+    The first matching style wins.
+    """
+    patterns = [
         rf"<!--\s*concept:{re.escape(concept_id)}\s+start\s*-->"
         r"(.*?)"
-        rf"<!--\s*concept:{re.escape(concept_id)}\s+end\s*-->"
-    )
-    match = re.search(pattern, markdown, re.DOTALL)
-    return match.group(1).strip() if match else None
+        rf"<!--\s*concept:{re.escape(concept_id)}\s+end\s*-->",
+        rf"#\s*concept:{re.escape(concept_id)}\s+start\s*\n"
+        r"(.*?)"
+        rf"#\s*concept:{re.escape(concept_id)}\s+end",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    return None
 
 
 def _decorator_name(node) -> str:

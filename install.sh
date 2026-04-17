@@ -470,13 +470,18 @@ if [ -n "$OLLAMA_ADDR" ]; then
     fi
 
     echo ""
-    echo "  Recommended models by GPU VRAM on the Linux server:"
-    echo "    ≥ 20 GB  →  qwen3-coder:30b-a3b  (~18 GB VRAM · ~60 tok/s · best quality)"
-    echo "    ≥ 10 GB  →  qwen2.5-coder:14b    (~10 GB VRAM · ~80 tok/s)"
-    echo "    ≥  6 GB  →  qwen2.5-coder:7b     ( ~5 GB VRAM · ~100 tok/s)"
+    # concept:ollama_gpu_models_install start
+    echo '  Models exposed by AVAILABLE_MODELS (hooks/flame_mcp_bridge.py):'
+    echo '    `qwen3.5-mcp`       -  Qwen3.5 9B (alias of qwen3.5:9b, ~6.6 GB VRAM Q4_K_M)'
+    echo '    `glm-4.7-flash`     -  GLM-4.7 Flash (lightweight, fast)'
+    # concept:ollama_gpu_models_install end
     echo ""
-    read -r -p "  Model to activate [default: qwen3-coder:30b-a3b]: " OLLAMA_MODEL
-    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3-coder:30b-a3b}"
+    echo "  Pull commands on the Linux server (scripts/setup_ollama_linux.sh automates this):"
+    echo "    ollama pull qwen3.5:9b && ollama cp qwen3.5:9b qwen3.5-mcp"
+    echo "    ollama pull glm-4.7-flash"
+    echo ""
+    read -r -p "  Model to activate [default: qwen3.5-mcp]: " OLLAMA_MODEL
+    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5-mcp}"
 
     "$PYTHON_BIN" - <<PYEOF
 import json, os

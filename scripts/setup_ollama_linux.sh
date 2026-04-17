@@ -54,23 +54,29 @@ fi
 RAM_GB=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}' || echo 0)
 echo "     RAM: ${RAM_GB} GB"
 
-# Recommend model
-if   [ "$VRAM_MB" -ge 20000 ] 2>/dev/null; then
-    RECOMMENDED="qwen3-coder:30b"
-    MODEL_INFO="~18 GB VRAM · ~60 tok/s · best quality for Flame scripting"
-elif [ "$VRAM_MB" -ge 10000 ] 2>/dev/null; then
-    RECOMMENDED="qwen2.5-coder:14b"
-    MODEL_INFO="~10 GB VRAM · ~80 tok/s"
+# Recommend model (from AVAILABLE_MODELS in hooks/flame_mcp_bridge.py).
+# concept:ollama_gpu_models_linux start
+# Supported IDs (match AVAILABLE_MODELS in hooks/flame_mcp_bridge.py):
+#   `qwen3.5-mcp`       - Qwen3.5 9B alias of qwen3.5:9b, ~6.6 GB VRAM Q4_K_M
+#   `glm-4.7-flash`     - GLM-4.7 Flash, lightweight and fast
+# concept:ollama_gpu_models_linux end
+if   [ "$VRAM_MB" -ge 10000 ] 2>/dev/null; then
+    RECOMMENDED="qwen3.5-mcp"
+    MODEL_INFO="~6.6 GB VRAM · alias of qwen3.5:9b · good general-purpose"
+    NEEDS_ALIAS="yes"
 elif [ "$VRAM_MB" -ge  6000 ] 2>/dev/null; then
-    RECOMMENDED="qwen2.5-coder:7b"
-    MODEL_INFO="~5 GB VRAM · ~100 tok/s"
-elif [ "$RAM_GB"  -ge    32 ] 2>/dev/null; then
-    RECOMMENDED="qwen2.5-coder:7b"
+    RECOMMENDED="glm-4.7-flash"
+    MODEL_INFO="lightweight, fits in 6 GB VRAM"
+    NEEDS_ALIAS="no"
+elif [ "$RAM_GB"  -ge    16 ] 2>/dev/null; then
+    RECOMMENDED="glm-4.7-flash"
     MODEL_INFO="CPU inference (slow — GPU strongly recommended)"
+    NEEDS_ALIAS="no"
 else
     warn "Insufficient resources detected. Proceeding anyway."
-    RECOMMENDED="qwen2.5-coder:7b"
-    MODEL_INFO="smallest available model"
+    RECOMMENDED="glm-4.7-flash"
+    MODEL_INFO="smallest supported model"
+    NEEDS_ALIAS="no"
 fi
 
 echo ""
@@ -138,14 +144,22 @@ done
 echo ""
 echo -e "${YELLOW}─── Step 4: Pull model ──────────────────────────────────────────${NC}"
 
-ESTIMATED_SIZE="~18 GB"
-[ "$MODEL" = "qwen2.5-coder:14b" ] && ESTIMATED_SIZE="~10 GB"
-[ "$MODEL" = "qwen2.5-coder:7b"  ] && ESTIMATED_SIZE=" ~5 GB"
+ESTIMATED_SIZE="~6.6 GB"
+[ "$MODEL" = "glm-4.7-flash" ] && ESTIMATED_SIZE="~4 GB"
 
 read -r -p "  Pull $MODEL now? ($ESTIMATED_SIZE download) [Y/n] " pull_ans
 if [[ ! "$pull_ans" =~ ^[Nn]$ ]]; then
-    echo "  Running: ollama pull $MODEL"
-    ollama pull "$MODEL"
+    # qwen3.5-mcp is an alias — pull the base model first, then cp to the tag
+    # expected by AVAILABLE_MODELS.
+    if [ "$MODEL" = "qwen3.5-mcp" ] && [ "${NEEDS_ALIAS:-no}" = "yes" ]; then
+        echo "  Running: ollama pull qwen3.5:9b"
+        ollama pull qwen3.5:9b
+        echo "  Running: ollama cp qwen3.5:9b qwen3.5-mcp"
+        ollama cp qwen3.5:9b qwen3.5-mcp
+    else
+        echo "  Running: ollama pull $MODEL"
+        ollama pull "$MODEL"
+    fi
     ok "Model '$MODEL' downloaded and ready."
 else
     echo "  Skipped. Pull it later with:  ollama pull $MODEL"
