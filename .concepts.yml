@@ -246,6 +246,44 @@ concepts:
           file_pattern: 'hooks/flame_mcp_bridge.py'
         expected: found
 
+  release_cadence:
+    description: >
+      Prevent the "18 commits past the last tag" state observed on 2026-04-17.
+      Work should be tagged as a release before the backlog grows unbounded.
+      Thresholds (ecosystem-wide): 10 commits soft warning, 30 commits hard
+      stop. Also flags tags older than 30 days if any commits are pending.
+    source_of_truth:
+      file: git
+      command: "git describe --tags --abbrev=0 && git rev-list --count <tag>..HEAD"
+    invariants:
+      - id: commits_since_last_tag_under_threshold
+        type: commits_since_tag
+        warn_commits: 10
+        max_commits: 30
+        max_age_days: 30
+
+  changelog_tag_coherence:
+    description: >
+      Every `## [X.Y.Z]` section in CHANGELOG.md must correspond to an
+      annotated git tag `vX.Y.Z` (and vice versa, for new tags cut in this
+      repo). Catches mid-release inconsistent states and forgotten tags.
+    source_of_truth:
+      file: CHANGELOG.md
+      plus: "git tag --list 'v*'"
+    invariants:
+      - id: changelog_sections_match_tags
+        type: subset
+        direction: bidirectional
+        a_source:
+          type: file_regex_matches
+          file: CHANGELOG.md
+          # Optional `v` prefix tolerates both Keep-a-Changelog style
+          # (## [1.2.3]) and projects that prefix with v (## [v1.2.3]).
+          pattern: '^## \[v?(\d+\.\d+\.\d+)\]'
+        b_source:
+          type: command_lines
+          cmd: "git tag --list 'v*' | sed 's/^v//'"
+
   token_cost_warnings_suppressed_on_ollama:
     description: >
       README claims token-cost warnings (🟡 🔴) are suppressed for Ollama

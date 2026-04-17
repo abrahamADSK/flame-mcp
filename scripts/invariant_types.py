@@ -287,6 +287,67 @@ def _extract_items(source: dict) -> set[str]:
             if stripped.startswith(("- ", "* ")):
                 items.add(stripped[2:].strip("` \"'"))
         return items
+    if kind == "ast_decorator_args":
+        # For decorators like @app.get("/path") or @app.post("/path"), extract
+        # the positional arg at `arg_index` (default 0). Accepts a list of
+        # decorator names in `decorators` or a single `decorator`. Useful for
+        # FastAPI / Flask route inventories.
+        tree = ast.parse(_read(source["file"]))
+        decorators = source.get("decorators") or [source["decorator"]]
+        arg_index = int(source.get("arg_index", 0))
+        items: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for deco in node.decorator_list:
+                    if isinstance(deco, ast.Call):
+                        name = _decorator_name(deco.func)
+                        if name in decorators and len(deco.args) > arg_index:
+                            arg = deco.args[arg_index]
+                            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                                items.add(arg.value)
+                                break
+        return items
+    if kind == "ast_dict_keys":
+        # For a top-level assignment `SYMBOL = {...}`, return the set of
+        # string keys.
+        tree = ast.parse(_read(source["file"]))
+        target = source["symbol"]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name) and tgt.id == target:
+                        if isinstance(node.value, ast.Dict):
+                            keys: set[str] = set()
+                            for key in node.value.keys:
+                                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                                    keys.add(key.value)
+                            return keys
+                        return set()
+        raise ValueError(f"symbol {target} not found in {source['file']}")
+    if kind == "literal_set":
+        # Hardcoded expected set declared inline in the YAML. Useful as the
+        # truth side of a bidirectional subset when no code or file naturally
+        # holds the authoritative list (e.g. stable preset names).
+        return {str(v) for v in source["values"]}
+    if kind == "file_regex_matches":
+        # Run re.findall across the whole file (MULTILINE on) and return the
+        # set of first-group captures. Useful for scanning CHANGELOG for
+        # `## [X.Y.Z]` version headings without wrapping in an anchor block.
+        text = _read(source["file"])
+        pattern = source["pattern"]
+        return set(re.findall(pattern, text, re.MULTILINE))
+    if kind == "command_lines":
+        # Run a shell command and return each non-empty output line as an
+        # element. Useful for pulling `git tag --list 'v*'` into a set.
+        cmd = source["cmd"]
+        try:
+            out = subprocess.check_output(
+                cmd, shell=True, cwd=REPO_ROOT, text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            return set()
+        return {line.strip() for line in out.splitlines() if line.strip()}
     raise ValueError(f"unknown item-source type: {kind}")
 
 
@@ -441,6 +502,71 @@ def review_expiry(params: dict) -> tuple[bool, str]:
 # Registry
 # --------------------------------------------------------------------------- #
 
+def commits_since_tag(params: dict) -> tuple[bool, str]:
+    """Assert commits accumulated past the latest annotated tag are within
+    cadence thresholds. Prevents silently accumulating 50+ commits without
+    cutting a release.
+
+    params:
+        max_commits   : int   — hard ceiling; exceeded → fail
+        warn_commits  : int   — soft threshold; warns but still passes
+                                (default: half of max_commits)
+        max_age_days  : int|None — if the tag is older than N days AND
+                                any commits are past it, fail
+    """
+    import time
+
+    max_commits = int(params.get("max_commits", 30))
+    warn_commits = int(params.get("warn_commits", max_commits // 2))
+    max_age_days = params.get("max_age_days")
+
+    try:
+        latest_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=REPO_ROOT, text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return True, "no tags yet — release-cadence check skipped"
+
+    try:
+        count = int(subprocess.check_output(
+            ["git", "rev-list", "--count", f"{latest_tag}..HEAD"],
+            cwd=REPO_ROOT, text=True,
+        ).strip())
+    except subprocess.CalledProcessError as e:
+        return False, f"git rev-list failed: {e}"
+
+    if count == 0:
+        return True, f"at tag {latest_tag} (0 commits since)"
+
+    if max_age_days is not None:
+        try:
+            tag_ts = int(subprocess.check_output(
+                ["git", "log", "-1", "--format=%at", latest_tag],
+                cwd=REPO_ROOT, text=True,
+            ).strip())
+            age_days = (time.time() - tag_ts) / 86400
+        except subprocess.CalledProcessError:
+            age_days = 0
+        if age_days > int(max_age_days):
+            return False, (
+                f"tag {latest_tag} is {age_days:.0f}d old with {count} "
+                f"commit(s) pending — consider cutting a release"
+            )
+
+    if count > max_commits:
+        return False, (
+            f"{count} commits since tag {latest_tag} > max_commits={max_commits} "
+            f"— cut a release before the backlog grows further"
+        )
+    if count > warn_commits:
+        return True, (
+            f"{count} commits since tag {latest_tag} (warn_commits={warn_commits}) "
+            f"— consider tagging a release soon"
+        )
+    return True, f"{count} commits since tag {latest_tag} (under thresholds)"
+
+
 def glob_count(params: dict) -> tuple[bool, str]:
     """Assert the number of repo-root files matching any of N glob patterns
     equals the expected value. Useful for ecosystem rules such as
@@ -468,11 +594,12 @@ def glob_count(params: dict) -> tuple[bool, str]:
 
 
 INVARIANT_TYPES = {
-    "tool_count":      tool_count,
-    "subset":          subset,
-    "file_exists":     file_exists,
-    "version_match":   version_match,
-    "claim_verifies":  claim_verifies,
-    "review_expiry":   review_expiry,
-    "glob_count":      glob_count,
+    "tool_count":         tool_count,
+    "subset":             subset,
+    "file_exists":        file_exists,
+    "version_match":      version_match,
+    "claim_verifies":     claim_verifies,
+    "review_expiry":      review_expiry,
+    "glob_count":         glob_count,
+    "commits_since_tag":  commits_since_tag,
 }
