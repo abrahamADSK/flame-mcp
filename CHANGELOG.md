@@ -7,9 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-17
+
+### Added
+- `.concepts.yml` cross-cutting concept registry with 13 machine-checkable invariants
+- `scripts/verify_concepts.py` runner + `scripts/invariant_types.py` (7 invariant types, 6 source types, stdlib + PyYAML only)
+- `.pre-commit-config.yaml` wiring `verify_concepts.py` to every commit via the pre-commit framework
+- `docs/ARCHITECTURE.md` rewritten as ground truth from reverse-engineered source (replaces the stale 18-tools doc)
+- `CLAUDE.md` rule 15 pointing future sessions at `.concepts.yml` before cross-cutting edits
+- GLM-4.7 Flash documented in backend table (was implemented but undocumented)
+
 ### Changed
-- Stop tracking `rag/index/` generated files; added `.gitkeep` placeholder
-- Fix stale `python rag/build_index.py` references to `python -m flame_mcp.rag.build_index`
+- README MCP-tools section updated from 18 to 26 tools (the 8 missing ones now listed: `collect_media_paths`, `create_sequence`, `get_source_path`, `get_write_node_settings`, `operation_history`, `rename_segments`, `resolve_concept`, `undo_last_operation`)
+- README model selector table rewritten to match `AVAILABLE_MODELS` (removed non-existent `qwen3-coder`, `qwen2.5-coder`, Sonnet 4.5, Haiku 4.5; added GLM-4.7 Flash)
+- README knowledge-base table: 7 → 14 documents, chunk counts aligned with actual `rag/corpus.json` (783)
+- `hooks/flame_mcp_bridge.py`: Claude Opus 4.6 → 4.7 in `AVAILABLE_MODELS`
+- `src/flame_mcp/server.py`: `WRITE_ALLOWED_MODELS` — dropped `claude-opus-4-5`, added `claude-opus-4-7`, kept forward-compatible prefixes
+- `src/flame_mcp/server.py::_rating()` returns empty string for Ollama backends (token-cost warnings suppressed, matching README claim)
+- `pyproject.toml` version bump 0.1.0 → 1.3.0 (catch-up release including all commits since v1.2.1)
+- `install.sh` Ollama server prompts now reference `qwen3.5-mcp` and `glm-4.7-flash` instead of stale `qwen3-coder` / `qwen2.5-coder`
+- `scripts/setup_ollama_linux.sh` (renamed from `setup_linux.sh`; moved to `scripts/`) VRAM tiering updated to current `AVAILABLE_MODELS`
+- Modelfile setup simplified: `ollama cp qwen3.5:9b qwen3.5-mcp` instead of referencing a non-existent `Modelfile.qwen35mcp` file
+- `CLAUDE.md`: retired unbacked `"think": false` claim; Modelfile section aligned with the runtime-preflight reality
+
+### Removed
+- Reference to `Modelfile.qwen35mcp` (file never existed in the repo; bridge handles `num_ctx` at runtime)
+
+### Previously pending
+- Stopped tracking `rag/index/` generated files; added `.gitkeep` placeholder
+- Fixed stale `python rag/build_index.py` references to `python -m flame_mcp.rag.build_index`
 
 ## [1.2.1] - 2026-04-14
 
