@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `changelog_tag_sync` release-in-progress tolerance.
 
 ### Added
+- `scripts/verify_concepts.py --write` — WRITER MODE (Chat 46). Requires
+  the triple flag `--accept-current-as-truth --i-reviewed-diff --write`
+  (double-flag REPORT mode is the safety prerequisite; `--write` is the
+  third gate). Dispatches to per-type writers in
+  `invariant_types.py::WRITERS`. Currently supports `tool_count` (updates
+  integers inside `<!-- concept:<id> start/end -->` blocks) and
+  `review_expiry` (bumps `reviewed_at` timestamps to today). Other
+  invariant types report `WRITER UNSUPPORTED` and fall back to the
+  REPORT-only message. No auto-commit — user reviews `git diff` before
+  committing. Closes Chat 45 P3.15 deferral.
 - `scripts/cut-release.sh` — ecosystem-shared release orchestrator. Validates
   clean tree + semver arg + non-empty `[Unreleased]`, edits CHANGELOG +
   pyproject.toml, commits with `CUT_RELEASE_VERSION=X.Y.Z` so the

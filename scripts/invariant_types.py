@@ -833,6 +833,123 @@ def changelog_tag_sync(params: dict) -> tuple[bool, str]:
     return False, "; ".join(messages) + tolerated_msg
 
 
+# --------------------------------------------------------------------------- #
+# Writers (for --write mode, gated by triple-flag in verify_concepts.py)
+#
+# Each writer takes the invariant dict and returns (ok: bool, msg: str).
+# It mutates files on disk. The dispatcher lives in WRITERS below; types
+# with no writer fall back to a "WRITER UNSUPPORTED" message at the
+# verify_concepts.py level.
+# --------------------------------------------------------------------------- #
+
+def _write_tool_count(inv: dict) -> tuple[bool, str]:
+    """Update the number inside <!-- concept:<id> start/end --> so the doc
+    matches the current AST count. Markdown (<!-- -->) comments only — the
+    shell-style anchor variant is not supported here because it would need
+    a different replacement pattern. Fails safely if the concept block is
+    missing.
+    """
+    code_file = inv["code_file"]
+    doc_file = inv["doc_file"]
+    concept_id = inv["concept_id"]
+    decorator = inv.get("decorator", "mcp.tool")
+
+    tree = ast.parse(_read(code_file))
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for deco in node.decorator_list:
+                if _decorator_name(deco) == decorator:
+                    count += 1
+                    break
+
+    doc_path = Path(doc_file)
+    if not doc_path.is_absolute():
+        doc_path = REPO_ROOT / doc_path
+    text = doc_path.read_text(encoding="utf-8")
+
+    pattern = (
+        rf"(<!--\s*concept:{re.escape(concept_id)}\s+start\s*-->)"
+        r"(.*?)"
+        rf"(<!--\s*concept:{re.escape(concept_id)}\s+end\s*-->)"
+    )
+    m = re.search(pattern, text, re.DOTALL)
+    if not m:
+        return False, f"no markdown concept block {concept_id!r} in {doc_file}"
+
+    before, block, after = m.group(1), m.group(2), m.group(3)
+    new_block = re.sub(r"\b\d+\b", str(count), block, count=1)
+    if new_block == block:
+        return False, f"no integer to replace inside {concept_id!r} block"
+
+    new_text = text[: m.start()] + before + new_block + after + text[m.end() :]
+    doc_path.write_text(new_text, encoding="utf-8")
+    return True, f"wrote tool_count={count} into {doc_file} [{concept_id}]"
+
+
+def _write_review_expiry(inv: dict) -> tuple[bool, str]:
+    """Bump the `reviewed_at` timestamp under the invariant's key to today.
+    Operates on the YAML file declared in `file`. Preserves surrounding
+    structure via a targeted regex replacement (not a full YAML round-trip)
+    so comments and order are kept — YAML libraries drop both.
+    """
+    import re as _re
+    raw_path = inv["file"]
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        candidate = REPO_ROOT / raw_path
+        path = candidate if candidate.exists() else REPO_ROOT.parent / raw_path
+    if not path.exists():
+        return False, f"review file missing: {path}"
+
+    key_path = inv["key"].split(".")
+    leaf_key = key_path[-1]
+    today = date.today().isoformat()
+
+    text = path.read_text(encoding="utf-8")
+
+    # Locate the leaf block by matching the dotted key chain as a cascade of
+    # indented YAML headers — conservative but enough for the ecosystem's
+    # flat two-level usage (e.g. "anthropic.reviewed_at").
+    indent_depth = len(key_path) - 1
+    parent_indent = "  " * indent_depth
+    reviewed_pattern = (
+        rf"(^{parent_indent}reviewed_at\s*:\s*)"
+        r"(['\"]?)(\d{4}-\d{2}-\d{2})(['\"]?)"
+    )
+    # Scan from the leaf_key's parent line forward. To keep the change
+    # surgical, we find the first reviewed_at under the matched parent
+    # block. For the top-level "foo.reviewed_at" case (depth=1), the
+    # parent header is "foo:".
+    if indent_depth >= 1:
+        parent_header_re = rf"^{('  ' * (indent_depth - 1))}{_re.escape(key_path[-2])}\s*:\s*$"
+        parent_m = _re.search(parent_header_re, text, _re.MULTILINE)
+        if not parent_m:
+            return False, f"parent key {key_path[-2]!r} not found in {path}"
+        search_from = parent_m.end()
+    else:
+        search_from = 0
+
+    sub_text = text[search_from:]
+    m = _re.search(reviewed_pattern, sub_text, _re.MULTILINE)
+    if not m:
+        return False, f"no reviewed_at under {inv['key']!r} in {path}"
+
+    abs_start = search_from + m.start()
+    abs_end = search_from + m.end()
+    prefix, q1, _old_date, q2 = m.group(1), m.group(2), m.group(3), m.group(4)
+    new_line = f"{prefix}{q1}{today}{q2}"
+    new_text = text[:abs_start] + new_line + text[abs_end:]
+    path.write_text(new_text, encoding="utf-8")
+    return True, f"bumped reviewed_at → {today} under {inv['key']} in {path.name}"
+
+
+WRITERS = {
+    "tool_count":     _write_tool_count,
+    "review_expiry":  _write_review_expiry,
+}
+
+
 INVARIANT_TYPES = {
     "tool_count":         tool_count,
     "subset":             subset,

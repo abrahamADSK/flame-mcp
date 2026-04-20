@@ -3,7 +3,8 @@
 
 Exit codes:
     0  all invariants passed, OR strict: false (soft-launch mode),
-       OR --accept-current-as-truth + --i-reviewed-diff (report mode)
+       OR --accept-current-as-truth + --i-reviewed-diff (report mode),
+       OR the triple-flag WRITER mode (see below).
     1  at least one invariant failed AND strict: true
     2  invalid CLI usage (e.g. only one of the escape-hatch flags given)
 
@@ -13,24 +14,32 @@ Usage:
     python scripts/verify_concepts.py --strict           # force strict regardless of YAML
     python scripts/verify_concepts.py \\
         --accept-current-as-truth --i-reviewed-diff      # REPORT-ONLY escape hatch
+    python scripts/verify_concepts.py \\
+        --accept-current-as-truth --i-reviewed-diff --write   # WRITER MODE (Chat 46)
 
-Escape hatch (REPORT MODE — read-only, Chat 44 ultraplan Q5)
-------------------------------------------------------------
-Double flag required, on purpose: both --accept-current-as-truth AND
+Escape hatch — two modes (Chat 44 REPORT, Chat 46 WRITER)
+---------------------------------------------------------
+Double flag required for REPORT MODE: both --accept-current-as-truth AND
 --i-reviewed-diff must be passed together. The first flag alone errors out.
 This avoids accidental drift acceptance.
 
-In report mode, the runner inspects every failing invariant and prints a
-human-readable "would update <mirror>" line describing what a hypothetical
-writer mode would change to accept the current state as truth. It does NOT
-write anything, does NOT modify .concepts.yml, does NOT touch source files,
-and exits 0 regardless of drift.
+Triple flag required for WRITER MODE: add --write. Writer mode attempts
+to update the declared mirrors so the current code state is accepted as
+truth. Only a subset of invariant types have writers implemented (see
+WRITERS dict in invariant_types.py — currently tool_count and
+review_expiry). For other types, the runner prints "WRITER UNSUPPORTED"
+and falls back to the REPORT MODE message for that invariant.
 
-Intended for repos that have been abandoned for months and need a one-shot
-review before flipping strict: true — the user runs it, reads the report,
-and then resolves drift manually (the correct, non-destructive way).
+REPORT MODE is read-only, intended for repos that have been abandoned for
+months and need a one-shot review before flipping strict: true — the user
+runs it, reads the report, and then resolves drift manually.
 
-No --fix mode. Verification only. Humans resolve drift.
+WRITER MODE is the power tool for routine add-a-tool / refresh-review
+flows where the correction is mechanical (bump a count, bump a date).
+Review the git diff before committing.
+
+No auto-commit. Writer mode leaves changes in the working tree for the
+user to inspect.
 """
 
 from __future__ import annotations
@@ -52,7 +61,7 @@ except ImportError:
     )
     sys.exit(2)
 
-from invariant_types import INVARIANT_TYPES  # noqa: E402
+from invariant_types import INVARIANT_TYPES, WRITERS  # noqa: E402
 
 REPO_ROOT = SCRIPT_DIR.parent
 CONCEPTS_FILE = REPO_ROOT / ".concepts.yml"
@@ -126,11 +135,24 @@ def main() -> int:
             "passed together; the single-flag form is a CLI error (exit 2)."
         ),
     )
+    parser.add_argument(
+        "--write", action="store_true",
+        help=(
+            "WRITER MODE (Chat 46). Requires BOTH escape-hatch flags plus "
+            "this flag (triple-flag). For invariants whose type has a "
+            "registered writer (tool_count, review_expiry), applies the "
+            "correction to disk. Types without a writer fall back to REPORT "
+            "behaviour with a 'WRITER UNSUPPORTED' line. No auto-commit — "
+            "review `git diff` before committing."
+        ),
+    )
     args = parser.parse_args()
 
-    # Escape-hatch flag validation: require BOTH or NEITHER.
+    # Escape-hatch flag validation: require BOTH or NEITHER (plus --write
+    # requires both to be set).
     accept = args.accept_current_as_truth
     reviewed = args.i_reviewed_diff
+    write_mode = args.write
     if accept ^ reviewed:
         missing = "--i-reviewed-diff" if accept else "--accept-current-as-truth"
         print(
@@ -138,6 +160,14 @@ def main() -> int:
             f"must be passed together (missing: {missing}). "
             f"This double-flag requirement is intentional — it prevents "
             f"accidental drift acceptance.",
+            file=sys.stderr,
+        )
+        return 2
+    if write_mode and not (accept and reviewed):
+        print(
+            "[concepts] ERROR: --write requires BOTH --accept-current-as-truth "
+            "and --i-reviewed-diff (triple-flag mode). Writer mode mutates "
+            "files on disk; both safety flags must also be set.",
             file=sys.stderr,
         )
         return 2
@@ -201,24 +231,58 @@ def main() -> int:
         return 0
 
     if report_mode:
-        # Double-flag escape hatch: describe what would be updated and exit 0.
-        # This is intentionally non-destructive; the user is expected to act
-        # on the report manually (writer mode is deferred to a future pass).
-        print(
-            "[concepts] REPORT MODE — no writes performed",
-            file=sys.stderr,
-        )
-        print(
-            f"[concepts]   Would accept {len(failed)} drift(s) as the new truth:",
-            file=sys.stderr,
-        )
-        for _ok, _inv_id, msg, concept_name, inv in failed:
-            print(_describe_would_update(concept_name, inv, msg), file=sys.stderr)
-        print(
-            "[concepts] Run without flags to verify the current truth sticks "
-            "once drift has been resolved manually.",
-            file=sys.stderr,
-        )
+        mode_label = "WRITER MODE" if write_mode else "REPORT MODE"
+        print(f"[concepts] {mode_label}", file=sys.stderr)
+
+        wrote = 0
+        unsupported = 0
+        write_failed = 0
+        for _ok, inv_id, msg, concept_name, inv in failed:
+            inv_type = inv.get("type", "<unknown>")
+            if write_mode and inv_type in WRITERS:
+                try:
+                    ok_w, w_msg = WRITERS[inv_type](inv)
+                except Exception as exc:
+                    ok_w, w_msg = False, f"writer raised {type(exc).__name__}: {exc}"
+                if ok_w:
+                    print(f"[concepts]   WROTE {inv_id}: {w_msg}", file=sys.stderr)
+                    wrote += 1
+                else:
+                    print(
+                        f"[concepts]   WRITE FAILED {inv_id}: {w_msg} "
+                        f"(fallback: manual)",
+                        file=sys.stderr,
+                    )
+                    write_failed += 1
+            else:
+                if write_mode:
+                    print(
+                        f"[concepts]   WRITER UNSUPPORTED for type {inv_type!r} "
+                        f"[{inv_id}]: resolve manually",
+                        file=sys.stderr,
+                    )
+                    unsupported += 1
+                print(
+                    _describe_would_update(concept_name, inv, msg),
+                    file=sys.stderr,
+                )
+
+        if write_mode:
+            print(
+                f"[concepts] WRITER summary: wrote={wrote}, unsupported={unsupported}, "
+                f"failed={write_failed}. Review `git diff` before committing.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[concepts]   Would accept {len(failed)} drift(s) as the new truth.",
+                file=sys.stderr,
+            )
+            print(
+                "[concepts] Run without flags to verify the current truth sticks "
+                "once drift has been resolved manually.",
+                file=sys.stderr,
+            )
         return 0
 
     if strict:
