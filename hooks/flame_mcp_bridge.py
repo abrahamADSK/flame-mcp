@@ -134,6 +134,11 @@ OLLAMA_MAC_URL = "http://localhost:11434"
 OLLAMA_NUM_CTX = 24576   # 24 K: ~18.5 GB (model) + ~2.6 GB (KV cache) ≈ 21 GB < 24 GB VRAM
                          # 32 K pushed total to ~21.5 GB + CUDA overhead → OOM → full CPU fallback
 
+# Mac-local Ollama: smaller default because models are 4B/9B on unified memory,
+# not a 24 GB dGPU. Ollama's Anthropic-compat endpoint still ignores Modelfile
+# num_ctx without an explicit preflight, so ollama_mac needs its own call.
+OLLAMA_MAC_NUM_CTX = 8192
+
 # Global bridge state
 _bridge_active = False
 _server_socket = None
@@ -970,6 +975,11 @@ class _FlameChat:
                             "Works offline once downloaded (~4 GB)."
                         )
                     )
+                # ollama_mac needs its own num_ctx preflight — Anthropic-compat
+                # endpoint ignores Modelfile settings, same as LAN. ollama_cloud
+                # is deliberately skipped: the cloud runners manage context.
+                if self._backend == "ollama_mac":
+                    self._preload_ollama_model(url=OLLAMA_MAC_URL, num_ctx=OLLAMA_MAC_NUM_CTX)
                 env = self._get_ollama_env(env)
 
             prompt = self._build_prompt()
@@ -1485,7 +1495,7 @@ class _FlameChat:
         except Exception:
             return False
 
-    def _preload_ollama_model(self) -> None:
+    def _preload_ollama_model(self, url: str = None, num_ctx: int = None) -> None:
         """
         Pre-load the Ollama model with the correct num_ctx via the native API.
 
@@ -1493,35 +1503,40 @@ class _FlameChat:
         the num_ctx set in a model's Modelfile — it always falls back to the
         global default of 4096 tokens.  The native /api/generate endpoint DOES
         respect options.num_ctx.  By making an empty-prompt request there first,
-        we load (or reload) the model's runner with OLLAMA_NUM_CTX tokens.
+        we load (or reload) the model's runner with num_ctx tokens.
         Ollama will then reuse that runner for the subsequent Anthropic-API call
         made by the claude CLI subprocess.
 
-        Called automatically from _agent_loop() when backend == "ollama".
+        Parameters default to LAN-server values (`self._ollama_url`, OLLAMA_NUM_CTX).
+        Called with OLLAMA_MAC_URL + OLLAMA_MAC_NUM_CTX from the ollama_mac branch.
+
         Safe to call even if the model is already loaded — Ollama is a no-op
         if num_ctx matches the current runner.
         """
         import urllib.request as _urllib_req
         import json as _json
 
+        target_url = url or self._ollama_url
+        target_ctx = num_ctx if num_ctx is not None else OLLAMA_NUM_CTX
+
         payload = _json.dumps({
             "model":      self._model,
             "prompt":     "",          # empty — we only want to load the runner
-            "options":    {"num_ctx": OLLAMA_NUM_CTX, "temperature": 0},  # C1: deterministic code gen
+            "options":    {"num_ctx": target_ctx, "temperature": 0},  # C1: deterministic code gen
             "keep_alive": "10m",
             "stream":     False,
         }).encode()
 
-        url = f"{self._ollama_url}/api/generate"
+        api_url = f"{target_url}/api/generate"
         req = _urllib_req.Request(
-            url,
+            api_url,
             data=payload,
             headers={"Content-Type": "application/json"},
         )
         try:
             with _urllib_req.urlopen(req, timeout=120) as resp:
                 resp.read()
-            _log(f"Ollama pre-load OK: {self._model} num_ctx={OLLAMA_NUM_CTX}")
+            _log(f"Ollama pre-load OK: {self._model} num_ctx={target_ctx} url={target_url}")
         except Exception as exc:
             # Non-fatal — log and continue; the main call may still work
             _log(f"Ollama pre-load warning (non-fatal): {exc}")

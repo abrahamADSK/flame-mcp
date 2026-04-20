@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-04-20
+
+### Fixed
+- `hooks/flame_mcp_bridge.py` — `ollama_mac` backend now runs `_preload_ollama_model()` before spawning the claude subprocess. Without the preflight, Ollama's Anthropic-compat `/v1/messages` endpoint silently fell back to 4096 tokens on Mac-local inference even when the Modelfile declared a larger window. `_preload_ollama_model` gained optional `url` and `num_ctx` kwargs so the Mac branch can target `OLLAMA_MAC_URL` + `OLLAMA_MAC_NUM_CTX=8192`. Chat 45 / Agent D investigation.
+- `.concepts.yml` — new `ollama_preflight_parity` concept with two `file_regex_matches` invariants guarding the two preflight call sites. `ollama_cloud` is deliberately excluded (cloud runners manage their own context window).
+
+### Changed
+- `scripts/invariant_types.py` + `scripts/verify_concepts.py` — synced to the ecosystem-canonical version (Chat 45 Agent F consolidation). Adds `ast_decorator_functions.name_kwarg`, `ast_enum_values`, and `ast_decorator_kwarg` (back-compat alias). Byte-identical with fpt-mcp, maya-mcp, vision3d.
+
 ## [1.4.0] - 2026-04-20
 
 ### Added

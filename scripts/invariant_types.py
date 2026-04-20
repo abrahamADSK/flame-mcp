@@ -12,6 +12,15 @@ Types provided here:
     - version_match    : two version strings agree
     - claim_verifies   : a documentation claim is backed by code (grep-based)
     - review_expiry    : a manual-review timestamp has not gone stale
+    - glob_count       : number of files matching N glob patterns equals expected
+    - commits_since_tag: commits past latest tag within cadence thresholds
+
+Item sources (used inside `subset`):
+    ast_list, ast_decorator_functions (with optional name_kwarg),
+    ast_tuple_list_column, yaml_values, json_array_field, anchor_list,
+    ast_decorator_args, ast_decorator_kwarg (back-compat alias of
+    ast_decorator_functions+name_kwarg), ast_enum_values, ast_dict_keys,
+    literal_set, file_regex_matches, command_lines.
 
 No --fix mode. Verification only. Humans resolve drift.
 """
@@ -162,15 +171,61 @@ def _extract_items(source: dict) -> set[str]:
 
     Supported `type` values:
         ast_list                  : every string literal inside an AST
-                                    list/tuple assigned to `symbol`
-        ast_decorator_functions   : names of functions decorated with
-                                    the given `decorator` (e.g. 'mcp.tool')
+                                    list/tuple assigned to `symbol`.
+        ast_decorator_functions   : names of functions decorated with the
+                                    given `decorator` (e.g. 'mcp.tool').
+                                    If `name_kwarg` is set (e.g. "name"),
+                                    the decorator call's kwarg value is
+                                    used as the canonical name whenever
+                                    present; otherwise the Python function
+                                    name is used as fallback. This covers
+                                    both the fpt-mcp pattern
+                                    (@mcp.tool(name="sg_find") on
+                                    async def sg_find_tool) and plain
+                                    @mcp.tool decorators in the same
+                                    source file.
+        ast_decorator_kwarg       : DEPRECATED alias of
+                                    ast_decorator_functions + name_kwarg.
+                                    Kept for backwards compatibility with
+                                    existing .concepts.yml files that use
+                                    the explicit `kwarg:` key. New
+                                    registries should prefer
+                                    ast_decorator_functions.
+        ast_decorator_args        : positional arg at `arg_index` (default 0)
+                                    of every call-form decorator whose name
+                                    is in `decorators` (or equals
+                                    `decorator`). Useful for FastAPI/Flask
+                                    route inventories.
+        ast_tuple_list_column     : for a top-level `SYMBOL = [(...), ...]`
+                                    return the string literal at `column`
+                                    of each inner element, optionally
+                                    filtered by `filter_column`/
+                                    `filter_value`.
+        ast_enum_values           : for `class SYMBOL(..., Enum)` return the
+                                    set of RHS string literal values of
+                                    every member assignment.
+        ast_dict_keys             : for a top-level `SYMBOL = {...}` return
+                                    the set of string keys.
+        yaml_values               : values at dotted `key` inside a YAML
+                                    file (repo-relative, ecosystem-relative,
+                                    or absolute). Dict → values, list →
+                                    elements, scalar → singleton.
+        json_array_field          : for a JSON file whose root is an array
+                                    of objects, collect `field` (dot-path)
+                                    from every element.
         anchor_list               : items inside a markdown
                                     <!-- concept:<id> start/end --> block.
                                     By default extracts bullet-list items;
-                                    pass `item_pattern` (regex with one group)
-                                    to extract matches instead (e.g. every
-                                    backtick-wrapped identifier in a table).
+                                    pass `item_pattern` (regex with one
+                                    group) to extract matches instead
+                                    (e.g. every backtick-wrapped
+                                    identifier in a table).
+        literal_set               : hardcoded expected set from YAML.
+        file_regex_matches        : re.findall across the whole file (with
+                                    MULTILINE). Returns first-group
+                                    captures.
+        command_lines             : run a shell command, return each
+                                    non-empty output line as an element.
     """
     kind = source["type"]
     if kind == "ast_list":
@@ -183,14 +238,70 @@ def _extract_items(source: dict) -> set[str]:
                         return _flatten_ast_strings(node.value)
         raise ValueError(f"symbol {target} not found in {source['file']}")
     if kind == "ast_decorator_functions":
+        # Return the canonical identifier for each function decorated with
+        # the given decorator. By default this is the Python function name;
+        # if `name_kwarg` is set (e.g. "name"), the decorator call's kwarg
+        # value is used instead when present. fpt-mcp uses
+        # @mcp.tool(name="sg_find") on async def sg_find_tool(...) — the
+        # public name is "sg_find". Missing kwarg falls back to the
+        # function's Python name.
         tree = ast.parse(_read(source["file"]))
         decorator = source["decorator"]
+        name_kwarg = source.get("name_kwarg")
         items: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for deco in node.decorator_list:
-                    if _decorator_name(deco) == decorator:
-                        items.add(node.name)
+                    deco_name = _decorator_name(deco)
+                    if deco_name != decorator:
+                        continue
+                    canonical = node.name
+                    if name_kwarg and isinstance(deco, ast.Call):
+                        for kw in deco.keywords:
+                            if kw.arg == name_kwarg and isinstance(kw.value, ast.Constant) \
+                                    and isinstance(kw.value.value, str):
+                                canonical = kw.value.value
+                                break
+                    items.add(canonical)
+                    break
+        return items
+    if kind == "ast_decorator_kwarg":
+        # DEPRECATED: kept for backwards compatibility with existing
+        # .concepts.yml files (notably maya-mcp's) that pass
+        #     type: ast_decorator_kwarg
+        #     decorator: mcp.tool
+        #     kwarg: name
+        # Semantically equivalent to `ast_decorator_functions` with
+        # `name_kwarg=<kwarg>`. Accepts either `decorator` (single) or
+        # `decorators` (list of aliases). The first matching decorator on
+        # each function contributes; if the kwarg is missing, the function
+        # name is used as fallback. New registries should use
+        # `ast_decorator_functions` with `name_kwarg`.
+        tree = ast.parse(_read(source["file"]))
+        decorators = source.get("decorators") or [source["decorator"]]
+        kwarg = source["kwarg"]
+        items: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for deco in node.decorator_list:
+                    found_name: str | None = None
+                    if isinstance(deco, ast.Call):
+                        deco_name = _decorator_name(deco.func)
+                        if deco_name in decorators:
+                            for kw in deco.keywords:
+                                if kw.arg == kwarg and isinstance(kw.value, ast.Constant) \
+                                        and isinstance(kw.value.value, str):
+                                    found_name = kw.value.value
+                                    break
+                            if found_name is None:
+                                # Decorator matched but no kwarg — fall back
+                                # to the function's own Python name.
+                                found_name = node.name
+                    elif _decorator_name(deco) in decorators:
+                        # Bare decorator (no arguments): use the function name.
+                        found_name = node.name
+                    if found_name is not None:
+                        items.add(found_name)
                         break
         return items
     if kind == "ast_tuple_list_column":
@@ -307,6 +418,23 @@ def _extract_items(source: dict) -> set[str]:
                                 items.add(arg.value)
                                 break
         return items
+    if kind == "ast_enum_values":
+        # For a class body like `class SessionAction(str, Enum): PING = "ping"`,
+        # return the set of RHS string literal values. Works for Python's
+        # built-in enum (the str-subclassed pattern commonly used for API
+        # dispatch tables) — we do not actually check the base class because
+        # any class whose members are string constants works the same way.
+        tree = ast.parse(_read(source["file"]))
+        target = source["symbol"]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == target:
+                values: set[str] = set()
+                for stmt in node.body:
+                    if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) \
+                            and isinstance(stmt.value.value, str):
+                        values.add(stmt.value.value)
+                return values
+        raise ValueError(f"class {target} not found in {source['file']}")
     if kind == "ast_dict_keys":
         # For a top-level assignment `SYMBOL = {...}`, return the set of
         # string keys.

@@ -301,6 +301,33 @@ concepts:
           file_pattern: 'src/flame_mcp/server.py'
         expected: found
 
+  ollama_preflight_parity:
+    description: >
+      Every Ollama-family backend branch in _agent_loop must call
+      _preload_ollama_model() before spawning the claude subprocess, because
+      Ollama's Anthropic-compat /v1/messages endpoint ignores Modelfile num_ctx
+      and silently falls back to 4096 tokens. Applies to ollama (LAN) and
+      ollama_mac; ollama_cloud is deliberately excluded (cloud runners manage
+      their own context).
+    source_of_truth:
+      file: hooks/flame_mcp_bridge.py
+      symbol: "_agent_loop (Ollama backend routing)"
+    invariants:
+      - id: preflight_called_for_ollama_lan
+        type: claim_verifies
+        claim: "LAN ollama branch calls _preload_ollama_model() before the subprocess spawn"
+        code_grep:
+          regex: '_preload_ollama_model\(\)'
+          file_pattern: 'hooks/flame_mcp_bridge.py'
+        expected: found
+      - id: preflight_called_for_ollama_mac
+        type: claim_verifies
+        claim: "ollama_mac branch calls _preload_ollama_model(url=OLLAMA_MAC_URL, ...)"
+        code_grep:
+          regex: '_preload_ollama_model\([^)]*OLLAMA_MAC_URL'
+          file_pattern: 'hooks/flame_mcp_bridge.py'
+        expected: found
+
   stats_keys_schema_shared:
     description: >
       server.py::_stats is initialised via flame_mcp._session_stats.make_empty_stats()
