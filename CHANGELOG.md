@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- `README.md` — added a "Configuration precedence (env-var vs config.json)"
+  subsection that surfaces the transport-vs-model asymmetry user-facing.
+  Previously only documented in `docs/ARCHITECTURE.md §9/§11` (Chat 45
+  gotcha #4 closure).
+
 ### Changed
 - `.concepts.yml` — `strict: false → true`. The pre-commit hook now blocks
   commits on any unresolved invariant drift instead of only reporting it.

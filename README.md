@@ -180,6 +180,18 @@ In addition to natural language, the chat input accepts these special commands:
 
 Selection is persisted to `~/flame-mcp/config.json` between sessions. The combo label shows the server hostname for `ollama`, or `localhost` for `ollama_mac`. Anthropic model IDs are reviewed every 14 days against the [Anthropic model catalogue](https://docs.anthropic.com/claude/docs/models-overview) via `~/Projects/.external_versions.yml` (enforced by `verify_concepts.py`).
 
+#### Configuration precedence (env-var vs config.json)
+
+Two different policies apply depending on what you are configuring:
+
+- **Socket transport** (`FLAME_BRIDGE_SOCKET`, `FLAME_BRIDGE_PORT`) — env var wins over any `config.json` default. Useful for overriding the bridge path in a dev sandbox without touching the committed config.
+- **Model + backend + `ollama_url`** — `config.json` wins; there is no env var override. The Flame panel writes the user's choice back to `config.json` so selection is sticky across restarts.
+- **Anthropic credentials** (`ANTHROPIC_API_KEY`) — env var / `.env`, not `config.json`.
+
+The full precedence table (including fallback chains, defaults, and the
+asymmetry between transport and model settings) lives in
+[`docs/ARCHITECTURE.md` §9](docs/ARCHITECTURE.md) and §11.
+
 ### 3. Claude Code (terminal)
 
 ```bash
