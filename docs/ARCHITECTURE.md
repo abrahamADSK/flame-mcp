@@ -237,8 +237,18 @@ about them before "fixing" something that looks off.
 - **Backend-specific timeouts are hardcoded** (600 s for `ollama`, 300 s
   for `ollama_cloud`) with no config override.
 - **Crash-recovery TTL of 24 h is hardcoded** (`crash_recovery.json`).
-- **`_stats` is session-global** and never reset — cumulative across every
-  Claude session until the MCP server process dies.
+- **`_stats` per-session reset — helper landed, server wiring pending.**
+  `src/flame_mcp/_session_stats.py` exports `make_empty_stats()`,
+  `should_auto_reset()`, `apply_idle_reset()` and `reset_stats()` — the
+  pure logic that zeroes the counters either on an idle-gap trigger
+  (default 30 min) or on an explicit `reset_session_stats` call.
+  MCP over stdio exposes no reliable "Claude session boundary" to the
+  server (no `client_id` populated by Claude Code, no
+  `initialize`-notification hook on reconnect), so those two triggers
+  are the pragmatic substitute. See `docs/session_stats_reset.md` for
+  the full design + server.py patch proposal. Patch not applied yet —
+  server.py edits require the main session per
+  `feedback_agent_file_safety.md`.
 - **`ollama_mac` skips the num_ctx preflight** that the `ollama` backend
   gets. In practice Mac users may see responses truncated at 4096 tokens
   silently. Not promoted to a bug because no complaint has been filed
