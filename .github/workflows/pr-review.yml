@@ -1,0 +1,65 @@
+name: Claude PR Review
+
+# Runs Claude Code on every opened / synchronised PR to produce an
+# automated code review. Skipped silently when the repo secret
+# ANTHROPIC_API_KEY is not configured — set it under
+# Settings → Secrets and variables → Actions to activate.
+#
+# Canonical source: ~/Projects/pr-review-canonical.yml (Chat 46).
+# Copy byte-identical to .github/workflows/pr-review.yml in each of the
+# 4 MCP-ecosystem repos.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    name: claude review
+    runs-on: ubuntu-latest
+    # Skip draft PRs; full reviews only on PRs the author marks ready.
+    # If ANTHROPIC_API_KEY is not set, the action errors out visibly so
+    # the repo owner knows to configure the secret — GitHub Actions does
+    # not allow `if: secrets.X != ''` at the job level directly.
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are reviewing a pull request against the MCP-ecosystem
+            `main` branch. The repo declares cross-cutting invariants in
+            `.concepts.yml` that must not drift. Strict mode is on for the
+            4 ecosystem repos (flame-mcp, fpt-mcp, maya-mcp, vision3d).
+
+            Review this PR with these priorities, in order:
+
+            1. **Concept registry compliance** — does the diff change a
+               source_of_truth or mirror declared in `.concepts.yml`
+               without updating the corresponding mirror(s)? Run
+               `python scripts/verify_concepts.py` if unsure.
+
+            2. **Correctness** — standard review: logic errors, edge
+               cases, concurrency, error-handling, test coverage.
+
+            3. **Style** — minor lint / formatting nits. Report at most
+               3 of these; any more and the PR is probably due for a
+               ruff/format pass rather than line-by-line comments.
+
+            4. **Ecosystem coherence** — does the change need propagating
+               to the other 3 repos (e.g. `invariant_types.py`,
+               `cut-release.sh`, `verify_concepts.py` are byte-identical
+               across repos and drift is a bug)?
+
+            Keep the review under 500 words. Leave no inline comment that
+            is not actionable. No compliments.

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `.github/workflows/ci.yml` — GitHub Actions CI workflow. Three jobs:
+  (1) pytest across Python 3.10/3.11/3.12 matrix; (2) ruff lint
+  (non-blocking in v1 — baseline has existing lint debt; flip
+  `continue-on-error` to false once cleaned up); (3) verify_concepts on
+  every push + PR. Closes Chat 45 P3 CI item.
+- `.github/workflows/pr-review.yml` — automated Claude PR review
+  (`anthropics/claude-code-action@v1`). Byte-identical across the 4
+  ecosystem repos; canonical at `~/Projects/pr-review-canonical.yml`.
+  Prompts Claude to audit concept-registry compliance first, then
+  correctness, style, and ecosystem coherence. Requires repo secret
+  `ANTHROPIC_API_KEY`. Closes Chat 45 P3 PR-review item.
+
 ### Documentation
 - `README.md` — added a "Configuration precedence (env-var vs config.json)"
   subsection that surfaces the transport-vs-model asymmetry user-facing.
