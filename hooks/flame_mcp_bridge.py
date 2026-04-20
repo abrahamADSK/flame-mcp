@@ -30,6 +30,38 @@ import time
 import subprocess
 import datetime
 
+# ── Shared helper import bootstrap ────────────────────────────────────────────
+# The bridge runs inside Flame's embedded Python (installed at
+# /opt/Autodesk/shared/python/flame_mcp_bridge.py) where the `flame_mcp`
+# package is NOT on sys.path by default. Inject `<project_root>/src` onto
+# sys.path so we can import shared helpers that live in the package.
+# _PROJECT_ROOT is resolved further down, but we already know how to derive
+# it from this file's location (see the dynamic project root detection block
+# below for the authoritative logic — this mini-bootstrap just mirrors it).
+_BOOT_THIS_FILE = os.path.abspath(__file__)
+_BOOT_HOOKS_DIR = os.path.dirname(_BOOT_THIS_FILE)
+_BOOT_AUTO_ROOT = os.path.dirname(_BOOT_HOOKS_DIR)
+if (os.path.basename(_BOOT_HOOKS_DIR) == 'hooks' and
+        os.path.isfile(os.path.join(_BOOT_AUTO_ROOT, 'src', 'flame_mcp', 'server.py'))):
+    _BOOT_PROJECT_ROOT = _BOOT_AUTO_ROOT
+else:
+    _BOOT_PROJECT_ROOT = os.environ.get(
+        'FLAME_MCP_ROOT',
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+_BOOT_SRC = os.path.join(_BOOT_PROJECT_ROOT, 'src')
+if os.path.isdir(_BOOT_SRC) and _BOOT_SRC not in sys.path:
+    sys.path.insert(0, _BOOT_SRC)
+
+try:
+    from flame_mcp._config import load_model_config as _shared_load_model_config
+except Exception:
+    # Fail-soft: if the helper cannot be imported (e.g. Flame host running
+    # without the repo on disk), fall back to the inline legacy implementation
+    # below. The bridge must never crash on import; losing the helper only
+    # means losing the dedup, not the functionality.
+    _shared_load_model_config = None
+
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
@@ -1260,6 +1292,13 @@ class _FlameChat:
         """
         Load persisted model, backend, Ollama server URL, and cloud key.
 
+        Delegates to `flame_mcp._config.load_model_config` when the shared
+        helper is importable (repo on disk / src/ reachable). Falls back
+        to an inline implementation if the helper is unavailable — keeps
+        the bridge functional on Flame hosts that were deployed without
+        the repo (e.g. a bare `cp` of this file to
+        `/opt/Autodesk/shared/python/` without FLAME_MCP_ROOT set).
+
         config.json keys:
           model            – model_id string
           backend          – "anthropic" | "ollama" | "ollama_cloud"
@@ -1268,12 +1307,19 @@ class _FlameChat:
                              Set this to the IP of your Linux workstation running Ollama.
           ollama_cloud_key – API key from ollama.com (only needed for ollama_cloud backend)
         """
+        if _shared_load_model_config is not None:
+            return _shared_load_model_config(
+                MODEL_CONFIG_FILE,
+                default_model=DEFAULT_MODEL,
+                default_backend=DEFAULT_BACKEND,
+                default_ollama_url=DEFAULT_OLLAMA_URL,
+            )
+        # Fallback: inline logic (kept in lock-step with _config.py).
         try:
             with open(MODEL_CONFIG_FILE) as f:
                 cfg = json.load(f)
             model      = cfg.get('model',            DEFAULT_MODEL)
             backend    = cfg.get('backend',          DEFAULT_BACKEND)
-            # Backward compat: old configs may have "ollama_local"
             if backend == 'ollama_local':
                 backend = 'ollama'
             ollama_url = cfg.get('ollama_url',       DEFAULT_OLLAMA_URL)

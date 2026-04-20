@@ -349,7 +349,6 @@ flame-mcp/
     ├── flame-mcp-reference.pdf      # Full reference guide
     ├── FLAME_API.md                 # (root) Core API + self-learned patterns
     ├── flame_advanced_api.md        # Action, Color Mgmt, Exporter, Conform, TL FX
-    ├── flame_api_full.md            # Extended API — sequences, tracks, projects
     ├── flame_segment_timeline_api.md# PySegment, PyClip.render, PyBatch.create_batch_group
     ├── flame_community_workflows.md # Logik Forum operator jargon → API
     ├── flame_cookbook_official.md   # Official Autodesk Python code samples

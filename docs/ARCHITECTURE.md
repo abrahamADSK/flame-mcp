@@ -73,8 +73,7 @@ src/flame_mcp/
     ├── build_index.py     <- corpus chunking + ChromaDB build + BM25 prep
     ├── search.py          <- hybrid BM25 + semantic via RRF; HyDE query expansion
     ├── config.py          <- EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
-    ├── validate_index.py  <- smoke tests for the built index
-    └── generate_flame_api.py  <- (unused at runtime, candidate for deletion)
+    └── validate_index.py  <- smoke tests for the built index
 
 hooks/
 └── flame_mcp_bridge.py    <- Flame-side socket server + Qt chat widget + LLM
@@ -85,7 +84,7 @@ rag/
 └── index/                 <- ChromaDB persistent store (gitignored)
 ```
 
-No circular imports. `generate_flame_api.py` is orphan as of Chat 44 (see §11).
+No circular imports.
 
 ## 5. Runtime flow — `list_libraries()` end-to-end
 
@@ -221,18 +220,35 @@ about them before "fixing" something that looks off.
 - **Silent failure when the RAG index is missing.** `search.py` returns
   `None` and logs only to file; the caller degrades gracefully but the
   user never sees the error.
-- **`src/flame_mcp/rag/generate_flame_api.py` is unreferenced at runtime**
-  and is a candidate for deletion.
-- **`_load_model_config` is duplicated** across the server and the bridge
-  with identical logic but different implementations (process boundary —
-  no shared module to import from).
+- **`_load_model_config` extracted to shared helper.** Chat 44 audit
+  flagged the bridge's `_load_model_config` as a dedup candidate
+  against the server's `_get_config`. Investigation confirmed they
+  are not in fact identical — `_get_config` returns the raw dict of
+  the server-centric keys (`rag_fallback_threshold`,
+  `write_allowed_models`, …) while `_load_model_config` extracts the
+  four widget-facing keys (`model`, `backend`, `ollama_url`,
+  `ollama_cloud_key`) with typed defaults. The widget-facing logic
+  now lives in `src/flame_mcp/_config.py::load_model_config()`; the
+  bridge delegates to it (with an inline fallback for installs
+  without the repo on disk). No server-side change needed as the
+  server never read those four keys in the first place.
 - **Env-var vs config.json asymmetry**: transport settings are env-first,
   model settings are config-first. Undocumented in user-facing README.
 - **Backend-specific timeouts are hardcoded** (600 s for `ollama`, 300 s
   for `ollama_cloud`) with no config override.
 - **Crash-recovery TTL of 24 h is hardcoded** (`crash_recovery.json`).
-- **`_stats` is session-global** and never reset — cumulative across every
-  Claude session until the MCP server process dies.
+- **`_stats` per-session reset — helper landed, server wiring pending.**
+  `src/flame_mcp/_session_stats.py` exports `make_empty_stats()`,
+  `should_auto_reset()`, `apply_idle_reset()` and `reset_stats()` — the
+  pure logic that zeroes the counters either on an idle-gap trigger
+  (default 30 min) or on an explicit `reset_session_stats` call.
+  MCP over stdio exposes no reliable "Claude session boundary" to the
+  server (no `client_id` populated by Claude Code, no
+  `initialize`-notification hook on reconnect), so those two triggers
+  are the pragmatic substitute. See `docs/session_stats_reset.md` for
+  the full design + server.py patch proposal. Patch not applied yet —
+  server.py edits require the main session per
+  `feedback_agent_file_safety.md`.
 - **`ollama_mac` skips the num_ctx preflight** that the `ollama` backend
   gets. In practice Mac users may see responses truncated at 4096 tokens
   silently. Not promoted to a bug because no complaint has been filed
