@@ -6,14 +6,17 @@ Each invariant function takes a dict of parameters (from YAML) and returns:
 The runner (verify_concepts.py) dispatches on the `type` field declared in YAML.
 
 Types provided here:
-    - tool_count       : count of a code pattern matches a literal in a doc block
-    - subset           : one set is a subset of another (or bidirectional)
-    - file_exists      : a referenced file exists on disk
-    - version_match    : two version strings agree
-    - claim_verifies   : a documentation claim is backed by code (grep-based)
-    - review_expiry    : a manual-review timestamp has not gone stale
-    - glob_count       : number of files matching N glob patterns equals expected
-    - commits_since_tag: commits past latest tag within cadence thresholds
+    - tool_count         : count of a code pattern matches a literal in a doc block
+    - subset             : one set is a subset of another (or bidirectional)
+    - file_exists        : a referenced file exists on disk
+    - version_match      : two version strings agree
+    - claim_verifies     : a documentation claim is backed by code (grep-based)
+    - review_expiry      : a manual-review timestamp has not gone stale
+    - glob_count         : number of files matching N glob patterns equals expected
+    - commits_since_tag  : commits past latest tag within cadence thresholds
+    - changelog_tag_sync : CHANGELOG version headers align with git tags,
+                           tolerating a single release-in-progress drift
+                           anchored to pyproject.toml
 
 Item sources (used inside `subset`):
     ast_list, ast_decorator_functions (with optional name_kwarg),
@@ -721,6 +724,115 @@ def glob_count(params: dict) -> tuple[bool, str]:
     )
 
 
+def changelog_tag_sync(params: dict) -> tuple[bool, str]:
+    """Assert CHANGELOG version headers align with git tags, tolerating a
+    single release-in-progress transient state.
+
+    The "release-in-progress" case: CHANGELOG.md has moved ``[Unreleased]``
+    → ``[vX.Y.Z]`` but the git tag ``vX.Y.Z`` does not yet exist because
+    annotated tags point at commit hashes and cannot be created before the
+    release commit is finalised. This transient drift is legitimate iff
+    the version declared in the release anchor file (``pyproject.toml`` by
+    default) equals the drifting version — the tolerance cannot be forged
+    without bumping the anchor version too.
+
+    params:
+        changelog_file   : str — default ``CHANGELOG.md``
+        version_regex    : str — 1-group regex applied with re.MULTILINE,
+                                 default ``r'^## \\[v?(\\d+\\.\\d+\\.\\d+)\\]'``
+        tag_cmd          : str — shell command producing one tag per line,
+                                 default ``"git tag --list 'v*' | sed 's/^v//'"``
+        direction        : 'a_subset_b' | 'b_subset_a' | 'bidirectional'
+                                 (a = CHANGELOG versions, b = git tags),
+                                 default 'bidirectional'
+        release_anchor   : {file, regex} — anchor file + 1-group regex for
+                                 the in-progress version. Default:
+                                 {file: 'pyproject.toml',
+                                  regex: r'^version\\s*=\\s*"([^"]+)"'}
+        tolerate_release_in_progress : bool — default True
+    """
+    changelog_file = params.get("changelog_file", "CHANGELOG.md")
+    version_regex = params.get("version_regex", r'^## \[v?(\d+\.\d+\.\d+)\]')
+    tag_cmd = params.get("tag_cmd", "git tag --list 'v*' | sed 's/^v//'")
+    direction = params.get("direction", "bidirectional")
+    tolerate = params.get("tolerate_release_in_progress", True)
+    anchor = params.get("release_anchor") or {
+        "file": "pyproject.toml",
+        "regex": r'^version\s*=\s*"([^"]+)"',
+    }
+
+    # A = CHANGELOG versions (set of "X.Y.Z" strings)
+    try:
+        changelog_text = _read(changelog_file)
+    except FileNotFoundError:
+        return False, f"changelog file not found: {changelog_file}"
+    a = set(re.findall(version_regex, changelog_text, re.MULTILINE))
+
+    # B = git tags (set of "X.Y.Z" strings, "v" prefix stripped by tag_cmd)
+    try:
+        out = subprocess.check_output(
+            ["bash", "-c", tag_cmd],
+            cwd=REPO_ROOT, text=True,
+        ).strip()
+        b = {line.strip() for line in out.splitlines() if line.strip()}
+    except subprocess.CalledProcessError as e:
+        return False, f"tag_cmd failed: {e}"
+
+    # Release-in-progress tolerance. Two anchor mechanisms, tried in order:
+    #   1. env CUT_RELEASE_VERSION — set by scripts/cut-release.sh at commit
+    #      time. Wins because it is explicitly scoped to the release commit.
+    #   2. file anchor (default pyproject.toml) — durable fallback for repos
+    #      that always bump a version anchor atomically with the release.
+    tolerated_msg = ""
+    if tolerate:
+        import os
+        anchor_version = (os.environ.get("CUT_RELEASE_VERSION") or "").strip() or None
+        anchor_source = "env CUT_RELEASE_VERSION" if anchor_version else None
+
+        if not anchor_version:
+            try:
+                anchor_text = _read(anchor["file"])
+                m = re.search(anchor["regex"], anchor_text, re.MULTILINE)
+                anchor_version = m.group(1) if m else None
+                anchor_source = f"{anchor['file']}"
+            except (FileNotFoundError, IndexError):
+                anchor_version = None
+
+        if anchor_version:
+            if anchor_version in (a - b):
+                a = a - {anchor_version}
+                tolerated_msg = (
+                    f" [release-in-progress CHANGELOG→tag: v{anchor_version} "
+                    f"({anchor_source} matches)]"
+                )
+            elif anchor_version in (b - a):
+                b = b - {anchor_version}
+                tolerated_msg = (
+                    f" [release-in-progress tag→CHANGELOG: v{anchor_version} "
+                    f"({anchor_source} matches)]"
+                )
+
+    messages = []
+    passed = True
+    if direction in ("a_subset_b", "bidirectional"):
+        missing = a - b
+        if missing:
+            passed = False
+            messages.append(f"in CHANGELOG but not tags: {sorted(missing)}")
+    if direction in ("b_subset_a", "bidirectional"):
+        missing = b - a
+        if missing:
+            passed = False
+            messages.append(f"in tags but not CHANGELOG: {sorted(missing)}")
+
+    if passed:
+        return True, (
+            f"changelog_tag_sync OK (|changelog|={len(a)}, |tags|={len(b)}, "
+            f"direction={direction}){tolerated_msg}"
+        )
+    return False, "; ".join(messages) + tolerated_msg
+
+
 INVARIANT_TYPES = {
     "tool_count":         tool_count,
     "subset":             subset,
@@ -730,4 +842,5 @@ INVARIANT_TYPES = {
     "review_expiry":      review_expiry,
     "glob_count":         glob_count,
     "commits_since_tag":  commits_since_tag,
+    "changelog_tag_sync": changelog_tag_sync,
 }

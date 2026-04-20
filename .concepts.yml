@@ -267,22 +267,17 @@ concepts:
       Every `## [X.Y.Z]` section in CHANGELOG.md must correspond to an
       annotated git tag `vX.Y.Z` (and vice versa, for new tags cut in this
       repo). Catches mid-release inconsistent states and forgotten tags.
+      The release-in-progress transient drift (CHANGELOG moved but tag not
+      yet created at pre-commit time) is tolerated iff the drifting version
+      matches env `CUT_RELEASE_VERSION` (set by scripts/cut-release.sh) OR
+      the version declared in pyproject.toml.
     source_of_truth:
       file: CHANGELOG.md
       plus: "git tag --list 'v*'"
     invariants:
       - id: changelog_sections_match_tags
-        type: subset
+        type: changelog_tag_sync
         direction: bidirectional
-        a_source:
-          type: file_regex_matches
-          file: CHANGELOG.md
-          # Optional `v` prefix tolerates both Keep-a-Changelog style
-          # (## [1.2.3]) and projects that prefix with v (## [v1.2.3]).
-          pattern: '^## \[v?(\d+\.\d+\.\d+)\]'
-        b_source:
-          type: command_lines
-          cmd: "git tag --list 'v*' | sed 's/^v//'"
 
   token_cost_warnings_suppressed_on_ollama:
     description: >
