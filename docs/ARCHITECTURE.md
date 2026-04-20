@@ -73,8 +73,7 @@ src/flame_mcp/
     ├── build_index.py     <- corpus chunking + ChromaDB build + BM25 prep
     ├── search.py          <- hybrid BM25 + semantic via RRF; HyDE query expansion
     ├── config.py          <- EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
-    ├── validate_index.py  <- smoke tests for the built index
-    └── generate_flame_api.py  <- (unused at runtime, candidate for deletion)
+    └── validate_index.py  <- smoke tests for the built index
 
 hooks/
 └── flame_mcp_bridge.py    <- Flame-side socket server + Qt chat widget + LLM
@@ -85,7 +84,7 @@ rag/
 └── index/                 <- ChromaDB persistent store (gitignored)
 ```
 
-No circular imports. `generate_flame_api.py` is orphan as of Chat 44 (see §11).
+No circular imports.
 
 ## 5. Runtime flow — `list_libraries()` end-to-end
 
@@ -221,8 +220,6 @@ about them before "fixing" something that looks off.
 - **Silent failure when the RAG index is missing.** `search.py` returns
   `None` and logs only to file; the caller degrades gracefully but the
   user never sees the error.
-- **`src/flame_mcp/rag/generate_flame_api.py` is unreferenced at runtime**
-  and is a candidate for deletion.
 - **`_load_model_config` is duplicated** across the server and the bridge
   with identical logic but different implementations (process boundary —
   no shared module to import from).
