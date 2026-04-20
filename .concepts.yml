@@ -29,9 +29,10 @@
 schema_version: 1
 repo: flame-mcp
 
-# Soft-launch: report drift, do not block commits.
-# After Paso 2 resolves the 10 known drifts, flip to true.
-strict: false
+# Strict mode: pre-commit blocks commits on any unresolved drift.
+# Flipped from false → true on 2026-04-20 (Chat 46), after release-flow
+# tension was resolved via changelog_tag_sync tolerance + cut-release.sh.
+strict: true
 
 # Registry starts empty. Concepts are added TDD-style in Paso 2:
 #   1. Declare the concept + invariant here.
