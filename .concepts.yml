@@ -348,6 +348,28 @@ concepts:
           file_pattern: 'src/flame_mcp/server.py'
         expected: found
 
+  github_release_per_tag:
+    description: >
+      Every git tag vX.Y.Z (v1.0.0+) must have a corresponding published GitHub
+      Release. Catches tags pushed without `gh release create`. Pre-1.0 tags
+      are excluded (v0.x was pre-release noise). Requires `gh` CLI authenticated;
+      drift reports will be false-positive if gh is offline or unauthenticated.
+    source_of_truth:
+      file: git
+      command: "git tag --list 'v*'"
+    mirrors:
+      - command: "gh release list"
+    invariants:
+      - id: every_v1plus_tag_has_github_release
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: command_lines
+          cmd: "git tag --list 'v*' | grep -Ev '^v0\\.' | sed 's/^v//'"
+        b_source:
+          type: command_lines
+          cmd: "gh release list --limit 200 --json tagName --jq '.[].tagName' | sed 's/^v//'"
+
   rag_corpus_docs:
     description: >
       The 'Knowledge base' table in README.md must list exactly the
