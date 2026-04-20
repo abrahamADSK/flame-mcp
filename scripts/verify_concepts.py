@@ -2,13 +2,33 @@
 """Verify cross-cutting concepts declared in .concepts.yml.
 
 Exit codes:
-    0  all invariants passed, OR strict: false (soft-launch mode)
+    0  all invariants passed, OR strict: false (soft-launch mode),
+       OR --accept-current-as-truth + --i-reviewed-diff (report mode)
     1  at least one invariant failed AND strict: true
+    2  invalid CLI usage (e.g. only one of the escape-hatch flags given)
 
 Usage:
     python scripts/verify_concepts.py
     python scripts/verify_concepts.py --verbose
     python scripts/verify_concepts.py --strict           # force strict regardless of YAML
+    python scripts/verify_concepts.py \\
+        --accept-current-as-truth --i-reviewed-diff      # REPORT-ONLY escape hatch
+
+Escape hatch (REPORT MODE — read-only, Chat 44 ultraplan Q5)
+------------------------------------------------------------
+Double flag required, on purpose: both --accept-current-as-truth AND
+--i-reviewed-diff must be passed together. The first flag alone errors out.
+This avoids accidental drift acceptance.
+
+In report mode, the runner inspects every failing invariant and prints a
+human-readable "would update <mirror>" line describing what a hypothetical
+writer mode would change to accept the current state as truth. It does NOT
+write anything, does NOT modify .concepts.yml, does NOT touch source files,
+and exits 0 regardless of drift.
+
+Intended for repos that have been abandoned for months and need a one-shot
+review before flipping strict: true — the user runs it, reads the report,
+and then resolves drift manually (the correct, non-destructive way).
 
 No --fix mode. Verification only. Humans resolve drift.
 """
@@ -38,6 +58,49 @@ REPO_ROOT = SCRIPT_DIR.parent
 CONCEPTS_FILE = REPO_ROOT / ".concepts.yml"
 
 
+def _describe_would_update(concept_name: str, inv: dict, msg: str) -> str:
+    """Return a human-readable "would-update" line for a drifting invariant.
+
+    REPORT MODE is read-only, so this function only describes what an
+    eventual writer mode would touch. The granularity is intentionally
+    coarse — the mirrors declared in the concept block are named as the
+    targets; the user is expected to review the diff manually.
+
+    Parameters
+    ----------
+    concept_name : str
+        Name of the enclosing concept (e.g. 'release_discipline').
+    inv : dict
+        The invariant entry from .concepts.yml (type, id, and type-specific
+        parameters).
+    msg : str
+        The failure message from the invariant check itself, used as
+        ground-truth context in the report line.
+    """
+    inv_type = inv.get("type", "<unknown>")
+    inv_id = inv.get("id", concept_name)
+
+    # Collect declared mirrors for the suggestion (best-effort; YAML may
+    # put them inside a_source/b_source/code_file/doc_file/etc.).
+    mirrors: list[str] = []
+    for key in ("code_file", "doc_file", "file", "path"):
+        v = inv.get(key)
+        if isinstance(v, str):
+            mirrors.append(v)
+    for side_key in ("a", "b", "a_source", "b_source", "code_grep"):
+        side = inv.get(side_key)
+        if isinstance(side, dict):
+            for k in ("file", "file_pattern"):
+                v = side.get(k)
+                if isinstance(v, str) and v not in mirrors:
+                    mirrors.append(v)
+    mirror_list = ", ".join(mirrors) if mirrors else "<declared mirrors>"
+    return (
+        f"    {inv_id} [{inv_type}]: {msg} "
+        f"→ would update {mirror_list} to match current state"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify cross-cutting concepts.")
     parser.add_argument(
@@ -48,7 +111,37 @@ def main() -> int:
         "--strict", action="store_true",
         help="Force strict mode (non-zero exit on failure) regardless of YAML setting.",
     )
+    parser.add_argument(
+        "--accept-current-as-truth", action="store_true",
+        help=(
+            "Escape hatch (requires --i-reviewed-diff). REPORT MODE: describes "
+            "what each drifting invariant would need to accept the current "
+            "state as truth. Does not write anything. Exits 0 even on drift."
+        ),
+    )
+    parser.add_argument(
+        "--i-reviewed-diff", action="store_true",
+        help=(
+            "Safety partner for --accept-current-as-truth. Both flags must be "
+            "passed together; the single-flag form is a CLI error (exit 2)."
+        ),
+    )
     args = parser.parse_args()
+
+    # Escape-hatch flag validation: require BOTH or NEITHER.
+    accept = args.accept_current_as_truth
+    reviewed = args.i_reviewed_diff
+    if accept ^ reviewed:
+        missing = "--i-reviewed-diff" if accept else "--accept-current-as-truth"
+        print(
+            f"[concepts] ERROR: --accept-current-as-truth and --i-reviewed-diff "
+            f"must be passed together (missing: {missing}). "
+            f"This double-flag requirement is intentional — it prevents "
+            f"accidental drift acceptance.",
+            file=sys.stderr,
+        )
+        return 2
+    report_mode = accept and reviewed
 
     if not CONCEPTS_FILE.exists():
         print(f"[concepts] no .concepts.yml at {CONCEPTS_FILE} — nothing to check")
@@ -62,7 +155,10 @@ def main() -> int:
         print(f"[concepts] registry empty ({CONCEPTS_FILE.name}) — nothing to check")
         return 0
 
-    results: list[tuple[bool, str, str]] = []
+    # Keep the originating concept name + raw invariant dict alongside the
+    # pass/fail tuple so report mode can describe the would-update targets
+    # without re-parsing the YAML.
+    results: list[tuple[bool, str, str, str, dict]] = []
     for concept_name, concept in concepts.items():
         invariants = concept.get("invariants") or []
         for i, inv in enumerate(invariants):
@@ -70,19 +166,19 @@ def main() -> int:
             inv_id = inv.get("id", f"{concept_name}[{i}]")
             check = INVARIANT_TYPES.get(inv_type)
             if check is None:
-                results.append((False, inv_id, f"unknown invariant type: {inv_type}"))
+                results.append((False, inv_id, f"unknown invariant type: {inv_type}", concept_name, inv))
                 continue
             try:
                 passed, msg = check(inv)
             except Exception as e:
                 passed, msg = False, f"EXCEPTION during check: {e}"
-            results.append((passed, inv_id, msg))
+            results.append((passed, inv_id, msg, concept_name, inv))
 
     failed = [r for r in results if not r[0]]
     total = len(results)
     passed_count = total - len(failed)
 
-    for ok, inv_id, msg in results:
+    for ok, inv_id, msg, _concept_name, _inv in results:
         if ok and not args.verbose:
             continue
         mark = "✓" if ok else "✗"
@@ -92,6 +188,37 @@ def main() -> int:
     print(summary, file=sys.stderr)
 
     if not failed:
+        if report_mode:
+            # Report mode is harmless when everything is green — just state it.
+            print(
+                "[concepts] REPORT MODE — no writes performed",
+                file=sys.stderr,
+            )
+            print(
+                "[concepts]   No drift to accept; registry already matches reality.",
+                file=sys.stderr,
+            )
+        return 0
+
+    if report_mode:
+        # Double-flag escape hatch: describe what would be updated and exit 0.
+        # This is intentionally non-destructive; the user is expected to act
+        # on the report manually (writer mode is deferred to a future pass).
+        print(
+            "[concepts] REPORT MODE — no writes performed",
+            file=sys.stderr,
+        )
+        print(
+            f"[concepts]   Would accept {len(failed)} drift(s) as the new truth:",
+            file=sys.stderr,
+        )
+        for _ok, _inv_id, msg, concept_name, inv in failed:
+            print(_describe_would_update(concept_name, inv, msg), file=sys.stderr)
+        print(
+            "[concepts] Run without flags to verify the current truth sticks "
+            "once drift has been resolved manually.",
+            file=sys.stderr,
+        )
         return 0
 
     if strict:
