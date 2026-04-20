@@ -220,9 +220,18 @@ about them before "fixing" something that looks off.
 - **Silent failure when the RAG index is missing.** `search.py` returns
   `None` and logs only to file; the caller degrades gracefully but the
   user never sees the error.
-- **`_load_model_config` is duplicated** across the server and the bridge
-  with identical logic but different implementations (process boundary —
-  no shared module to import from).
+- **`_load_model_config` extracted to shared helper.** Chat 44 audit
+  flagged the bridge's `_load_model_config` as a dedup candidate
+  against the server's `_get_config`. Investigation confirmed they
+  are not in fact identical — `_get_config` returns the raw dict of
+  the server-centric keys (`rag_fallback_threshold`,
+  `write_allowed_models`, …) while `_load_model_config` extracts the
+  four widget-facing keys (`model`, `backend`, `ollama_url`,
+  `ollama_cloud_key`) with typed defaults. The widget-facing logic
+  now lives in `src/flame_mcp/_config.py::load_model_config()`; the
+  bridge delegates to it (with an inline fallback for installs
+  without the repo on disk). No server-side change needed as the
+  server never read those four keys in the first place.
 - **Env-var vs config.json asymmetry**: transport settings are env-first,
   model settings are config-first. Undocumented in user-facing README.
 - **Backend-specific timeouts are hardcoded** (600 s for `ollama`, 300 s
