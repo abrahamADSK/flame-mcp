@@ -301,6 +301,26 @@ concepts:
           file_pattern: 'src/flame_mcp/server.py'
         expected: found
 
+  stats_keys_schema_shared:
+    description: >
+      server.py::_stats is initialised via flame_mcp._session_stats.make_empty_stats()
+      so the key schema cannot drift between the helper and the server. Prevents
+      a new counter from being added to only one side.
+    source_of_truth:
+      file: src/flame_mcp/_session_stats.py
+      symbol: make_empty_stats
+    mirrors:
+      - file: src/flame_mcp/server.py
+        symbol: "_stats (module-level dict)"
+    invariants:
+      - id: stats_initialised_via_helper
+        type: claim_verifies
+        claim: "server.py initialises _stats via make_empty_stats()"
+        code_grep:
+          regex: '_stats\s*=\s*make_empty_stats\(\)'
+          file_pattern: 'src/flame_mcp/server.py'
+        expected: found
+
   rag_corpus_docs:
     description: >
       The 'Knowledge base' table in README.md must list exactly the

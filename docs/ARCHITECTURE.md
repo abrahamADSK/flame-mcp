@@ -16,7 +16,7 @@
 
 ## 1. Overview
 
-`flame-mcp` is an **MCP server** for Autodesk Flame. It exposes 26 tools
+`flame-mcp` is an **MCP server** for Autodesk Flame. It exposes 27 tools
 over MCP stdio and implements them by sending Python snippets to a hook
 running inside Flame over a local Unix-domain socket (TCP port 4444 as
 fallback). A RAG index over the Flame Python API and a suite of curated

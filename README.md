@@ -200,7 +200,7 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (26)
+## MCP Tools (27)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
@@ -226,6 +226,7 @@ Then talk naturally:
 | `resolve_concept` | Fast static lookup: map a user concept to the correct API path and tool |
 | `learn_pattern` | Add a new working pattern to FLAME_API.md and rebuild the index |
 | `session_stats` | Show token usage and RAG savings for the current session |
+| `reset_session_stats` | Zero the session stats counters immediately (idle auto-reset fires after 30 min inactivity) |
 | `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
 | `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
 | `create_sequence` | Create a new empty sequence in a Flame library/reel |

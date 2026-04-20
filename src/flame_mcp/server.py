@@ -33,6 +33,11 @@ from flame_mcp.safety import (
     _SOFT_REDIRECT_PATTERNS,
     _CREATION_INTENT_RE,
 )
+from flame_mcp._session_stats import (
+    apply_idle_reset,
+    make_empty_stats,
+    reset_stats as _reset_stats_helper,
+)
 
 _SERVER_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -115,21 +120,18 @@ _FULL_DOC_TOKENS = 38000
 # + execute_python round-trip: ~600 RAG + ~200 LLM code generation overhead).
 _DEDICATED_TOOL_SAVINGS = 800
 
-_stats = {
-    'exec_calls':         0,
-    'tokens_in':          0,   # tokens sent to Flame (code)
-    'tokens_out':         0,   # tokens received from Flame (output)
-    'rag_calls':          0,
-    'tokens_saved':       0,   # tokens saved by RAG vs loading full doc
-    'dedicated_calls':    0,   # calls to hardcoded tools (no RAG needed)
-    'tokens_saved_tools': 0,   # tokens saved by dedicated tools
-    'patterns_learned':   0,   # auto-learned patterns added to FLAME_API.md
-    'patterns_staged':    0,   # C5 — candidates staged by non-trusted models
-    'patterns_failed':    0,   # C5 — failed executions logged for gap analysis
-    'timings':           [],   # REC-001: ring buffer of recent call timings (max 20)
-}
-# Records when _stats was last reset (server start or Flame crash recovery)
+# Canonical stats dict. Schema lives in flame_mcp._session_stats.make_empty_stats
+# so the initialiser and the reset path cannot drift (invariant: stats_keys_schema_shared).
+_stats = make_empty_stats()
+# Records when _stats was last reset (server start, idle-gap auto-reset, or explicit reset).
 _stats_reset_at = datetime.datetime.now()
+# Timestamp of the previous MCP tool call — drives the idle-gap auto-reset.
+_last_call_at: datetime.datetime | None = None
+# Idle window (seconds) after which _stats is auto-zeroed on the next call.
+# Overridable via config.json -> stats_idle_reset_seconds (default 30 min).
+_STATS_IDLE_RESET_SECONDS = int(
+    _get_config().get("stats_idle_reset_seconds", 30 * 60)
+)
 
 # C5 — Staging paths
 _CANDIDATES_PATH = _SERVER_DIR / "src" / "flame_mcp" / "rag" / "candidates.json"
@@ -228,6 +230,23 @@ def _rating(tokens: int) -> str:
         return "🟡 medium"
     else:
         return "🔴 high"
+
+
+def _track_call() -> None:
+    """Update last-call timestamp; auto-reset _stats if idle gap exceeded.
+
+    Must be called at the top of every MCP tool entry point that touches
+    _stats. Idle threshold is _STATS_IDLE_RESET_SECONDS (default 30 min).
+    """
+    global _last_call_at, _stats_reset_at
+    now = datetime.datetime.now()
+    did_reset, reset_at = apply_idle_reset(
+        _stats, now, _last_call_at,
+        idle_reset_seconds=_STATS_IDLE_RESET_SECONDS,
+    )
+    if did_reset:
+        _stats_reset_at = reset_at
+    _last_call_at = now
 
 
 def _stats_footer() -> str:
@@ -483,6 +502,7 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
 
     REC-001: Returns '_bridge_ms' key with bridge roundtrip time in milliseconds.
     """
+    _track_call()
     _t0_bridge = time.monotonic()
     # A13 — choose transport: Unix socket (preferred) or TCP fallback
     use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
@@ -1348,6 +1368,7 @@ def search_flame_docs(query: str) -> str:
     If the index has not been built yet, returns setup instructions.
     """
     global _last_rag_score, _rag_called_this_session
+    _track_call()
     try:
         from flame_mcp.rag.search import search
 
@@ -1588,6 +1609,22 @@ def session_stats() -> str:
         + efficiency
         + _timings_summary()
     )
+
+
+@mcp.tool(annotations=_RO)
+def reset_session_stats() -> str:
+    """
+    Zero the session stats counters immediately.
+
+    Use at the start of a new Claude session (or a fresh debugging run) when
+    the idle-based auto-reset has not fired — for example when two sessions
+    happen back-to-back. Returns a confirmation line with the new reset
+    timestamp.
+    """
+    global _stats_reset_at
+    now = datetime.datetime.now()
+    _stats_reset_at = _reset_stats_helper(_stats, now)
+    return f"📊 Session stats reset at {now.strftime('%H:%M:%S')}"
 
 
 def _timings_summary() -> str:
