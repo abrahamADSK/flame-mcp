@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-20
+
+### Added
+- `reset_session_stats` MCP tool (read-only) — zero the session stats counters on demand. Tool inventory 26 → 27.
+- Idle-gap auto-reset: the first tool call after `stats_idle_reset_seconds` (default 30 min) of inactivity auto-zeros `_stats`. Overridable via `config.json → stats_idle_reset_seconds`.
+- `.concepts.yml` invariant `stats_keys_schema_shared` locking `server.py::_stats` keys to `flame_mcp._session_stats.make_empty_stats()` so new counters cannot be added to only one side.
+
+### Changed
+- `src/flame_mcp/server.py` — `_stats` now initialised via `make_empty_stats()`; `_call_flame` and `search_flame_docs` invoke `_track_call()` on entry to drive the idle-gap reset. `_stats_reset_at` surfaced by `session_stats()` updates whenever either reset trigger fires.
+- `docs/ARCHITECTURE.md` §1 — tool count 26 → 27.
+
 ## [1.3.1] - 2026-04-20
 
 ### Added
