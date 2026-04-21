@@ -394,3 +394,29 @@ concepts:
           concept_id: rag_corpus_docs
           # Match any backtick-wrapped .md filename inside the anchored block.
           item_pattern: '`([A-Za-z][A-Za-z0-9_./-]+\.md)`'
+
+  next_suggested_actions_contract:
+    description: >
+      Every tool registered in SUGGESTION_RULES (suggestions.py) must be
+      wired at its @mcp.tool implementation in server.py via a
+      `maybe_annotate_with_suggestions("<tool>", out)` call. Unlike
+      fpt-mcp/maya-mcp which mutate JSON, flame-mcp appends a visible
+      text block — same contract at the registry level.
+    source_of_truth:
+      file: src/flame_mcp/suggestions.py
+      symbol: SUGGESTION_RULES
+    mirrors:
+      - file: src/flame_mcp/server.py
+        kind: maybe_annotate_with_suggestions call-sites
+    invariants:
+      - id: every_rule_is_wired
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: ast_dict_keys
+          file: src/flame_mcp/suggestions.py
+          symbol: SUGGESTION_RULES
+        b_source:
+          type: file_regex_matches
+          file: src/flame_mcp/server.py
+          pattern: 'maybe_annotate_with_suggestions\("([a-z0-9_]+)"'

@@ -934,12 +934,13 @@ for lib in visible:
     summary = ", ".join(parts) if parts else "empty"
     print(f"  {name}  ({summary})")
 """
+    from flame_mcp.suggestions import maybe_annotate_with_suggestions
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     output = _validate(output, ["Libraries"])
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result)
+    return maybe_annotate_with_suggestions("list_libraries", _fmt(result))
 
 
 @mcp.tool(annotations=_RO)
