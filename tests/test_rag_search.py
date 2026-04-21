@@ -324,8 +324,18 @@ class TestRagSearchCache:
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _REAL_CORPUS = _REPO_ROOT / "rag" / "corpus.json"
 _REAL_INDEX = _REPO_ROOT / "rag" / "index"
+_REAL_CHROMA_DB = _REAL_INDEX / "chroma.sqlite3"
 
-_real_data_missing = not (_REAL_CORPUS.is_file() and _REAL_INDEX.is_dir())
+# The index directory itself is committed (with a .gitkeep placeholder) so
+# consumers can `pip install -e .` without building first. Checking only
+# `.is_dir()` therefore lets empty-index environments (CI, fresh clone)
+# slip past the skip guard and hit a "RAG index not found" failure inside
+# search(). Probe for chroma.sqlite3 as the populated-index sentinel.
+_real_data_missing = not (
+    _REAL_CORPUS.is_file()
+    and _REAL_INDEX.is_dir()
+    and _REAL_CHROMA_DB.is_file()
+)
 
 
 @pytest.fixture
