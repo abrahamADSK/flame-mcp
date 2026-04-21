@@ -17,7 +17,6 @@ The index must be built first:
 
 import json
 import os
-import sys
 import datetime
 from typing import Any
 

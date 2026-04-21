@@ -22,7 +22,6 @@ TestDangerousPatterns (10 tests):
  10. test_multiple_hits               -- code with two patterns returns both
 """
 
-import pytest
 
 from flame_mcp.safety import _check_dangerous
 

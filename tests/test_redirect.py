@@ -29,7 +29,6 @@ TestSoftRedirectSuppression (3 tests):
   8. test_no_creation_intent                  -- ws.libraries without intent → IS redirected
 """
 
-import pytest
 
 from flame_mcp.server import execute_python
 

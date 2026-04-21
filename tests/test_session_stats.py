@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime
 
-import pytest
 
 from flame_mcp._session_stats import (
     DEFAULT_IDLE_RESET_SECONDS,

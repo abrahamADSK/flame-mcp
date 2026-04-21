@@ -20,7 +20,6 @@ Exit codes:
     2  — critical errors (missing index, corrupt chunks)
 """
 
-import os
 import sys
 import re
 import json
@@ -162,11 +161,12 @@ def _check_index(collection: Any, write_allowed: set) -> tuple[int, int]:
     all_text = " ".join((doc or "").lower() for doc in docs)
     for category, keywords in _CATEGORIES.items():
         hits = sum(all_text.count(kw) for kw in keywords)
-        if   hits >= 20: bar = "████████ 100%"
-        elif hits >= 10: bar = "██████░░  75%"
-        elif hits >= 5:  bar = "████░░░░  50%"
-        elif hits >= 1:  bar = "██░░░░░░  25%"
-        else:            bar = "░░░░░░░░   0%"
+        # Aligned one-liner ladder kept intentionally for visual inspection.
+        if   hits >= 20: bar = "████████ 100%"  # noqa: E701
+        elif hits >= 10: bar = "██████░░  75%"  # noqa: E701
+        elif hits >= 5:  bar = "████░░░░  50%"  # noqa: E701
+        elif hits >= 1:  bar = "██░░░░░░  25%"  # noqa: E701
+        else:            bar = "░░░░░░░░   0%"  # noqa: E701
         note = "" if hits >= 5 else "  ← sparse"
         print(f"     {category:<12} {bar}{note}")
         if hits < 5:

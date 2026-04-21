@@ -19,7 +19,6 @@ import hashlib
 import json
 import sys
 import types as _types
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

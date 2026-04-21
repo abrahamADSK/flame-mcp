@@ -61,7 +61,6 @@ TestReadFlameLog (2 tests):
  24. test_path_traversal_blocked -- dotdot in filename → blocked
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from flame_mcp.server import (
@@ -464,7 +463,7 @@ class TestFlameWiretapTree:
                 stdout=f"node at {custom_path}",
                 stderr="",
             )
-            result = flame_wiretap_tree(path=custom_path)
+            flame_wiretap_tree(path=custom_path)
 
         # subprocess.run called with path in args
         assert mock_sub.called

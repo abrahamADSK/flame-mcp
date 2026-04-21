@@ -28,7 +28,6 @@ from mcp.server.fastmcp import FastMCP
 
 from flame_mcp.safety import (
     _check_dangerous,
-    _DANGEROUS_PATTERNS,
     _REDIRECT_PATTERNS,
     _SOFT_REDIRECT_PATTERNS,
     _CREATION_INTENT_RE,
@@ -858,7 +857,7 @@ except Exception as e:
         return [
             f"Frame rate: {fps}  (source: .cfg)",
             f"Resolution: {res}  (source: .cfg)",
-            f"Bit depth: —  (not in .cfg)",
+            "Bit depth: —  (not in .cfg)",
             f"Colour space: {colour}  (source: .cfg)",
         ]
 
@@ -895,7 +894,7 @@ except Exception as e:
         meta_lines = _cfg_fallback(project_name_for_cfg)
 
     # Merge outputs (skip the WiretapID line from display)
-    display = [l for l in py_out.splitlines() if not l.startswith("WiretapID:")]
+    display = [line for line in py_out.splitlines() if not line.startswith("WiretapID:")]
     output = "\n".join(display + meta_lines)
     output = _validate(output, ["Frame rate", "Resolution"])
     _stats['tokens_out'] += _tok(output)
@@ -1756,14 +1755,13 @@ def read_flame_log(
 
         max_to_read = min(lines if lines > 0 else 50000, 50000)
         all_lines = _tail_file(log_path, max_to_read)
-        total_lines = log_path.stat().st_size  # approximate via size for display
 
         # Apply grep filter if specified
         if grep:
             try:
                 pattern = re.compile(grep, re.IGNORECASE)
-                filtered = [l for l in all_lines if pattern.search(l)]
-                source_desc = f"grep={repr(grep)} matched {len(filtered)} lines"
+                filtered = [line for line in all_lines if pattern.search(line)]
+                source_desc = f"grep={grep!r} matched {len(filtered)} lines"
                 tail = filtered[-lines:] if lines > 0 else filtered
             except re.error as e:
                 return f"❌ Invalid grep pattern {repr(grep)}: {e}"
@@ -2031,14 +2029,14 @@ def collect_media_paths(
         f"  paths = []\n"
         f"  for r in lib.reels:\n"
         f"    {reel_filter}\n" if reel_name else ""
-        f"    for c in r.clips:\n"
-        f"      try:\n"
-        f"        v = c.versions[0]\n"
-        f"        t = v.tracks[0]\n"
-        f"        s = t.segments[0]\n"
-        f"        paths.append(str(c.name) + ': ' + str(s.file_path))\n"
-        f"      except: paths.append(str(c.name) + ': (no path)')\n"
-        f"  print(chr(10).join(paths) if paths else '(no clips found)')\n"
+        "    for c in r.clips:\n"
+        "      try:\n"
+        "        v = c.versions[0]\n"
+        "        t = v.tracks[0]\n"
+        "        s = t.segments[0]\n"
+        "        paths.append(str(c.name) + ': ' + str(s.file_path))\n"
+        "      except: paths.append(str(c.name) + ': (no path)')\n"
+        "  print(chr(10).join(paths) if paths else '(no clips found)')\n"
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     return _fmt(result)
@@ -2047,7 +2045,7 @@ def collect_media_paths(
 # ─── Architecture 3.6: operation journaling + undo ────────────��──────────────
 
 # Singleton journal instance — lives for the server process lifetime
-from flame_mcp.journal import Journal as _Journal, UndoCodeGenerator as _UndoGen
+from flame_mcp.journal import Journal as _Journal  # noqa: E402 — grouped with journaling block below
 _journal = _Journal()
 
 

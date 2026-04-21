@@ -8,7 +8,6 @@ Covers:
   - UndoCodeGenerator: create→delete, rename→rename back, delete→None
 """
 
-import pytest
 
 from flame_mcp.journal import Journal, UndoCodeGenerator, MAX_ENTRIES
 

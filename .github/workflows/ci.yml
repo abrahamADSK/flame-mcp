@@ -37,9 +37,9 @@ jobs:
           python -m pytest tests/ -p no:warnings
 
   lint:
-    name: lint (ruff — non-blocking in v1)
+    name: lint (ruff)
     runs-on: ubuntu-latest
-    continue-on-error: true  # v1: baseline has existing lint debt; flip to false once cleaned up
+    continue-on-error: false  # Chat 47: baseline cleaned, lint is now blocking
     steps:
       - uses: actions/checkout@v4
 
