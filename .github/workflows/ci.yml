@@ -56,9 +56,9 @@ jobs:
         run: ruff check src/ tests/ --output-format=github
 
   typecheck:
-    name: mypy (non-blocking baseline)
+    name: mypy
     runs-on: ubuntu-latest
-    continue-on-error: true  # Baseline has no type coverage; flip to false after a mypy cleanup pass
+    continue-on-error: false  # Chat 47: baseline cleared, mypy is now blocking
     steps:
       - uses: actions/checkout@v4
 

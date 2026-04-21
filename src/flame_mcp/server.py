@@ -1738,7 +1738,8 @@ def read_flame_log(
         def _tail_file(path: Path, max_lines: int) -> list[str]:
             with open(path, 'rb') as f:
                 f.seek(0, 2)
-                pos, collected = f.tell(), []
+                pos = f.tell()
+                collected: list[bytes] = []
                 partial = b""
                 while pos > 0 and len(collected) < max_lines:
                     chunk_size = min(8192, pos)
@@ -2091,7 +2092,7 @@ def undo_last_operation() -> str:
 
     result = _call_flame(undo_code, timeout=15, dedicated_tool=True)
     output = _fmt(result)
-    _journal.record(f"[UNDO] {undo_code}", output)
+    _journal.record(f"[UNDO] {undo_code}", {"status": "ok", "output": output})
     return f"↩️  Undo executed:\n   Code: {undo_code[:200]}\n   Result: {output}"
 
 

@@ -17,6 +17,7 @@ Classes:
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Callable
 
 
 # ─── Ring-buffer operation journal ───────────────────────────────────────────
@@ -231,7 +232,7 @@ def _undo_move(match: re.Match, result: str) -> str | None:
 # ── Pattern table ────────────────────────────────────────────────────────────
 # Order matters: more specific patterns first.
 
-_UNDO_PATTERNS: list[tuple[re.Pattern, callable]] = [
+_UNDO_PATTERNS: list[tuple[re.Pattern, Callable]] = [
     # Create library
     (
         re.compile(r"\.create_library\s*\(\s*['\"](?P<name>[^'\"]+)['\"]\s*\)"),
