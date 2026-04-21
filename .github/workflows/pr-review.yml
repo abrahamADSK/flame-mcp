@@ -1,11 +1,16 @@
 name: Claude PR Review
 
 # Runs Claude Code on every opened / synchronised PR to produce an
-# automated code review. Skipped silently when the repo secret
-# ANTHROPIC_API_KEY is not configured — set it under
-# Settings → Secrets and variables → Actions to activate.
+# automated code review. Uses the maintainer's Claude Max/Pro web
+# subscription via OAuth (NOT an API key — Abraham does not use the API
+# directly). The token is generated locally with `claude setup-token`
+# and stored as the CLAUDE_CODE_OAUTH_TOKEN secret in each repo.
 #
-# Canonical source: ~/Projects/pr-review-canonical.yml (Chat 46).
+# If the secret is missing the action errors out visibly so the
+# maintainer knows to configure it (Settings → Secrets and variables →
+# Actions → New repository secret).
+#
+# Canonical source: ~/Projects/pr-review-canonical.yml (Chat 46, OAuth in Chat 47).
 # Copy byte-identical to .github/workflows/pr-review.yml in each of the
 # 4 MCP-ecosystem repos.
 
@@ -23,9 +28,10 @@ jobs:
     name: claude review
     runs-on: ubuntu-latest
     # Skip draft PRs; full reviews only on PRs the author marks ready.
-    # If ANTHROPIC_API_KEY is not set, the action errors out visibly so
-    # the repo owner knows to configure the secret — GitHub Actions does
-    # not allow `if: secrets.X != ''` at the job level directly.
+    # If CLAUDE_CODE_OAUTH_TOKEN is not set, the action errors out
+    # visibly so the repo owner knows to configure the secret —
+    # GitHub Actions does not allow `if: secrets.X != ''` at the job
+    # level directly.
     if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +41,7 @@ jobs:
       - name: Run Claude Code review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             You are reviewing a pull request against the MCP-ecosystem
             `main` branch. The repo declares cross-cutting invariants in
