@@ -164,6 +164,7 @@ concepts:
 
       - id: bridge_anthropic_models_in_catalogue
         type: subset
+        ci_skip: true  # b_source lives outside the repo (~/Projects/.external_versions.yml)
         direction: a_subset_b
         a_source:
           type: ast_tuple_list_column
@@ -358,6 +359,7 @@ concepts:
     invariants:
       - id: every_v1plus_tag_has_github_release
         type: subset
+        ci_skip: true  # b_source shells out to `gh release list` — default GH_TOKEN scope varies
         direction: a_subset_b
         a_source:
           type: command_lines

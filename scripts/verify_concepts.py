@@ -49,28 +49,27 @@ import os
 import sys
 from pathlib import Path
 
-# Invariant types that depend on oracles living outside the repo and are
-# therefore skipped when the runner detects GitHub Actions CI.
+# Invariant types that always depend on oracles living outside the repo
+# and are therefore skipped automatically when the runner detects GitHub
+# Actions CI.
 #
-#   review_expiry          — reads `.external_versions.yml` from the parent
-#                            of the repo root (ecosystem-wide file kept in
-#                            ~/Projects/ by design, NOT committed per-repo
-#                            so the four repos share one freshness oracle).
-#                            CI runners check out a single repo under
-#                            /home/runner/work/<repo>/<repo>/, so the parent
-#                            lookup misses.
-#   github_release_per_tag — shells out to `gh release list`, which needs
-#                            a token with release:read scope; the default
-#                            GITHUB_TOKEN exposed as GH_TOKEN has a narrower
-#                            scope and formats release names differently
-#                            enough to produce false drift.
+#   review_expiry — reads `.external_versions.yml` from the parent of the
+#                   repo root (ecosystem-wide file kept in ~/Projects/ by
+#                   design, NOT committed per-repo so the four repos share
+#                   one freshness oracle). CI runners check out a single
+#                   repo under /home/runner/work/<repo>/<repo>/, so the
+#                   parent lookup misses.
 #
-# Both invariants remain active on developer machines and in the pre-commit
-# hook — the skip only removes them from the CI badge. See MASTER_HISTORY
-# "Architectural decisions in force" → "Concept registry".
-CI_SKIPPED_TYPES: frozenset[str] = frozenset(
-    {"review_expiry", "github_release_per_tag"}
-)
+# For invariants of any other type (e.g. `subset`) whose sources also
+# reach external oracles, set `ci_skip: true` on the invariant entry in
+# .concepts.yml. Examples: a `subset` that reads `.external_versions.yml`
+# via `yaml_values`, or a `subset` whose command shells out to
+# `gh release list`.
+#
+# In both cases the invariant remains active on developer machines and in
+# the pre-commit hook — the skip only removes it from the CI badge.
+# See MASTER_HISTORY "Architectural decisions in force" → "Concept registry".
+CI_SKIPPED_TYPES: frozenset[str] = frozenset({"review_expiry"})
 
 # Local import: scripts/ is not a package; add it to sys.path explicitly.
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -220,10 +219,16 @@ def main() -> int:
         for i, inv in enumerate(invariants):
             inv_type = inv.get("type")
             inv_id = inv.get("id", f"{concept_name}[{i}]")
-            if ci_mode and inv_type in CI_SKIPPED_TYPES:
+            if ci_mode and (
+                inv_type in CI_SKIPPED_TYPES or inv.get("ci_skip") is True
+            ):
+                reason = (
+                    f"type={inv_type}" if inv_type in CI_SKIPPED_TYPES
+                    else "ci_skip: true"
+                )
                 results.append((
                     "skip", inv_id,
-                    f"skipped under GITHUB_ACTIONS (type={inv_type}, "
+                    f"skipped under GITHUB_ACTIONS ({reason}, "
                     f"depends on ecosystem-external oracle)",
                     concept_name, inv,
                 ))
