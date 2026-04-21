@@ -70,3 +70,6 @@ __MACOSX/
 ._*
 src/flame_mcp/rag/index/
 src/flame_mcp/rag/corpus.json
+
+# Coverage artifact from pytest-cov
+.coverage
