@@ -439,21 +439,31 @@ def _extract_items(source: dict) -> set[str]:
                 return values
         raise ValueError(f"class {target} not found in {source['file']}")
     if kind == "ast_dict_keys":
-        # For a top-level assignment `SYMBOL = {...}`, return the set of
+        # For a top-level assignment `SYMBOL = {...}` (plain or annotated,
+        # e.g. `SYMBOL: dict[str, Callable] = {...}`), return the set of
         # string keys.
         tree = ast.parse(_read(source["file"]))
         target = source["symbol"]
         for node in ast.walk(tree):
+            targets: list[ast.AST] = []
+            value: ast.AST | None = None
             if isinstance(node, ast.Assign):
-                for tgt in node.targets:
-                    if isinstance(tgt, ast.Name) and tgt.id == target:
-                        if isinstance(node.value, ast.Dict):
-                            keys: set[str] = set()
-                            for key in node.value.keys:
-                                if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                                    keys.add(key.value)
-                            return keys
-                        return set()
+                targets = list(node.targets)
+                value = node.value
+            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                targets = [node.target]
+                value = node.value
+            else:
+                continue
+            for tgt in targets:
+                if isinstance(tgt, ast.Name) and tgt.id == target:
+                    if isinstance(value, ast.Dict):
+                        keys: set[str] = set()
+                        for key in value.keys:
+                            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                                keys.add(key.value)
+                        return keys
+                    return set()
         raise ValueError(f"symbol {target} not found in {source['file']}")
     if kind == "literal_set":
         # Hardcoded expected set declared inline in the YAML. Useful as the
