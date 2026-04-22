@@ -1664,6 +1664,7 @@ def list_flame_logs() -> str:
     - Backburner render logs  (backburner*.log, bb_*.log)
     - Python hook logs        (python*.log)
     """
+    from flame_mcp.suggestions import maybe_annotate_with_suggestions
     if not _LOGS_DIR.exists():
         return f"❌ Log directory not found: {_LOGS_DIR}"
 
@@ -1688,7 +1689,7 @@ def list_flame_logs() -> str:
             lines.append(f"  {p.name:<45}  {sz:>8}  {ts}")
 
         _track_dedicated()
-        return "\n".join(lines)
+        return maybe_annotate_with_suggestions("list_flame_logs", "\n".join(lines))
     except Exception as e:
         return f"❌ Error listing logs: {e}"
 

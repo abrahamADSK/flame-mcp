@@ -195,11 +195,44 @@ class TestListClipsRule:
         assert s._suggest_after_list_clips(text) == []
 
 
+class TestListFlameLogsRule:
+    def test_picks_first_log_after_header(self):
+        text = (
+            "📁 /opt/Autodesk/logs  (3 files)\n"
+            "\n"
+            "  flame.log                                      150 KB  2026-04-22 10:15\n"
+            "  wiretap.log                                     45 KB  2026-04-22 09:50\n"
+            "  python.log                                       2 KB  2026-04-20 14:30\n"
+        )
+        out = s._suggest_after_list_flame_logs(text)
+        assert len(out) == 1
+        assert out[0]["tool"] == "read_flame_log"
+        assert out[0]["params_hint"]["log_name"] == "flame.log"
+        assert out[0]["params_hint"]["lines"] == 200
+        assert "Error" in out[0]["params_hint"]["grep"]
+
+    def test_no_logs_returns_empty(self):
+        assert s._suggest_after_list_flame_logs(
+            "No log files found in /opt/Autodesk/logs"
+        ) == []
+
+    def test_error_response_returns_empty(self):
+        assert s._suggest_after_list_flame_logs(
+            "❌ Log directory not found: /opt/Autodesk/logs"
+        ) == []
+
+    def test_error_listing_returns_empty(self):
+        assert s._suggest_after_list_flame_logs(
+            "❌ Error listing logs: permission denied"
+        ) == []
+
+
 class TestRegistryContract:
     def test_registry_has_list_libraries(self):
         assert "list_libraries" in s.SUGGESTION_RULES
 
-    def test_registry_has_navigation_chain(self):
-        # list_libraries → list_reels → list_clips → get_clip_metadata.
-        for tool in ("list_libraries", "list_reels", "list_clips"):
+    def test_registry_has_all_rules(self):
+        for tool in (
+            "list_libraries", "list_reels", "list_clips", "list_flame_logs",
+        ):
             assert tool in s.SUGGESTION_RULES, f"{tool} missing from registry"

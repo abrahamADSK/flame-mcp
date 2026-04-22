@@ -137,16 +137,51 @@ def _suggest_after_list_clips(response_text: str) -> list[Suggestion]:
     return []
 
 
+_LOG_LINE_RE = re.compile(
+    r"^  (\S[^\s]*\.log)\s",
+    re.MULTILINE,
+)
+
+
+def _suggest_after_list_flame_logs(response_text: str) -> list[Suggestion]:
+    """Pick the most recent log and suggest a filtered read.
+
+    `list_flame_logs` prints a `📁 <dir> (N files)` header followed by
+    indented rows sorted by mtime (newest first), shaped as
+    ``  <name.log>     <size>   YYYY-MM-DD HH:MM``. The first matching
+    row is the most recently modified log — the natural candidate for a
+    follow-up read with the standard error-grep pattern used in
+    diagnostic loops.
+    """
+    if "❌" in response_text or "No log files" in response_text:
+        return []
+    match = _LOG_LINE_RE.search(response_text)
+    if not match:
+        return []
+    log_name = match.group(1)
+    return [{
+        "tool": "read_flame_log",
+        "reason": f"Inspect the most recent log '{log_name}' for errors or tracebacks.",
+        "params_hint": {
+            "log_name": log_name,
+            "lines": 200,
+            "grep": "Error|Traceback|Exception|crash",
+        },
+    }]
+
+
 # tool_name → callable(response_text) -> list[Suggestion]
 #
 # Rules mirror the fpt-mcp/maya-mcp contract. The navigation chain
 # list_libraries → list_reels → list_clips → get_clip_metadata gives the
 # LLM a breadcrumb for structural discovery when the user asks
-# exploratory questions about the Flame project.
+# exploratory questions about the Flame project. A separate diagnostic
+# chain handles the log-triage flow: list_flame_logs → read_flame_log.
 SUGGESTION_RULES: dict[str, Callable[[str], list[Suggestion]]] = {
     "list_libraries": _suggest_after_list_libraries,
     "list_reels": _suggest_after_list_reels,
     "list_clips": _suggest_after_list_clips,
+    "list_flame_logs": _suggest_after_list_flame_logs,
 }
 
 
