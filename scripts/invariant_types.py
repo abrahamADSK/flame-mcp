@@ -515,11 +515,27 @@ def version_match(params: dict) -> tuple[bool, str]:
     params:
         a : source spec (see _read_version)
         b : source spec
+        tolerate_release_in_progress : bool — default False. When True, a
+            drift of the form ``a == CUT_RELEASE_VERSION != b`` is tolerated
+            so `scripts/cut-release.sh` can commit the pyproject bump before
+            the matching git tag exists. The env var is set only inside the
+            release commit (by the script), so the tolerance cannot be
+            forged for unrelated commits.
     """
     a = _read_version(params["a"])
     b = _read_version(params["b"])
     if a == b:
         return True, f"version agrees: {a}"
+
+    if params.get("tolerate_release_in_progress"):
+        import os
+        cut = (os.environ.get("CUT_RELEASE_VERSION") or "").strip()
+        if cut and a == cut and b != cut:
+            return True, (
+                f"version agrees under release-in-progress: a={a} "
+                f"(env CUT_RELEASE_VERSION matches; tag b={b} lags as expected)"
+            )
+
     return False, f"version mismatch: a={a}, b={b}"
 
 
