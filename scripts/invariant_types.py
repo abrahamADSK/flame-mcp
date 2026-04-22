@@ -970,52 +970,10 @@ def _write_review_expiry(inv: dict) -> tuple[bool, str]:
     return True, f"bumped reviewed_at → {today} under {inv['key']} in {path.name}"
 
 
-def _write_subset(inv: dict) -> tuple[bool, str]:
-    """Append missing items from `a` into the `b` anchor block.
-
-    Scope (intentionally narrow to keep blast radius small):
-      - direction == 'a_subset_b' (missing = a - b). bidirectional and
-        b_subset_a drifts have ambiguous writer direction — report
-        unsupported instead of guessing.
-      - b_source.type == 'anchor_list' AND b_source has no
-        `item_pattern`. The plain-bullet case has a well-defined
-        insertion shape; regex-based item patterns require knowing
-        where to splice into surrounding prose, which varies per doc.
-      - File is mutable and the concept block exists.
-
-    Items are appended as bullet lines (``- `item```) at the tail of
-    the anchor block. Existing content inside the block (headers,
-    paragraphs, older bullets) is preserved untouched.
-    """
-    direction = inv.get("direction", "a_subset_b")
-    if direction != "a_subset_b":
-        return False, (
-            f"subset writer only supports direction=a_subset_b; "
-            f"got {direction!r}"
-        )
-
-    b_source = inv.get("b_source", {})
-    if b_source.get("type") != "anchor_list":
-        return False, (
-            f"subset writer only supports b_source.type=anchor_list; "
-            f"got {b_source.get('type')!r}"
-        )
-    if b_source.get("item_pattern"):
-        return False, (
-            "subset writer skipped: b_source uses item_pattern "
-            "(regex capture), which has no canonical insertion shape — "
-            "fix manually inside the concept block"
-        )
-
-    try:
-        a = _extract_items(inv["a_source"])
-        b = _extract_items(inv["b_source"])
-    except Exception as exc:
-        return False, f"failed to read sources: {type(exc).__name__}: {exc}"
-    missing = a - b
-    if not missing:
-        return True, "no drift (nothing to write)"
-
+def _write_subset_anchor_list(
+    inv: dict, b_source: dict, missing: set[str]
+) -> tuple[bool, str]:
+    """Append missing items as bullets inside the concept anchor block."""
     file_rel = b_source["file"]
     concept_id = b_source["concept_id"]
     file_path = Path(file_rel)
@@ -1033,8 +991,7 @@ def _write_subset(inv: dict) -> tuple[bool, str]:
     m = re.search(block_pattern, text, re.DOTALL)
     if not m:
         return False, (
-            f"anchor block for concept {concept_id!r} not found in "
-            f"{file_rel}"
+            f"anchor block for concept {concept_id!r} not found in {file_rel}"
         )
 
     start_tag, block, end_tag = m.group(1), m.group(2), m.group(3)
@@ -1048,6 +1005,134 @@ def _write_subset(inv: dict) -> tuple[bool, str]:
     return True, (
         f"appended {len(missing)} bullet(s) to {file_rel} [{concept_id}]: "
         f"{sorted(missing)}"
+    )
+
+
+def _write_subset_file_regex(
+    inv: dict, b_source: dict, missing: set[str]
+) -> tuple[bool, str]:
+    """Append missing items to a file_regex_matches mirror (Phase D).
+
+    Requires explicit opt-in via ``b_source.writer``:
+      writer:
+        line_template: "- `{item}` — (fill me in)"   # required
+        insert_after: last_match | end_of_file       # optional, default last_match
+
+    ``line_template`` must contain ``{item}``; items are substituted one
+    line at a time. Without this config the writer is unsupported for
+    file_regex_matches mirrors — the insertion shape varies per doc and
+    guessing risks corrupting prose.
+    """
+    writer_cfg = b_source.get("writer") or {}
+    template = writer_cfg.get("line_template")
+    if not template:
+        return False, (
+            "file_regex_matches writer requires b_source.writer.line_template "
+            "(Phase D opt-in). Add the template in .concepts.yml to enable "
+            "automatic insertion; otherwise fix manually."
+        )
+    if "{item}" not in template:
+        return False, (
+            f"line_template must contain '{{item}}' placeholder; got "
+            f"{template!r}"
+        )
+
+    file_rel = b_source["file"]
+    file_path = Path(file_rel)
+    if not file_path.is_absolute():
+        file_path = REPO_ROOT / file_path
+    if not file_path.exists():
+        return False, f"mirror file missing: {file_path}"
+
+    pattern = b_source["pattern"]
+    text = file_path.read_text(encoding="utf-8")
+
+    insert_after = writer_cfg.get("insert_after", "last_match")
+    new_lines = "".join(
+        template.format(item=item) + "\n" for item in sorted(missing)
+    )
+
+    if insert_after == "end_of_file":
+        trailing = "" if text.endswith("\n") else "\n"
+        new_text = text + trailing + new_lines
+    else:
+        # last_match: find the last match of the regex pattern (multiline)
+        # and insert new entries right after the line containing it, so new
+        # items extend the existing list inline.
+        matches = list(re.finditer(pattern, text, re.MULTILINE))
+        if not matches:
+            return False, (
+                "insert_after=last_match but no existing match of pattern "
+                f"{pattern!r} in {file_rel}; use insert_after=end_of_file "
+                "or seed at least one manual entry before re-running"
+            )
+        last = matches[-1]
+        # Find end-of-line of the last match.
+        eol = text.find("\n", last.end())
+        if eol == -1:
+            eol = len(text)
+            new_text = text + "\n" + new_lines
+        else:
+            new_text = text[: eol + 1] + new_lines + text[eol + 1 :]
+
+    file_path.write_text(new_text, encoding="utf-8")
+    return True, (
+        f"appended {len(missing)} line(s) to {file_rel} "
+        f"(insert_after={insert_after}): {sorted(missing)}"
+    )
+
+
+def _write_subset(inv: dict) -> tuple[bool, str]:
+    """Align the `b` mirror to include missing items from `a`.
+
+    Scope (grows in phases, opt-in at the YAML level for risky shapes):
+      - direction == 'a_subset_b' (missing = a - b). Bidirectional and
+        b_subset_a drifts have ambiguous writer direction — report
+        unsupported instead of guessing.
+      - b_source.type == 'anchor_list' without `item_pattern`: append
+        missing items as bullet lines inside the concept block. Phase C.
+      - b_source.type == 'file_regex_matches' with explicit
+        ``writer.line_template`` in YAML: append template-formatted
+        lines after the last existing regex match (default) or at
+        end_of_file (opt-in). Phase D.
+      - Other shapes report WRITER UNSUPPORTED with a message explaining
+        why — fixable via manual edit or by extending b_source.writer
+        config in the registry.
+    """
+    direction = inv.get("direction", "a_subset_b")
+    if direction != "a_subset_b":
+        return False, (
+            f"subset writer only supports direction=a_subset_b; "
+            f"got {direction!r}"
+        )
+
+    b_source = inv.get("b_source", {})
+    b_type = b_source.get("type")
+
+    try:
+        a = _extract_items(inv["a_source"])
+        b = _extract_items(inv["b_source"])
+    except Exception as exc:
+        return False, f"failed to read sources: {type(exc).__name__}: {exc}"
+    missing = a - b
+    if not missing:
+        return True, "no drift (nothing to write)"
+
+    if b_type == "anchor_list":
+        if b_source.get("item_pattern"):
+            return False, (
+                "subset writer skipped: b_source anchor_list uses "
+                "item_pattern (regex capture) which has no canonical "
+                "insertion shape — fix manually inside the concept block"
+            )
+        return _write_subset_anchor_list(inv, b_source, missing)
+
+    if b_type == "file_regex_matches":
+        return _write_subset_file_regex(inv, b_source, missing)
+
+    return False, (
+        f"subset writer does not support b_source.type={b_type!r} "
+        f"(supported: anchor_list, file_regex_matches with writer config)"
     )
 
 
