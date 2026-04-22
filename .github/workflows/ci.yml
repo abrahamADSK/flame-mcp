@@ -34,7 +34,18 @@ jobs:
 
       - name: Run tests (with coverage)
         run: |
-          python -m pytest tests/ -p no:warnings --cov=flame_mcp --cov-report=term
+          python -m pytest tests/ -p no:warnings --cov=flame_mcp --cov-report=term --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+          verbose: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   lint:
     name: lint (ruff)
