@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `src/flame_mcp/suggestions.py` — `list_flame_logs → read_flame_log`
+  rule. Parses the `📁 <dir> (N files)` header + indented log rows
+  sorted by mtime, picks the first (most recent) log, and seeds a
+  `read_flame_log` call with the standard diagnostic grep pattern
+  `Error|Traceback|Exception|crash` and `lines=200`. Natural triage
+  flow when the user runs `list_flame_logs` because something looked
+  off. Short-circuits on "❌ Log directory not found", "❌ Error
+  listing logs", and "No log files found" responses.
+- `scripts/invariant_types.py` — `_write_subset` handler registered
+  in WRITERS (Phase C + D, Chat 48). Covers `b_source.type:
+  anchor_list` (without `item_pattern`) and `file_regex_matches`
+  (with YAML opt-in `b_source.writer.line_template`). Enables
+  `/propagate-change` Path A to auto-fix subset-drift without
+  manual edits for the common cases.
+- `.github/workflows/ci.yml` — Codecov coverage upload step
+  (`codecov/codecov-action@v4`), gated to `matrix.python-version ==
+  '3.12'`.
+
+### Fixed
+- `scripts/invariant_types.py` — `version_match` handler honors
+  opt-in `tolerate_release_in_progress: true`. Applied to
+  `.concepts.yml` on the `pyproject_matches_latest_tag` invariant to
+  unblock `cut-release.sh` under strict mode.
+
 ## [1.5.0] — 2026-04-22
 
 ### Added
