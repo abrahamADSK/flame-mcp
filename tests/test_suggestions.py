@@ -90,6 +90,116 @@ class TestListLibrariesRule:
         assert s._suggest_after_list_libraries("Flame is offline.") == []
 
 
+class TestListReelsRule:
+    def test_picks_first_populated_reel(self):
+        text = (
+            "[Default Library]\n"
+            "  Reel 1  (3 clips)\n"
+            "  Reel 2  (0 clips)\n"
+            "[Assets]\n"
+            "  Main  (5 clips)\n"
+        )
+        out = s._suggest_after_list_reels(text)
+        assert len(out) == 1
+        assert out[0]["tool"] == "list_clips"
+        assert out[0]["params_hint"] == {
+            "library_name": "Default Library",
+            "reel_name": "Reel 1",
+        }
+
+    def test_skips_empty_reels_within_library(self):
+        text = (
+            "[Default Library]\n"
+            "  Reel 1  (0 clips)\n"
+            "  Reel 2  (2 clips)\n"
+        )
+        out = s._suggest_after_list_reels(text)
+        assert out[0]["params_hint"]["reel_name"] == "Reel 2"
+
+    def test_skips_hidden_libraries(self):
+        text = (
+            "[Timeline FX]\n"
+            "  Phantom  (1 clips)\n"
+            "[Default Library]\n"
+            "  Main  (4 clips)\n"
+        )
+        out = s._suggest_after_list_reels(text)
+        assert out[0]["params_hint"]["library_name"] == "Default Library"
+
+    def test_no_library_header_returns_empty(self):
+        # Filtered case (list_reels with library_name=...) — no [Library] header.
+        text = "  Reel 1  (3 clips)\n  Reel 2  (1 clips)\n"
+        assert s._suggest_after_list_reels(text) == []
+
+    def test_library_not_found_returns_empty(self):
+        assert s._suggest_after_list_reels("Library 'Foo' not found.") == []
+
+    def test_only_empty_reels_returns_empty(self):
+        text = "[Default Library]\n  Reel 1  (0 clips)\n"
+        assert s._suggest_after_list_reels(text) == []
+
+    def test_singular_clip_still_matches(self):
+        text = "[Default Library]\n  Reel 1  (1 clip)\n"
+        out = s._suggest_after_list_reels(text)
+        assert out and out[0]["params_hint"]["reel_name"] == "Reel 1"
+
+
+class TestListClipsRule:
+    def test_picks_first_clip_under_first_header(self):
+        text = (
+            "[Default Library] / [Reel 1] — 3 clip(s)\n"
+            "  clip_01  00:00:10\n"
+            "  clip_02  00:00:08\n"
+            "  clip_03  00:00:12\n"
+        )
+        out = s._suggest_after_list_clips(text)
+        assert len(out) == 1
+        assert out[0]["tool"] == "get_clip_metadata"
+        assert out[0]["params_hint"] == {
+            "library_name": "Default Library",
+            "reel_name": "Reel 1",
+            "clip_name": "clip_01",
+        }
+
+    def test_handles_clip_without_duration(self):
+        text = (
+            "[Assets] / [Main] — 1 clip(s)\n"
+            "  solo_clip\n"
+        )
+        out = s._suggest_after_list_clips(text)
+        assert out[0]["params_hint"]["clip_name"] == "solo_clip"
+
+    def test_ignores_ellipsis_more_line(self):
+        text = (
+            "[Assets] / [Main] — 60 clip(s)\n"
+            "  … and 10 more (use limit=0 to see all)\n"
+        )
+        # Ellipsis line is not a valid clip — rule yields empty.
+        assert s._suggest_after_list_clips(text) == []
+
+    def test_ellipsis_after_valid_clips_is_ignored(self):
+        text = (
+            "[Assets] / [Main] — 60 clip(s)\n"
+            "  clip_01\n"
+            "  clip_02\n"
+            "  … and 58 more (use limit=0 to see all)\n"
+        )
+        out = s._suggest_after_list_clips(text)
+        assert out[0]["params_hint"]["clip_name"] == "clip_01"
+
+    def test_no_header_returns_empty(self):
+        assert s._suggest_after_list_clips("No reels matched filter 'X'.") == []
+
+    def test_header_without_clips_returns_empty(self):
+        text = "[Assets] / [Empty] — 0 clip(s)\n"
+        assert s._suggest_after_list_clips(text) == []
+
+
 class TestRegistryContract:
     def test_registry_has_list_libraries(self):
         assert "list_libraries" in s.SUGGESTION_RULES
+
+    def test_registry_has_navigation_chain(self):
+        # list_libraries → list_reels → list_clips → get_clip_metadata.
+        for tool in ("list_libraries", "list_reels", "list_clips"):
+            assert tool in s.SUGGESTION_RULES, f"{tool} missing from registry"
