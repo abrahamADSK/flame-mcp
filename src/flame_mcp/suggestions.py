@@ -42,6 +42,9 @@ _HIDDEN_LIBS = {"Timeline FX", "Grabbed References"}
 # two-space separator so line-wrapped diagnostics don't accidentally
 # match (Flame occasionally prints headers/errors as plain text).
 _LIB_LINE_RE = re.compile(r"^  (.+?)  \(.+\)\s*$", re.MULTILINE)
+_LIB_HEADER_RE = re.compile(r"^\[(.+)\]$")
+_REEL_LINE_RE = re.compile(r"^  (.+?)  \((\d+) clips?\)\s*$")
+_CLIPS_HEADER_RE = re.compile(r"^\[(.+?)\] / \[(.+?)\] — (\d+) clip\(s\)$")
 
 
 def _suggest_after_list_libraries(response_text: str) -> list[Suggestion]:
@@ -59,13 +62,91 @@ def _suggest_after_list_libraries(response_text: str) -> list[Suggestion]:
     return []
 
 
+def _suggest_after_list_reels(response_text: str) -> list[Suggestion]:
+    """Pick the first populated reel and suggest listing its clips.
+
+    Fires only when ``[Library]`` headers precede reel lines — the
+    no-filter case. When the caller passed ``library_name=...``, flame-mcp
+    omits the header, so the rule cannot populate ``library_name`` in the
+    hint and stays silent (the user already narrowed scope manually).
+    """
+    current_lib = ""
+    for line in response_text.splitlines():
+        header = _LIB_HEADER_RE.match(line)
+        if header:
+            current_lib = header.group(1).strip()
+            continue
+        if not current_lib or current_lib in _HIDDEN_LIBS:
+            continue
+        reel = _REEL_LINE_RE.match(line)
+        if not reel:
+            continue
+        reel_name = reel.group(1).strip()
+        clip_count = int(reel.group(2))
+        if clip_count <= 0:
+            continue
+        return [{
+            "tool": "list_clips",
+            "reason": f"List the {clip_count} clip(s) in reel '{reel_name}' of '{current_lib}'.",
+            "params_hint": {
+                "library_name": current_lib,
+                "reel_name": reel_name,
+            },
+        }]
+    return []
+
+
+def _suggest_after_list_clips(response_text: str) -> list[Suggestion]:
+    """Pick the first clip under the first reel header and suggest metadata.
+
+    The list_clips output uses ``[Library] / [Reel] — N clip(s)`` as a
+    section header followed by indented clip lines (optionally carrying a
+    duration after two spaces). We extract the first clip under the first
+    header to seed ``get_clip_metadata``'s three required params.
+
+    Notes for ``get_selected_clips`` chain (intentionally NOT implemented):
+    that tool's output lists items as ``  <name>  [<PyType>]`` without any
+    library/reel parent context. ``get_clip_metadata`` needs all three
+    names, so a follow-up hint would be misleading. The rule is deferred
+    until get_selected_clips grows parent-trail output.
+    """
+    current_lib = ""
+    current_reel = ""
+    for line in response_text.splitlines():
+        header = _CLIPS_HEADER_RE.match(line)
+        if header:
+            current_lib = header.group(1).strip()
+            current_reel = header.group(2).strip()
+            continue
+        if not (current_lib and current_reel):
+            continue
+        if not line.startswith("  ") or line.lstrip().startswith("…"):
+            continue
+        clip_name = line[2:].split("  ", 1)[0].strip()
+        if not clip_name:
+            continue
+        return [{
+            "tool": "get_clip_metadata",
+            "reason": f"Inspect detailed metadata for clip '{clip_name}'.",
+            "params_hint": {
+                "library_name": current_lib,
+                "reel_name": current_reel,
+                "clip_name": clip_name,
+            },
+        }]
+    return []
+
+
 # tool_name → callable(response_text) -> list[Suggestion]
 #
-# Rules start conservative. The design goal is the pattern parity with
-# fpt-mcp/maya-mcp, not a specific rule set — more rules land once the
-# contract is exercised in real Flame sessions.
+# Rules mirror the fpt-mcp/maya-mcp contract. The navigation chain
+# list_libraries → list_reels → list_clips → get_clip_metadata gives the
+# LLM a breadcrumb for structural discovery when the user asks
+# exploratory questions about the Flame project.
 SUGGESTION_RULES: dict[str, Callable[[str], list[Suggestion]]] = {
     "list_libraries": _suggest_after_list_libraries,
+    "list_reels": _suggest_after_list_reels,
+    "list_clips": _suggest_after_list_clips,
 }
 
 

@@ -972,11 +972,12 @@ for lib in ws.libraries:
     for reel in lib.reels:
         print(f"  {str(reel.name)}  ({len(reel.clips)} clips)")
 """
+    from flame_mcp.suggestions import maybe_annotate_with_suggestions
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result)
+    return maybe_annotate_with_suggestions("list_reels", _fmt(result))
 
 
 @mcp.tool(annotations=_RO)
@@ -1046,11 +1047,12 @@ for lib in ws.libraries:
             if limit > 0 and total > limit:
                 print(f"  … and {{total - limit}} more (use limit=0 to see all)")
 """
+    from flame_mcp.suggestions import maybe_annotate_with_suggestions
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()
-    return _fmt(result)
+    return maybe_annotate_with_suggestions("list_clips", _fmt(result))
 
 
 @mcp.tool(annotations=_RO)
