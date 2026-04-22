@@ -970,9 +970,91 @@ def _write_review_expiry(inv: dict) -> tuple[bool, str]:
     return True, f"bumped reviewed_at → {today} under {inv['key']} in {path.name}"
 
 
+def _write_subset(inv: dict) -> tuple[bool, str]:
+    """Append missing items from `a` into the `b` anchor block.
+
+    Scope (intentionally narrow to keep blast radius small):
+      - direction == 'a_subset_b' (missing = a - b). bidirectional and
+        b_subset_a drifts have ambiguous writer direction — report
+        unsupported instead of guessing.
+      - b_source.type == 'anchor_list' AND b_source has no
+        `item_pattern`. The plain-bullet case has a well-defined
+        insertion shape; regex-based item patterns require knowing
+        where to splice into surrounding prose, which varies per doc.
+      - File is mutable and the concept block exists.
+
+    Items are appended as bullet lines (``- `item```) at the tail of
+    the anchor block. Existing content inside the block (headers,
+    paragraphs, older bullets) is preserved untouched.
+    """
+    direction = inv.get("direction", "a_subset_b")
+    if direction != "a_subset_b":
+        return False, (
+            f"subset writer only supports direction=a_subset_b; "
+            f"got {direction!r}"
+        )
+
+    b_source = inv.get("b_source", {})
+    if b_source.get("type") != "anchor_list":
+        return False, (
+            f"subset writer only supports b_source.type=anchor_list; "
+            f"got {b_source.get('type')!r}"
+        )
+    if b_source.get("item_pattern"):
+        return False, (
+            "subset writer skipped: b_source uses item_pattern "
+            "(regex capture), which has no canonical insertion shape — "
+            "fix manually inside the concept block"
+        )
+
+    try:
+        a = _extract_items(inv["a_source"])
+        b = _extract_items(inv["b_source"])
+    except Exception as exc:
+        return False, f"failed to read sources: {type(exc).__name__}: {exc}"
+    missing = a - b
+    if not missing:
+        return True, "no drift (nothing to write)"
+
+    file_rel = b_source["file"]
+    concept_id = b_source["concept_id"]
+    file_path = Path(file_rel)
+    if not file_path.is_absolute():
+        file_path = REPO_ROOT / file_path
+    if not file_path.exists():
+        return False, f"mirror file missing: {file_path}"
+
+    text = file_path.read_text(encoding="utf-8")
+    block_pattern = (
+        rf"(<!--\s*concept:{re.escape(concept_id)}\s+start\s*-->)"
+        r"(.*?)"
+        rf"(<!--\s*concept:{re.escape(concept_id)}\s+end\s*-->)"
+    )
+    m = re.search(block_pattern, text, re.DOTALL)
+    if not m:
+        return False, (
+            f"anchor block for concept {concept_id!r} not found in "
+            f"{file_rel}"
+        )
+
+    start_tag, block, end_tag = m.group(1), m.group(2), m.group(3)
+    trailing_nl = "" if block.endswith("\n") else "\n"
+    new_entries = "".join(f"- `{item}`\n" for item in sorted(missing))
+    new_block = block + trailing_nl + new_entries
+    new_text = (
+        text[: m.start()] + start_tag + new_block + end_tag + text[m.end() :]
+    )
+    file_path.write_text(new_text, encoding="utf-8")
+    return True, (
+        f"appended {len(missing)} bullet(s) to {file_rel} [{concept_id}]: "
+        f"{sorted(missing)}"
+    )
+
+
 WRITERS = {
     "tool_count":     _write_tool_count,
     "review_expiry":  _write_review_expiry,
+    "subset":         _write_subset,
 }
 
 
