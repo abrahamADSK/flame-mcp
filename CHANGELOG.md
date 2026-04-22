@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-04-22
+
 ### Added
 - `src/flame_mcp/suggestions.py` — `list_flame_logs → read_flame_log`
   rule. Parses the `📁 <dir> (N files)` header + indented log rows
