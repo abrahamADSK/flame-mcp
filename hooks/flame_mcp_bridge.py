@@ -906,7 +906,23 @@ class _FlameChat:
           - learn_pattern confirm  → purple bubble with 🧠 message
 
         Uses the user's existing Claude Code session (Pro/Max) — no API key needed.
+
+        F0 baseline: every invocation appends one record to logs/turns.jsonl
+        whether it succeeded, errored, or timed out. The record is written
+        from the outer finally so it is never skipped — pre-flight variables
+        are initialised to sane defaults so an early exception still produces
+        a usable row.
         """
+        # F0: turn-record fields, initialised here so the finally clause can
+        # always read them. Updated incrementally as the subprocess progresses.
+        _t0_turn        = time.monotonic()
+        _turn_prompt    = ""
+        _turn_watchdog  = 0
+        _turn_exit_code = None
+        _turn_timed_out = False
+        _turn_stderr_lines: list[str] = []
+        _turn_error_msg = None
+
         try:
             self._ui_queue.append(lambda: (
                 self._status.setStyleSheet(self._STYLE_BUSY),
@@ -983,6 +999,7 @@ class _FlameChat:
                 env = self._get_ollama_env(env)
 
             prompt = self._build_prompt()
+            _turn_prompt = prompt  # F0: snapshot for turn-record
 
             # Resolve cwd to the repo directory that contains .mcp.json so
             # that 'claude -p' discovers the flame MCP server definition.
@@ -1065,6 +1082,7 @@ class _FlameChat:
                 _watchdog_secs = 240
             else:
                 _watchdog_secs = 180
+            _turn_watchdog = _watchdog_secs  # F0: snapshot for turn-record
             _timed_out = [False]
             def _kill():
                 _timed_out[0] = True
@@ -1096,6 +1114,11 @@ class _FlameChat:
                 except Exception:
                     proc.kill()
                 stderr_t.join(timeout=5)
+                # F0: snapshot fields for the turn-record now that the
+                # subprocess has fully drained and stderr is complete.
+                _turn_exit_code = proc.returncode
+                _turn_timed_out = _timed_out[0]
+                _turn_stderr_lines = list(stderr_lines)
 
             if _timed_out[0]:
                 raise RuntimeError(
@@ -1157,9 +1180,43 @@ class _FlameChat:
 
         except Exception as e:
             err = str(e)
+            _turn_error_msg = err
             self._ui_queue.append(lambda e=err: self._append_bubble("error", e))
         finally:
             self._ui_queue.append(lambda: self._set_busy(False))
+            # F0: best-effort turn-record. Written from the outer finally so
+            # the row is produced even on early-exception paths (claude not
+            # found, ollama unreachable, build_prompt failure). All I/O
+            # errors are swallowed — telemetry must never crash the panel.
+            try:
+                _turn_path = os.path.join(_PROJECT_ROOT, 'logs', 'turns.jsonl')
+                os.makedirs(os.path.dirname(_turn_path), exist_ok=True)
+                # Size-cap rotation (~5 MB ≈ 10k typical entries).
+                try:
+                    if os.path.getsize(_turn_path) >= 5 * 1024 * 1024:
+                        _rot = _turn_path + ".1"
+                        if os.path.exists(_rot):
+                            os.unlink(_rot)
+                        os.rename(_turn_path, _rot)
+                except FileNotFoundError:
+                    pass
+                _record = {
+                    "ts":             datetime.datetime.now().isoformat(timespec='seconds'),
+                    "model":          getattr(self, '_model', 'unknown'),
+                    "backend":        getattr(self, '_backend', 'unknown'),
+                    "watchdog_secs":  _turn_watchdog,
+                    "exit_code":      _turn_exit_code,
+                    "timed_out":      _turn_timed_out,
+                    "prompt_chars":   len(_turn_prompt),
+                    "stderr_lines":   len(_turn_stderr_lines),
+                    "duration_ms":    round((time.monotonic() - _t0_turn) * 1000),
+                    "error":          bool(_turn_error_msg),
+                    "error_msg":      (_turn_error_msg or '')[:200],
+                }
+                with open(_turn_path, 'a', encoding='utf-8') as _fh:
+                    _fh.write(json.dumps(_record, ensure_ascii=False, default=str) + "\n")
+            except (OSError, TypeError, ValueError):
+                pass
 
     def _handle_stream_event(self, event, assistant_parts, tool_summaries):
         """

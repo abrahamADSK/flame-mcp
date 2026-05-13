@@ -9,12 +9,17 @@ integration lives behind a patch proposal and is not exercised here.
 from __future__ import annotations
 
 import datetime
+import json
+from pathlib import Path
 
 
 from flame_mcp._session_stats import (
     DEFAULT_IDLE_RESET_SECONDS,
+    TELEMETRY_MAX_BYTES,
     apply_idle_reset,
     make_empty_stats,
+    persist_timing,
+    persist_turn,
     reset_stats,
     should_auto_reset,
 )
@@ -34,6 +39,8 @@ def test_empty_stats_has_all_canonical_keys() -> None:
         "exec_calls", "tokens_in", "tokens_out", "rag_calls",
         "tokens_saved", "dedicated_calls", "tokens_saved_tools",
         "patterns_learned", "patterns_staged", "patterns_failed",
+        # F0: p_fallo counters added in chat 51.
+        "turns_total", "failed_turns",
         "timings",
     }
     assert set(stats.keys()) == expected
@@ -47,6 +54,96 @@ def test_empty_stats_counters_are_zero() -> None:
             assert value == []
         else:
             assert value == 0, f"counter {key} not zeroed"
+
+
+def test_empty_stats_includes_p_fallo_counters() -> None:
+    """F0 — turns_total and failed_turns are present and zero so p_fallo
+    starts as 0/0 (undefined → reported as 0% by the consumer)."""
+    stats = make_empty_stats()
+    assert stats["turns_total"] == 0
+    assert stats["failed_turns"] == 0
+
+
+# ── persist_timing / persist_turn ──────────────────────────────────────────
+
+def test_persist_timing_writes_one_jsonl_line(tmp_path: Path) -> None:
+    """A single call appends exactly one well-formed JSON line."""
+    log = tmp_path / "timings.jsonl"
+    persist_timing(log, {"op": "exec", "bridge_ms": 10, "total_ms": 12})
+
+    contents = log.read_text(encoding="utf-8").splitlines()
+    assert len(contents) == 1
+    parsed = json.loads(contents[0])
+    assert parsed == {"op": "exec", "bridge_ms": 10, "total_ms": 12}
+
+
+def test_persist_timing_appends_across_calls(tmp_path: Path) -> None:
+    """Successive calls append; existing content is preserved."""
+    log = tmp_path / "timings.jsonl"
+    persist_timing(log, {"op": "exec", "n": 1})
+    persist_timing(log, {"op": "rag",  "n": 2})
+
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["n"] for line in lines] == [1, 2]
+
+
+def test_persist_timing_creates_parent_directory(tmp_path: Path) -> None:
+    """Parent directory is created on demand — caller need not pre-mkdir."""
+    log = tmp_path / "nested" / "dir" / "timings.jsonl"
+    persist_timing(log, {"op": "exec"})
+    assert log.exists()
+
+
+def test_persist_timing_rotates_when_oversized(tmp_path: Path) -> None:
+    """When the log reaches TELEMETRY_MAX_BYTES it is rotated to .1 and the
+    new line lands in a fresh file. A previous .1 is overwritten."""
+    log = tmp_path / "timings.jsonl"
+    rotated = tmp_path / "timings.jsonl.1"
+    # Stub a previous rotation that must be overwritten.
+    rotated.write_text("STALE\n", encoding="utf-8")
+    # Fill primary log past the rotation threshold.
+    log.write_bytes(b"X" * (TELEMETRY_MAX_BYTES + 1))
+
+    persist_timing(log, {"op": "exec", "after": "rotation"})
+
+    # The previous primary became .1 (overwriting "STALE"); new line is alone.
+    assert "STALE" not in rotated.read_text(encoding="utf-8")
+    new_lines = log.read_text(encoding="utf-8").splitlines()
+    assert len(new_lines) == 1
+    assert json.loads(new_lines[0])["after"] == "rotation"
+
+
+def test_persist_timing_swallows_io_errors(tmp_path: Path) -> None:
+    """An unwritable path must NOT raise — telemetry never crashes callers."""
+    # A regular file masquerading as a directory: any append inside it
+    # raises OSError, which the helper must swallow.
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x", encoding="utf-8")
+    log = blocker / "timings.jsonl"
+
+    # Must not raise.
+    persist_timing(log, {"op": "exec"})
+
+
+def test_persist_timing_handles_non_serialisable_values(tmp_path: Path) -> None:
+    """Non-JSON-native values are coerced via str (default=str) so the
+    call still succeeds for common edge cases (e.g. datetime)."""
+    log = tmp_path / "timings.jsonl"
+    persist_timing(log, {"op": "exec", "ts": datetime.datetime(2026, 5, 13, 12, 0, 0)})
+
+    parsed = json.loads(log.read_text(encoding="utf-8"))
+    assert parsed["op"] == "exec"
+    assert "2026-05-13" in parsed["ts"]
+
+
+def test_persist_turn_delegates_to_persist_timing(tmp_path: Path) -> None:
+    """The bridge-side helper shares the timing contract; both must produce
+    interchangeable JSONL output for jq aggregation."""
+    log = tmp_path / "turns.jsonl"
+    persist_turn(log, {"model": "claude-opus", "exit_code": 0})
+
+    parsed = json.loads(log.read_text(encoding="utf-8"))
+    assert parsed == {"model": "claude-opus", "exit_code": 0}
 
 
 # ── should_auto_reset ───────────────────────────────────────────────────────

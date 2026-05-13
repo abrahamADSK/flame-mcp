@@ -64,6 +64,8 @@ apply_idle_reset(stats, now, last_call_at, *, idle_reset_seconds)
 from __future__ import annotations
 
 import datetime
+import json
+from pathlib import Path
 from typing import Optional, Tuple
 
 
@@ -71,6 +73,13 @@ from typing import Optional, Tuple
 # steps away briefly and comes back is not surprised by a reset, but
 # short enough that a "next morning" Claude session starts clean.
 DEFAULT_IDLE_RESET_SECONDS = 30 * 60  # 30 minutes
+
+# Size cap for JSONL telemetry files written by persist_timing / persist_turn.
+# ~5 MB is approximately 10 k lines for typical timing/turn entries (see
+# F0 plan in docs). When the file reaches the cap it is rotated to
+# `<path>.1` (overwriting any previous .1), giving one rollover of
+# history without unbounded growth.
+TELEMETRY_MAX_BYTES = 5 * 1024 * 1024
 
 
 def make_empty_stats() -> dict:
@@ -99,8 +108,60 @@ def make_empty_stats() -> dict:
         "patterns_learned":   0,   # auto-learned patterns added to FLAME_API.md
         "patterns_staged":    0,   # C5 — candidates staged by non-trusted models
         "patterns_failed":    0,   # C5 — failed executions logged for gap analysis
+        # F0 baseline counters: drive p_fallo = failed_turns / turns_total.
+        # Incremented inside execute_python only (the error-prone path).
+        # Dedicated tools have a separate dedicated_calls counter.
+        "turns_total":        0,   # execute_python calls that ran past all gates
+        "failed_turns":       0,   # subset of turns_total that returned an error
         "timings":            [],  # REC-001: ring buffer of recent call timings (max 20)
     }
+
+
+def persist_timing(log_path: Path, entry: dict) -> None:
+    """
+    Append `entry` as a single JSON line to `log_path`.
+
+    Best-effort: any OSError, serialization error, or permission issue is
+    swallowed silently — the MCP server must not crash on telemetry I/O.
+    Creates the parent directory on demand.
+
+    Rotation: when the file reaches `TELEMETRY_MAX_BYTES`, it is renamed
+    to `<path>.1` (overwriting any previous `.1`) before the new line is
+    written. This keeps one rollover of history without unbounded growth.
+
+    Parameters
+    ----------
+    log_path : Path
+        Destination JSONL file. Parent directory created if missing.
+    entry : dict
+        Anything JSON-serialisable. Non-serialisable values are coerced
+        via ``str`` by ``json.dumps(default=str)`` so the call still
+        succeeds on edge cases (e.g. ``datetime``).
+    """
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if log_path.stat().st_size >= TELEMETRY_MAX_BYTES:
+                rotated = log_path.with_suffix(log_path.suffix + ".1")
+                if rotated.exists():
+                    rotated.unlink()
+                log_path.rename(rotated)
+        except FileNotFoundError:
+            pass
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, default=str, ensure_ascii=False) + "\n")
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def persist_turn(log_path: Path, entry: dict) -> None:
+    """
+    Append `entry` to a turn-level JSONL file. Same contract and rotation
+    behaviour as ``persist_timing``; the function is split for clarity at
+    the call sites (server-side timings vs bridge-side turns) and because
+    a future refactor may want to specialise the two streams.
+    """
+    persist_timing(log_path, entry)
 
 
 def should_auto_reset(

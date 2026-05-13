@@ -29,6 +29,8 @@ build/
 logs/*.log
 logs/*.txt
 logs/*.json
+logs/*.jsonl
+logs/*.jsonl.1
 
 # Distribution
 *.tar.gz
