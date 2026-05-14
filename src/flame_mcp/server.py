@@ -254,8 +254,50 @@ def _track_call() -> None:
     _last_call_at = now
 
 
-def _stats_footer() -> str:
-    """Return a compact session stats summary."""
+# F1a — _stats_footer modes. The footer used to ship ~80–120 tokens on
+# EVERY tool response, inflating the next turn's prefill by the same
+# amount. We now default to "minimal" (empty) and keep the full block
+# behind an opt-in.
+#
+#   "none"    — empty string
+#   "minimal" — empty string. Per-call timing is already emitted by the
+#               execute_python preamble ("🔥 This call · bridge Xms /
+#               total Yms"), so suppressing the session block here is
+#               net-additive: information that mattered stays visible,
+#               token count drops.
+#   "full"    — historical multi-line session aggregate. Available on
+#               demand via session_stats() and by setting
+#               config.json -> stats_footer_mode: "full" for users who
+#               want the per-response block back.
+_VALID_FOOTER_MODES = ("none", "minimal", "full")
+
+
+def _stats_footer(mode: str | None = None) -> str:
+    """
+    Return a compact session stats summary, gated by mode.
+
+    Parameters
+    ----------
+    mode : str | None
+        One of "none", "minimal", "full". When None (default), the value
+        is read from `config.json -> stats_footer_mode`, falling back to
+        "minimal" if the key is missing or unrecognised. Callers that
+        want the block unconditionally pass "full" explicitly; callers
+        that want it suppressed unconditionally pass "none".
+
+    Returns
+    -------
+    str
+        Empty string for "none" / "minimal". The historical multi-line
+        block for "full".
+    """
+    if mode is None:
+        mode = _get_config().get("stats_footer_mode", "minimal")
+    if mode not in _VALID_FOOTER_MODES:
+        mode = "minimal"
+    if mode != "full":
+        return ""
+    # full: historical session aggregate
     used        = _stats['tokens_in'] + _stats['tokens_out']
     saved_rag   = _stats['tokens_saved']
     saved_tools = _stats['tokens_saved_tools']
