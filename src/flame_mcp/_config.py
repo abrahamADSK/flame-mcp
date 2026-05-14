@@ -97,3 +97,51 @@ def load_model_config(
         return model, backend, ollama_url, cloud_key
     except Exception:
         return default_model, default_backend, default_ollama_url, ""
+
+
+def resolve_keep_alive(
+    config_path: str | os.PathLike,
+    *,
+    default: str = "30m",
+) -> str | int:
+    """
+    Read the `ollama_keep_alive` knob from `config.json` (F1b).
+
+    Ollama's `/api/generate` preflight accepts `keep_alive` as either a
+    duration string ("30m", "1h", "24h", "0" to unload immediately) or
+    an integer number of seconds (negative = keep loaded forever). The
+    bridge bumps this from the historical "10m" hard-coded value to a
+    30 min default so 5-15 min reading / typing gaps don't trigger a
+    cold model re-load on the next turn.
+
+    Parameters
+    ----------
+    config_path : str | os.PathLike
+        Filesystem path to config.json.
+    default : str, keyword-only
+        Returned when the key is absent, the file is unreadable, or the
+        configured value has a rejected type. Defaults to "30m" — the
+        value the rest of the codebase documents.
+
+    Returns
+    -------
+    str | int
+        A `str` duration (e.g. "30m") or `int` seconds. Anything else in
+        config — dict, list, None — collapses to `default` so a typo
+        cannot 400 the Ollama preflight.
+
+    Notes
+    -----
+    Mirrors `load_model_config` in keeping I/O errors out of control flow:
+    everything is best-effort and the caller never has to wrap the call
+    in try/except.
+    """
+    try:
+        with open(config_path) as f:
+            cfg = json.load(f)
+        value = cfg.get("ollama_keep_alive", default)
+        if isinstance(value, (str, int)) and not isinstance(value, bool):
+            return value
+        return default
+    except Exception:
+        return default

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from flame_mcp._config import load_model_config
+from flame_mcp._config import load_model_config, resolve_keep_alive
 
 
 # ── Canonical defaults used across the suite ─────────────────────────────────
@@ -151,3 +151,77 @@ def test_defaults_are_keyword_only() -> None:
             "/nonexistent",
             "m", "b", "u",
         )
+
+
+# ── resolve_keep_alive (F1b) ─────────────────────────────────────────────────
+# Ollama's /api/generate accepts a duration string ("30m", "1h") OR an integer
+# seconds value. The bridge preflight uses this knob to keep the runner warm
+# between turns — was hard-coded to "10m", now configurable with a 30 m
+# default. Garbage configs collapse to the default rather than 400 the
+# preflight.
+
+def _write(path: Path, payload: dict) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_resolve_keep_alive_uses_config_string(tmp_path: Path) -> None:
+    """Happy path: a string value is returned verbatim."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": "1h"})
+    assert resolve_keep_alive(cfg) == "1h"
+
+
+def test_resolve_keep_alive_accepts_integer_seconds(tmp_path: Path) -> None:
+    """Ollama also accepts an integer (negative = forever)."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": 600})
+    assert resolve_keep_alive(cfg) == 600
+
+
+def test_resolve_keep_alive_default_when_key_missing(tmp_path: Path) -> None:
+    """Key absent → default ('30m')."""
+    cfg = _write(tmp_path / "config.json", {"model": "claude-sonnet-4-6"})
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_default_when_file_missing(tmp_path: Path) -> None:
+    """File absent → default. No exception bubbles up."""
+    missing = tmp_path / "absent.json"
+    assert resolve_keep_alive(missing) == "30m"
+
+
+def test_resolve_keep_alive_default_when_file_malformed(tmp_path: Path) -> None:
+    """Malformed JSON → default. Swallowed silently."""
+    cfg = tmp_path / "config.json"
+    cfg.write_text("not valid json {{{", encoding="utf-8")
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_rejects_dict_value(tmp_path: Path) -> None:
+    """A dict value would 400 the Ollama preflight; fall back to default."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": {"duration": "1h"}})
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_rejects_list_value(tmp_path: Path) -> None:
+    """Same defence for lists."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": ["30m", "1h"]})
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_rejects_null_value(tmp_path: Path) -> None:
+    """`null` JSON value → Python None → fall back to default."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": None})
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_rejects_bool_value(tmp_path: Path) -> None:
+    """`bool` is a subclass of `int` in Python — guard explicitly so
+    `"ollama_keep_alive": true` doesn't sneak through as `1` second."""
+    cfg = _write(tmp_path / "config.json", {"ollama_keep_alive": True})
+    assert resolve_keep_alive(cfg) == "30m"
+
+
+def test_resolve_keep_alive_custom_default(tmp_path: Path) -> None:
+    """Caller-supplied default is honoured when the key is missing."""
+    cfg = _write(tmp_path / "config.json", {})
+    assert resolve_keep_alive(cfg, default="24h") == "24h"
