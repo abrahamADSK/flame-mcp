@@ -38,6 +38,11 @@ from flame_mcp._session_stats import (
     persist_timing as _persist_timing,
     reset_stats as _reset_stats_helper,
 )
+from flame_mcp._workspace_snapshot import (
+    WORKSPACE_PREFIX as _WORKSPACE_PREFIX,
+    cache_workspace_read as _cache_workspace_read,
+    invalidate as _workspace_invalidate,
+)
 
 _SERVER_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -813,6 +818,13 @@ def execute_python(
         f" · bridge {_bridge_ms}ms · total {_total_ms}ms"
         + _stats_footer()
     )
+
+    # F4a — Invalidate workspace cache after every exec. The LLM may have
+    # mutated workspace state (create/delete/move/rename) inside the
+    # snippet. Invalidate unconditionally (success or failure) because a
+    # partial-failure exec can still have side-effected Flame state.
+    _workspace_invalidate(_WORKSPACE_PREFIX)
+
     return rag_nudge + b4_warning + _fmt(result) + footer
 
 
@@ -854,6 +866,7 @@ def _track_timing(entry: dict) -> None:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def get_project_info() -> str:
     """
     Return information about the active Flame project: name, frame rate,
@@ -989,6 +1002,7 @@ except Exception as e:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_libraries() -> str:
     """
     List all user-visible libraries in the active Flame project.
@@ -1030,6 +1044,7 @@ for lib in visible:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_reels(library_name: str = "") -> str:
     """
     List reels in a library. If no library name is given,
@@ -1067,6 +1082,7 @@ for lib in ws.libraries:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_clips(
     library_name: str = "",
     reel_name: str = "",
@@ -1142,6 +1158,7 @@ for lib in ws.libraries:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_desktop_reels() -> str:
     """
     List the full desktop structure: reel groups, reels, and clip names.
@@ -1168,6 +1185,7 @@ for rg in desktop.reel_groups:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_batch_groups() -> str:
     """
     List all batch groups in the active desktop with their reel counts.
@@ -1209,6 +1227,7 @@ else:
 
 
 @mcp.tool(annotations=_RO)
+@_cache_workspace_read()
 def list_all_projects() -> str:
     """
     List all Flame projects available on this workstation.
