@@ -8,5 +8,6 @@
   "fallback_model": "claude-sonnet-4-6",
   "write_allowed_models": ["claude-opus", "claude-sonnet"],
 
-  "stats_footer_mode": "minimal"
+  "stats_footer_mode": "minimal",
+  "ollama_keep_alive": "30m"
 }

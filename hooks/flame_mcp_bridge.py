@@ -54,13 +54,17 @@ if os.path.isdir(_BOOT_SRC) and _BOOT_SRC not in sys.path:
     sys.path.insert(0, _BOOT_SRC)
 
 try:
-    from flame_mcp._config import load_model_config as _shared_load_model_config
+    from flame_mcp._config import (
+        load_model_config as _shared_load_model_config,
+        resolve_keep_alive as _shared_resolve_keep_alive,
+    )
 except Exception:
     # Fail-soft: if the helper cannot be imported (e.g. Flame host running
     # without the repo on disk), fall back to the inline legacy implementation
     # below. The bridge must never crash on import; losing the helper only
     # means losing the dedup, not the functionality.
     _shared_load_model_config = None
+    _shared_resolve_keep_alive = None
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
@@ -1569,18 +1573,44 @@ class _FlameChat:
 
         Safe to call even if the model is already loaded — Ollama is a no-op
         if num_ctx matches the current runner.
+
+        F1b: keep_alive defaults to 30m (was 10m). 10m unloads the runner
+        when the user spends >10 min reading a long response or thinking
+        about the next prompt, forcing a full cold-load on the next turn
+        (5–30 s of latency the user blames on "the model is slow"). 30 m
+        covers normal-paced conversations end-to-end with one preflight
+        per turn refreshing the timer. Override via
+        `config.json -> ollama_keep_alive` (Ollama parses durations like
+        "30m", "1h", "24h", or pass an int for seconds).
         """
         import urllib.request as _urllib_req
         import json as _json
 
         target_url = url or self._ollama_url
         target_ctx = num_ctx if num_ctx is not None else OLLAMA_NUM_CTX
+        # F1b: keep_alive defaults to 30 m. Override via
+        # `config.json -> ollama_keep_alive`. Reading is delegated to
+        # flame_mcp._config.resolve_keep_alive when available (single
+        # source of truth, unit-tested) with an inline fallback for
+        # bridges installed without the repo on disk.
+        if _shared_resolve_keep_alive is not None:
+            keep_alive_cfg = _shared_resolve_keep_alive(MODEL_CONFIG_FILE)
+        else:
+            keep_alive_cfg = "30m"
+            try:
+                with open(MODEL_CONFIG_FILE, "r") as _cfg_fh:
+                    _cfg = _json.loads(_cfg_fh.read() or "{}")
+                _ka = _cfg.get("ollama_keep_alive", "30m")
+                if isinstance(_ka, (str, int)) and not isinstance(_ka, bool):
+                    keep_alive_cfg = _ka
+            except (FileNotFoundError, OSError, ValueError):
+                pass
 
         payload = _json.dumps({
             "model":      self._model,
             "prompt":     "",          # empty — we only want to load the runner
             "options":    {"num_ctx": target_ctx, "temperature": 0},  # C1: deterministic code gen
-            "keep_alive": "10m",
+            "keep_alive": keep_alive_cfg,
             "stream":     False,
         }).encode()
 
