@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-05-18
+
 ### Added — Chat 51 performance + reliability plan (6 phases F0–F3b)
 
 - **F0 — Baseline telemetry** (PR #3). New `_session_stats.py` helpers
