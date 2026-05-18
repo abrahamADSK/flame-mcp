@@ -421,3 +421,44 @@ concepts:
           type: file_regex_matches
           file: src/flame_mcp/server.py
           pattern: 'maybe_annotate_with_suggestions\("([a-z0-9_]+)"'
+
+  dual_source_routing:
+    description: >
+      F3a — concept_map → api_graph.json fallback chain. resolve_query
+      consults resolve_concept first; on miss, falls back to
+      _route_from_graph, which filters trap-flagged entries so adversarial
+      golden queries never surface a raw forbidden api_path. Anchors the
+      contract so the routing module cannot be silently deleted or
+      bypassed in a future refactor.
+    source_of_truth:
+      file: src/flame_mcp/routing.py
+      symbol: resolve_query
+    mirrors:
+      - file: src/flame_mcp/server.py
+        kind: resolve_concept MCP tool delegates to routing.resolve_query
+      - file: tests/test_golden.py
+        kind: golden suite imports resolve_query (aliased as resolve_concept)
+    invariants:
+      - id: routing_module_exists
+        type: file_exists
+        path: src/flame_mcp/routing.py
+        context: F3a dual-source routing
+      - id: routing_fixture_exists
+        type: file_exists
+        path: tests/fixtures/api_graph_sample.json
+        context: F3a hermetic test fixture
+      - id: routing_tests_exist
+        type: file_exists
+        path: tests/test_routing.py
+        context: F3a unit tests
+      - id: server_uses_routing
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: file_regex_matches
+          file: src/flame_mcp/server.py
+          pattern: 'from flame_mcp\.routing import (resolve_query)'
+        b_source:
+          type: file_regex_matches
+          file: src/flame_mcp/routing.py
+          pattern: 'def (resolve_query)'

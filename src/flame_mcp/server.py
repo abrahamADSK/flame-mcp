@@ -1895,16 +1895,19 @@ def resolve_concept(query: str) -> str:
         query: Natural-language description of the operation, e.g.
                "list all libraries", "delete a clip", "browse wiretap tree"
     """
-    from flame_mcp.concept_map import resolve_concept as _resolve, CRITICAL_BEHAVIORS
+    from flame_mcp.concept_map import CRITICAL_BEHAVIORS
+    from flame_mcp.routing import resolve_query
     _track_dedicated()
-    match = _resolve(query)
+    match = resolve_query(query)
     if match is None:
         return (
             f"No concept match for: {query!r}\n"
             f"Fall back to search_flame_docs('{query}') for RAG-based search."
         )
+    provenance = match.get("_provenance", "concept_map")
     lines = [
         f"✅ Concept: {match['concept']}",
+        f"   Source    : {provenance}",
         f"   API layer : {match['api_layer']}",
     ]
     if match.get('entity_type'):

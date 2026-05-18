@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — F3a: concept_map bypass via api_graph.json (Issue #9)
+
+- New `src/flame_mcp/routing.py` module with two functions:
+  - `_route_from_graph(query, graph=None)` searches the introspected
+    `rag/api_graph.json` (produced by F2-intro) for the best match,
+    returning a concept-shaped dict with `_provenance="graph"`. **Safety
+    filter**: any matched entry whose introspector-attached `notes` list
+    is non-empty (trap hints like `schedule_idle_event`, `.clear()`
+    crash) is refused — function returns `None` so the LLM falls
+    through to RAG (which has the curated docs). A small
+    `_FORBIDDEN_API_PATHS` allowlist also short-circuits known
+    non-existent symbols (`flame.selection`,
+    `flame.projects.current_project.libraries`).
+  - `resolve_query(query, graph=None)` is the dual-source chain:
+    `resolve_concept` (curated, low-latency) → `_route_from_graph`
+    (introspected, broader). Every non-None result carries a
+    `_provenance` field (`"concept_map"` | `"graph"`) for telemetry.
+- `src/flame_mcp/server.py::resolve_concept` MCP tool now delegates to
+  `routing.resolve_query` so the LLM-facing tool transparently benefits
+  from graph fallback. Response surfaces `Source: <provenance>` line.
+- `tests/test_routing.py` — 15 unit tests covering safe-symbol
+  surfacing, trap-flagged refusal, missing-file degradation, malformed
+  JSON, cache behaviour, and the `resolve_concept → _route_from_graph`
+  chain with `_provenance` propagation.
+- `tests/fixtures/api_graph_sample.json` — small hermetic graph
+  fixture (3 functions, 2 classes with methods, trap notes on
+  `PyBatch.render` and `PyClip.clear`) so the tests work in CI where
+  the real graph is not generated.
+- `tests/test_golden.py` switches its import from `resolve_concept`
+  to `routing.resolve_query` (aliased) so the F3b adversarial suite now
+  exercises the full chain. All 16 adversarial entries still fail
+  `must_not_contain` (no regression). All 48 happy-path entries
+  continue to resolve via `concept_map` (no expected_tool change).
+- `.concepts.yml` gains a new `dual_source_routing` concept with 4
+  invariants: 3 × `file_exists` (routing.py, fixture, tests) plus a
+  `subset` invariant pinning the `from flame_mcp.routing import
+  resolve_query` import in server.py against the `def resolve_query`
+  declaration. Pre-commit verifier: 24/24 (was 20/20).
+
+Tests: 462 passed, 113 skipped, 0 failed (was 447/113).
+
 ## [1.7.0] — 2026-05-18
 
 ### Added — Chat 51 performance + reliability plan (6 phases F0–F3b)

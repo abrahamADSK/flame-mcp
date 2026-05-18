@@ -62,7 +62,7 @@ from typing import Any
 
 import pytest
 
-from flame_mcp.concept_map import resolve_concept
+from flame_mcp.routing import resolve_query as resolve_concept
 
 # ---------------------------------------------------------------------------
 # Dataset loading

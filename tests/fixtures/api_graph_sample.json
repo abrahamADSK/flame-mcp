@@ -1,0 +1,81 @@
+{
+  "_meta": {
+    "flame_version": "2026.2.2-fixture",
+    "generated_at": "2026-05-18T00:00:00+00:00",
+    "introspector": "tests/fixtures/api_graph_sample.json",
+    "classes_total": 2,
+    "module_attrs_total": 1,
+    "functions_total": 3
+  },
+  "module_attrs": {
+    "flame.batch": {
+      "type": "PyBatch",
+      "doc": "Active batch group accessor."
+    }
+  },
+  "functions": {
+    "flame.get_version": {
+      "kind": "function",
+      "signature": "get_version() -> str",
+      "doc": "Return the Flame version string."
+    },
+    "flame.find_by_wiretap_node_id": {
+      "kind": "function",
+      "signature": "find_by_wiretap_node_id(node_id) -> Any",
+      "doc": "Find a Flame object by its Wiretap node id."
+    },
+    "flame.schedule_idle_event": {
+      "kind": "function",
+      "signature": "schedule_idle_event(callable) -> None",
+      "doc": "Schedule a callable to run on the next Flame idle event."
+    }
+  },
+  "classes": {
+    "PyBatch": {
+      "doc": "Batch group accessor.",
+      "bases": [],
+      "methods": {
+        "render": {
+          "signature": "render(render_option: str = '') -> None",
+          "doc": "Render the current batch.",
+          "returns_hint": null,
+          "notes": [
+            "Wrap blocking renders in flame.schedule_idle_event(...) to avoid freezing the UI."
+          ]
+        },
+        "create_batch_group": {
+          "signature": "create_batch_group(name: str) -> PyBatchGroup",
+          "doc": "Create a new batch group with the given name.",
+          "returns_hint": null
+        }
+      },
+      "attrs": {}
+    },
+    "PyClip": {
+      "doc": "Clip accessor.",
+      "bases": [],
+      "methods": {
+        "get_wiretap_node_id": {
+          "signature": "get_wiretap_node_id() -> str",
+          "doc": "Return the Wiretap node id for this clip.",
+          "returns_hint": null
+        },
+        "clear": {
+          "signature": "clear() -> None",
+          "doc": "Clear contents.",
+          "returns_hint": null,
+          "notes": [
+            "Container .clear() methods can crash Flame; prefer flame.delete(child) per item."
+          ]
+        }
+      },
+      "attrs": {
+        "name": {
+          "kind": "PyAttribute",
+          "type_hint": "PyAttribute",
+          "doc": "Clip name attribute. Use str(clip.name)."
+        }
+      }
+    }
+  }
+}
