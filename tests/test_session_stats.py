@@ -146,6 +146,85 @@ def test_persist_turn_delegates_to_persist_timing(tmp_path: Path) -> None:
     assert parsed == {"model": "claude-opus", "exit_code": 0}
 
 
+# ── F1a: _stats_footer modes ────────────────────────────────────────────────
+# The footer used to ship ~80–120 tokens on every tool response. Modes:
+#   - none    → ""
+#   - minimal → "" (per-call timing is already in the caller's preamble)
+#   - full    → historical multi-line aggregate
+# Default mode comes from config.json -> stats_footer_mode (fallback "minimal").
+
+def test_stats_footer_explicit_none(monkeypatch) -> None:
+    """`mode='none'` returns empty regardless of config or stats state."""
+    from flame_mcp import server as srv
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"] = 12  # would normally show up in "full"
+    assert srv._stats_footer(mode="none") == ""
+
+
+def test_stats_footer_explicit_minimal_is_empty() -> None:
+    """`mode='minimal'` returns empty: per-call timing lives in the
+    execute_python preamble; the session block is intentionally suppressed
+    to keep next-turn prefill small."""
+    from flame_mcp import server as srv
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"] = 12
+    assert srv._stats_footer(mode="minimal") == ""
+
+
+def test_stats_footer_explicit_full_renders_session_block() -> None:
+    """`mode='full'` returns the historical aggregate so session_stats() (and
+    operators who config `stats_footer_mode: full`) can still see it."""
+    from flame_mcp import server as srv
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"]         = 3
+    srv._stats["rag_calls"]          = 2
+    srv._stats["dedicated_calls"]    = 1
+    srv._stats["tokens_in"]          = 100
+    srv._stats["tokens_out"]         = 50
+    srv._stats["tokens_saved"]       = 800
+    srv._stats["tokens_saved_tools"] = 200
+
+    out = srv._stats_footer(mode="full")
+    assert "Session · 3 exec · 2 RAG · 1 tools" in out
+    assert "Tokens used       : ~150" in out
+    assert "Avoided by RAG    : ~800" in out
+    assert "Total avoided     : ~1000" in out
+
+
+def test_stats_footer_default_reads_config(monkeypatch) -> None:
+    """When mode is None, the function reads `stats_footer_mode` from
+    config. Default fallback is 'minimal' → empty string."""
+    from flame_mcp import server as srv
+    # Force config to return "full" — the default call must honour it.
+    monkeypatch.setattr(srv, "_get_config", lambda: {"stats_footer_mode": "full"})
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"] = 1
+    out = srv._stats_footer()  # mode=None → read from config
+    assert "Session · 1 exec" in out
+
+
+def test_stats_footer_default_minimal_when_config_absent(monkeypatch) -> None:
+    """Missing config key falls back to 'minimal' → empty string."""
+    from flame_mcp import server as srv
+    monkeypatch.setattr(srv, "_get_config", lambda: {})
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"] = 99
+    assert srv._stats_footer() == ""
+
+
+def test_stats_footer_invalid_mode_falls_back_to_minimal(monkeypatch) -> None:
+    """Typos / garbage config values must NOT spam the LLM with the full
+    block by accident — silent fallback to minimal keeps the safer
+    behaviour."""
+    from flame_mcp import server as srv
+    monkeypatch.setattr(srv, "_get_config", lambda: {"stats_footer_mode": "verbose"})
+    srv._stats.update(make_empty_stats())
+    srv._stats["exec_calls"] = 5
+    assert srv._stats_footer() == ""
+    # Also for an explicit garbage arg.
+    assert srv._stats_footer(mode="garbage") == ""
+
+
 # ── should_auto_reset ───────────────────────────────────────────────────────
 
 def test_should_auto_reset_false_on_first_call() -> None:
