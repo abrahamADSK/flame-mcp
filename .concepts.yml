@@ -462,3 +462,42 @@ concepts:
           type: file_regex_matches
           file: src/flame_mcp/routing.py
           pattern: 'def (resolve_query)'
+
+  workspace_snapshot_cache:
+    description: >
+      F4a — Workspace read tools are decorated with
+      @_cache_workspace_read so back-to-back identical calls reuse the
+      previous result for up to 12 s (TTL, monotonic-clock based).
+      execute_python invalidates the workspace.* bucket unconditionally
+      after every exec because the LLM may have mutated Flame state.
+      The invalidation-on-write rule is AJUSTE 2 of the chat 51 v2 plan
+      (TTL alone was insufficient — a post-delete read within TTL would
+      have served the pre-delete view).
+    source_of_truth:
+      file: src/flame_mcp/_workspace_snapshot.py
+      symbol: cache_workspace_read
+    mirrors:
+      - file: src/flame_mcp/server.py
+        kind: "@_cache_workspace_read() decorators on read tools + invalidate call in execute_python"
+      - file: tests/test_workspace_snapshot.py
+        kind: unit tests covering get/set/invalidate + decorator + concurrency
+    invariants:
+      - id: workspace_snapshot_module_exists
+        type: file_exists
+        path: src/flame_mcp/_workspace_snapshot.py
+        context: F4a workspace cache module
+      - id: workspace_snapshot_tests_exist
+        type: file_exists
+        path: tests/test_workspace_snapshot.py
+        context: F4a unit tests
+      - id: execute_python_invalidates_workspace
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: file_regex_matches
+          file: src/flame_mcp/server.py
+          pattern: '_workspace_(invalidate)\(_WORKSPACE_PREFIX\)'
+        b_source:
+          type: file_regex_matches
+          file: src/flame_mcp/_workspace_snapshot.py
+          pattern: 'def (invalidate)'

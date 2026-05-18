@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — F4a: workspace snapshot with TTL 12s + write-invalidation (Issue #10, AJUSTE 2)
+
+- New `src/flame_mcp/_workspace_snapshot.py` module — thread-safe,
+  per-process cache for workspace read tools.
+  - `get(key, ttl=12.0)` / `set_value(key, value)` — monotonic-clock
+    TTL store. Lazy GC on stale entries.
+  - `invalidate(prefix=None)` — drop by key prefix (or all). Returns
+    count dropped.
+  - `cache_workspace_read(ttl=12.0)` — decorator wrapper for MCP tool
+    bodies. Caches keyed by `__name__` + positional args + sorted
+    kwargs. Skips function body on hit (no socket round-trip, no
+    `_stats` inflation). Exceptions are NOT cached.
+- `src/flame_mcp/server.py` — 7 read tools now decorated with
+  `@_cache_workspace_read()`: `get_project_info`, `list_libraries`,
+  `list_reels`, `list_clips`, `list_desktop_reels`, `list_batch_groups`,
+  `list_all_projects`. `execute_python` calls
+  `_workspace_invalidate(_WORKSPACE_PREFIX)` after every exec
+  (success or failure — partial mutations on error are still
+  mutations). This is **AJUSTE 2** of the chat 51 v2 plan: TTL alone
+  was insufficient because a post-delete read within TTL would have
+  served the pre-delete view.
+- `tests/test_workspace_snapshot.py` — 14 unit tests: get/set, TTL
+  expiry (monotonic-clock injected via monkeypatch — no `time.sleep`,
+  suite stays < 100 ms), invalidate prefix vs all, decorator caches
+  by arg tuple, decorator does not cache exceptions, decorator
+  respects custom TTL, decorator invalidation forces refresh, 2-thread
+  concurrent-read smoke test.
+- `.concepts.yml` gains a `workspace_snapshot_cache` concept with 3
+  invariants: 2 × `file_exists` (module, tests) + 1 × `subset` pinning
+  the `_workspace_invalidate(_WORKSPACE_PREFIX)` call in server.py
+  against the `def invalidate` declaration. Pre-commit verifier:
+  27/27 (was 24/24).
+
+Tests: 476 passed, 113 skipped, 0 failed (was 462/113).
+
 ### Added — F3a: concept_map bypass via api_graph.json (Issue #9)
 
 - New `src/flame_mcp/routing.py` module with two functions:
