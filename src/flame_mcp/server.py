@@ -35,6 +35,7 @@ from flame_mcp.safety import (
 from flame_mcp._session_stats import (
     apply_idle_reset,
     make_empty_stats,
+    persist_timing as _persist_timing,
     reset_stats as _reset_stats_helper,
 )
 
@@ -135,6 +136,11 @@ _STATS_IDLE_RESET_SECONDS = int(
 # C5 — Staging paths
 _CANDIDATES_PATH = _SERVER_DIR / "src" / "flame_mcp" / "rag" / "candidates.json"
 _FAILED_PATH     = _SERVER_DIR / "src" / "flame_mcp" / "rag" / "failed.json"
+
+# F0 baseline telemetry: persistent JSONL streams that survive server
+# restarts (the in-memory ring buffer in _stats['timings'] holds only the
+# last 20 entries). Written best-effort; failures never propagate.
+_TIMINGS_LOG = _SERVER_DIR / "logs" / "timings.jsonl"
 
 
 def _load_json_list(path: Path) -> list[dict]:
@@ -720,17 +726,31 @@ def execute_python(
     output = result.get('output', '') + result.get('error', '')
     t_out = _tok(output)
 
-    # REC-001: collect timing data
+    # Determine error state up front so timing + p_fallo counters can both
+    # carry it (jq queries over timings.jsonl rely on `error: bool`).
+    is_error = bool(result.get('error')) or output.startswith('ERROR') or output.startswith('Traceback')
+
+    # REC-001 / F0: collect timing data + persist for cross-session baselines.
     _bridge_ms = result.get('_bridge_ms', 0)
     _total_ms  = round((time.monotonic() - _t0_exec) * 1000)
-    _track_timing({'op': 'exec', 'bridge_ms': _bridge_ms, 'total_ms': _total_ms})
+    _track_timing({
+        'op':         'exec',
+        'bridge_ms':  _bridge_ms,
+        'total_ms':   _total_ms,
+        'score':      _last_rag_score,
+        'error':      is_error,
+    })
 
-    _stats['exec_calls'] += 1
-    _stats['tokens_in']  += t_in
-    _stats['tokens_out'] += t_out
+    _stats['exec_calls']  += 1
+    _stats['tokens_in']   += t_in
+    _stats['tokens_out']  += t_out
+    # F0: p_fallo = failed_turns / turns_total. Only counted here (execute_python
+    # is the error-prone path); dedicated tools track separately via dedicated_calls.
+    _stats['turns_total'] += 1
+    if is_error:
+        _stats['failed_turns'] += 1
 
     # C5 — Log failed executions when RAG confidence was low (knowledge gap indicator)
-    is_error = bool(result.get('error')) or output.startswith('ERROR') or output.startswith('Traceback')
     if is_error and _last_rag_score < _rag_threshold():
         failed = _load_json_list(_FAILED_PATH)
         failed.append({
@@ -761,10 +781,34 @@ def _track_dedicated() -> None:
 
 
 def _track_timing(entry: dict) -> None:
-    """REC-001: append timing entry to ring buffer (max 20 entries)."""
+    """
+    REC-001 / F0: append timing entry to the in-memory ring buffer (max 20)
+    AND persist an enriched copy as a JSON line in logs/timings.jsonl.
+
+    The ring buffer keeps `session_stats()` cheap; the JSONL stream gives
+    cross-session baselines (so F1+ improvements can be measured against
+    F0 without re-instrumenting). Persistence is best-effort: any I/O
+    error is swallowed by `_persist_timing`.
+
+    Enrichment adds fields the caller does not pass: timestamp, model,
+    backend, and a default `tool_name` derived from the op. Caller-passed
+    keys win on collision.
+    """
     _stats['timings'].append(entry)
     if len(_stats['timings']) > 20:
         _stats['timings'].pop(0)
+
+    cfg = _get_config()
+    enriched = {
+        "ts":        datetime.datetime.now().isoformat(timespec='seconds'),
+        "model":     _get_current_model(),
+        "backend":   cfg.get("backend", "anthropic"),
+        "tool_name": "execute_python" if entry.get("op") == "exec"
+                     else "search_flame_docs" if entry.get("op") == "rag"
+                     else entry.get("op", "unknown"),
+        **entry,
+    }
+    _persist_timing(_TIMINGS_LOG, enriched)
 
 
 @mcp.tool(annotations=_RO)
