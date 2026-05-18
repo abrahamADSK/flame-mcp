@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Chat 51 performance + reliability plan (6 phases F0–F3b)
+
+- **F0 — Baseline telemetry** (PR #3). New `_session_stats.py` helpers
+  `persist_timing` / `persist_turn` write append-only JSONL to
+  `logs/timings.jsonl` (per-call) and `logs/turns.jsonl` (per-turn) with
+  ~5 MB size-cap rotation to `.1`. New counters `turns_total` and
+  `failed_turns` enable `p_fallo = failed_turns / turns_total` as a
+  cross-session reliability metric. Server-side `_track_timing` enriches
+  each entry with `ts`, `model`, `backend`, `tool_name`, `score`,
+  `error`. Bridge-side `_agent_loop` writes one turn row per invocation
+  from the outer `finally` so timeouts and early-exits are still
+  captured. `.gitignore` extended to cover `*.jsonl` and `*.jsonl.1`.
+  Tests +9 (209/209). Concept verifier: 20/20.
+
+- **F1a — `_stats_footer` modes** (PR #4, AJUSTE 4). `_stats_footer(mode)`
+  accepts `none` / `minimal` / `full`, default `minimal` reads from
+  `config.json -> stats_footer_mode`. `minimal` returns `""` (per-call
+  timing already lives in the `execute_python` preamble), `full` restores
+  the historical multi-line aggregate. Net reduction of ~80–150 tokens
+  per LLM turn that uses `execute_python` or `search_flame_docs`. Tests
+  +6 (27/27 in test_session_stats).
+
+- **F1b — Ollama `keep_alive` config knob** (PR #5). New
+  `src/flame_mcp/_config.py::resolve_keep_alive` helper reads
+  `config.json -> ollama_keep_alive` as a duration string (`"30m"`) or
+  int seconds; rejects dict/list/None/bool with default fallback.
+  Default bumped 10 min → 30 min so reading-pauses between turns don't
+  trigger Ollama cold-load (5–30 s penalty on 9B models). Bridge
+  `_preload_ollama_model` delegates via helper with inline fallback
+  (Chat 44 helper-extraction pattern). Tests +9 (19/19 in test_config).
+
+- **F2-intro — Flame API introspector** (PR #6). New
+  `scripts/introspect_flame_api.py` walks Flame's embedded `flame`
+  Python module and emits structured JSON to `rag/api_graph.json` with
+  module-level attributes, free functions, and classes (with methods +
+  attrs). Becomes source-of-truth for downstream F3a (concept_map
+  bypass), F4b (AST dry-run walker), F5b (structured plan schema).
+  `--check` exits 2 with sentinel when run outside Flame. Cadence:
+  regenerate per Flame major release (2026.x → 2027.x). Tests +3.
+
+- **F2-wt — Wiretap smoke harness** (PR #7). New
+  `scripts/wiretap_smoke.sh` iterates the 37 Wiretap CLI tools listed
+  in `docs/wiretap_cli_reference.md`, default `--help`, hard skip for
+  5 destructive tools, `timeout 5s` wrapper, captures exit + first 5
+  lines stdout/stderr + ms. Emits Markdown table to
+  `docs/wiretap_smoke_report.md`. Companion `scripts/wiretap_sdk_smoke.py`
+  runs the SDK init→server→node→getNumChildren sequence and emits
+  JSON to stdout. Both bash 3.2 / shellcheck / py_compile clean.
+
+- **F3b — Golden routing dataset + adversarial gate** (PR #8). New
+  `tests/golden/flame_queries.jsonl` with 83 curated queries (48
+  happy-path, 16 adversarial, 14 Spanish fall-through) across 9
+  categories. Schema: `{id, query, lang, expected_tool, expected_concept,
+  must_contain[], must_not_contain[], tags[], category}`. Adversarial
+  entries assert the router does NOT propose forbidden symbols
+  (`flame.selection`, `flame.batch.render` without `schedule_idle_event`,
+  `.clear()` on containers, etc.). Hermetic pytest runner
+  `tests/test_golden.py` mocks `flame_mcp.rag.search.search` and uses
+  `resolve_concept` directly. New pre-commit gate
+  `scripts/check_adversarial_count.py` exits 0 iff ≥10 adversarial
+  entries with non-empty `must_not_contain` — currently 16, **unblocks
+  F6a** (CLAUDE.md trim).
+
+### Added — Architecture documentation (PR #14)
+
+- `docs/CHAT_51_PLAN.md` — 7-phase roadmap reconstructed from the six
+  open PRs after the original `/ultraplan` v2 output was lost. Covers
+  the expected-latency metric, the four v2 AJUSTES, and acceptance
+  criteria for the five pending phases (F3a, F4a, F4b, F5b, F6a).
+- `docs/ARCHITECTURE.md` extended with §§13–16: granular Mermaid
+  request-flow diagrams (top-level orchestration, RAG internals,
+  `execute_python` pipeline, LLM decision tree from CLAUDE.md rules);
+  seven parallel self-learning loops with cross-loop properties;
+  21-row pre-designed elements catalogue with origin chat per row;
+  honest uniqueness analysis vs a stock MCP server. References
+  renumbered §12 → §17.
+- `docs/PHASE_TRACKER.md` — single-glance status table mirroring the
+  six merged PRs and the five new pending-phase issues, with an
+  update protocol.
+
+### Pending — next-phase issues opened
+
+- #9 F3a — concept_map bypass via `api_graph.json`.
+- #10 F4a — workspace snapshot TTL 12 s + write-invalidation (AJUSTE 2).
+- #11 F4b — AST dry-run walker.
+- #12 F5b — Ruta A: structured plan output schema (AJUSTE 1).
+- #13 F6a — trim CLAUDE.md (AJUSTE 3, unblocked by F3b).
+
 ## [1.6.0] — 2026-04-22
 
 ### Added
