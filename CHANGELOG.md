@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — F6a: trim CLAUDE.md (Issue #13, AJUSTE 3 — unblocked by F3b)
+
+- `CLAUDE.md` reduced 359 → 290 lines (~19 %, ~69 lines / ~4.8 KB
+  removed). Operator-only sections moved out so the LLM system prompt
+  no longer carries content the LLM never acts on.
+- New `docs/DEPLOY.md` — receives the relocated content:
+  - "Prerequisites for local models" (Ollama install + alias setup).
+  - "Deploy workflow — after every code change" section (symlink
+    setup, `pkill` + `cp` recipes per file, **MCP Bridge → Reload
+    hook** step). Two paths (with-symlink / fresh-machine fallback).
+- `CLAUDE.md` retains a 2-line pointer to `docs/DEPLOY.md` so the
+  operator can find the workflow when reading the prompt-facing file.
+- `CLAUDE.md` also drops the "## Community" subsection (Logik Forum
+  + Autodesk Community URLs) — not actionable for the LLM, and the
+  URLs remain searchable when needed.
+- `.concepts.yml` gains a `claude_md_trim` concept with 3 invariants:
+  1 × `file_exists` (`docs/DEPLOY.md`) + 2 × `claim_verifies` that
+  re-expansion of `CLAUDE.md` cannot re-introduce the deploy section
+  heading or the embedded shell commands. Pre-commit verifier: 33/33
+  (was 30/30 after F4b).
+
+### AJUSTE 3 gate
+
+The trim was blocked until F3b shipped ≥ 10 adversarial entries
+(`scripts/check_adversarial_count.py`) so the LLM-facing API trap
+warnings now have an executable defense via the golden routing
+dataset. Current state: 16 adversarial ≥ 10 required ✓.
+
+Token impact (rough): ~1200 fewer tokens per LLM turn that loads the
+system prompt. Strictly Pareto — no LLM behavioural rule was modified,
+only operator-facing text relocated.
+
+Tests: 491 passed, 113 skipped, 0 failed (golden suite unchanged).
+
 ### Added — F4b: AST dry-run walker (Issue #11)
 
 - New `src/flame_mcp/_ast_validate.py` module — static validator that
