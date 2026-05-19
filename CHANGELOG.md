@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — F4b: AST dry-run walker (Issue #11)
+
+- New `src/flame_mcp/_ast_validate.py` module — static validator that
+  walks the AST of any source about to be sent to `execute_python` and
+  flags `flame.X.Y` references that do not exist in `rag/api_graph.json`
+  (the introspected truth from F2-intro).
+  - `validate_python(source, graph=None)` returns an `AstValidation`
+    dataclass with `issues: list[UnresolvedSymbol]` and `graph_loaded`
+    flag (False when the graph file is missing or empty → walker
+    degrades to a no-op, never blocks legitimate code).
+  - `UnresolvedSymbol` carries the dotted path, line/col, and an
+    optional `suggestion` from `difflib.get_close_matches`.
+  - `format_issues(validation)` returns a human-readable rejection
+    message with each symbol's position, suggestion, and the
+    `ast_dry_run: false` config escape hatch.
+- `src/flame_mcp/server.py::execute_python` runs the walker as
+  pre-flight when `config.json -> ast_dry_run` is true (default).
+  On rejection, returns the formatted message + footer WITHOUT
+  touching the bridge and increments `_stats['ast_dry_run_rejected']`.
+- `tests/test_ast_validate.py` — 15 unit tests: missing-graph and
+  malformed-JSON degradation, graph-symbols flatten, happy-path
+  acceptance (including prefix-resolved chains so legitimate
+  `flame.batch.render` calls inside `schedule_idle_event` are NOT
+  rejected), hallucinated-symbol rejection (`flame.selection`,
+  `flame.foo_bar_baz`), close-match suggestion, multi-issue
+  collection, syntax-error silence (let the bridge surface it),
+  non-`flame.*` chain ignored, `format_issues` formatting.
+- `.concepts.yml` gains an `ast_dry_run_validator` concept with 3
+  invariants: 2 × `file_exists` (module, tests) + 1 × `subset` pinning
+  the validator import in server.py. Pre-commit verifier: 30/30
+  (was 27/27).
+
+What F4b CAN and CANNOT catch (documented in module docstring):
+
+- CAN catch: `flame.selection` (non-existent), `flame.foo_bar_baz`
+  (invented), method typos on known classes.
+- CANNOT catch: usage traps where the symbol IS valid but the call
+  pattern is wrong (e.g. `flame.batch.render` without
+  `schedule_idle_event`). Those are F3b's golden adversarial dataset's
+  scope, enforced at the routing layer.
+
+Tests: 491 passed, 113 skipped, 0 failed (was 476/113).
+
 ### Added — F4a: workspace snapshot with TTL 12s + write-invalidation (Issue #10, AJUSTE 2)
 
 - New `src/flame_mcp/_workspace_snapshot.py` module — thread-safe,
