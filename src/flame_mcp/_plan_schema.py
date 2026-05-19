@@ -182,8 +182,14 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
 }
 
 
-def register_op(name: str, handler: Callable[[BaseModel], str]) -> None:
+def register_op(name: str, handler: Callable[[Any], str]) -> None:
     """Wire a handler for an op declared in :data:`_OP_REGISTRY`.
+
+    The handler's parameter is typed as ``Any`` rather than
+    ``BaseModel`` so each handler can declare a concrete pydantic
+    args type without fighting mypy's contravariant Callable rules.
+    The dispatch path guarantees the handler always receives an
+    instance of its declared ``args_model``.
 
     Called from server.py at import time once the dedicated-tool
     functions exist. Raises if ``name`` is not a registered op so
