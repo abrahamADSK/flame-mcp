@@ -1908,6 +1908,113 @@ def read_flame_log(
         return f"❌ Error reading {log_name}: {e}"
 
 
+# ─── F5b — Ruta A: structured plan output (AJUSTE 1) ──────────────────────────
+# Wires per-op handlers into _plan_schema's registry, then exposes
+# execute_plan as an MCP tool. Co-exists with execute_python; not a
+# replacement (yet). See docs/CHAT_51_PLAN.md § F5b for migration plan.
+
+from flame_mcp import _plan_schema as _plan  # noqa: E402
+
+_plan.register_op(
+    "list_libraries",
+    lambda _args: list_libraries(),
+)
+_plan.register_op(
+    "list_reels",
+    lambda args: list_reels(library_name=args.library_name),
+)
+_plan.register_op(
+    "list_clips",
+    lambda args: list_clips(
+        library_name=args.library_name, reel_name=args.reel_name,
+    ),
+)
+_plan.register_op(
+    "get_project_info",
+    lambda _args: get_project_info(),
+)
+_plan.register_op(
+    "get_clip_metadata",
+    lambda args: get_clip_metadata(
+        library_name=args.library_name,
+        reel_name=args.reel_name,
+        clip_name=args.clip_name,
+    ),
+)
+_plan.register_op(
+    "ping",
+    lambda _args: ping(),
+)
+
+
+@mcp.tool(annotations=_RO)
+def execute_plan(plan: dict) -> str:
+    """
+    Run a structured plan against Flame (F5b / AJUSTE 1).
+
+    Prefer this over `execute_python` for the operations it covers — the
+    plan is validated against a closed schema BEFORE any call reaches
+    Flame, so the entire class of "hallucinated symbol" failures is
+    impossible at the protocol level.
+
+    Plan shape (v1):
+
+        {
+          "ops": [
+            {"op": "<op_name>", "args": {<typed args>}},
+            ...
+          ]
+        }
+
+    Each op is validated against a pydantic model with `extra="forbid"`.
+    Unknown ops, missing args, extra args, or wrong types are rejected
+    with a structured error and execution does NOT start.
+
+    Currently registered ops (v1):
+      - list_libraries (no args)
+      - list_reels (library_name?)
+      - list_clips (library_name, reel_name)
+      - get_project_info (no args)
+      - get_clip_metadata (library_name, reel_name, clip_name)
+      - ping (no args)
+
+    Example — discover a clip's metadata in one call:
+
+        {
+          "ops": [
+            {"op": "list_libraries", "args": {}},
+            {"op": "list_reels", "args": {"library_name": "Default Library"}},
+            {"op": "list_clips", "args": {"library_name": "Default Library",
+                                          "reel_name": "Reel 1"}}
+          ]
+        }
+
+    If you need an operation NOT in the registry, fall back to
+    `execute_python` — that path remains supported.
+
+    Args:
+        plan: Already-parsed JSON object (FastMCP handles the parse).
+    """
+    _track_dedicated()
+    try:
+        output = _plan.dispatch_plan(plan)
+    except _plan.PlanValidationError as exc:
+        _stats['plan_ops_rejected_by_schema'] = (
+            _stats.get('plan_ops_rejected_by_schema', 0) + 1
+        )
+        return (
+            "❌ Plan rejected by schema:\n"
+            f"   {exc}\n\n"
+            "Fix the plan and resubmit, or fall back to `execute_python` "
+            "for operations not yet covered by the v1 op registry."
+            + _stats_footer()
+        )
+    _stats['plan_ops_executed'] = (
+        _stats.get('plan_ops_executed', 0) + len(plan.get('ops', []))
+    )
+    return output + _stats_footer()
+
+
 # ─── Architecture 3.1: resolve_concept ────────────────────────────────────────
 
 @mcp.tool(annotations=_RO)

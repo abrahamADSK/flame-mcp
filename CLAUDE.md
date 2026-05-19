@@ -158,6 +158,48 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     most common failure mode that a fresh Claude session fixes wrongly — the
     registry exists to prevent exactly that.
 
+16. **Prefer `execute_plan` over `execute_python` for covered ops (F5b).**
+    `execute_plan` accepts a structured JSON plan validated against a
+    closed schema. Currently registered ops: `list_libraries`,
+    `list_reels`, `list_clips`, `get_project_info`,
+    `get_clip_metadata`, `ping`. Use `execute_plan` whenever the
+    task is fully expressible as those ops — the schema rejects
+    hallucinated symbols at the protocol level, eliminating an entire
+    class of errors. Fall back to `execute_python` only when an
+    operation is NOT yet in the registry.
+
+    Example — discover a clip's metadata in one call:
+    ```json
+    {
+      "ops": [
+        {"op": "list_libraries", "args": {}},
+        {"op": "list_reels", "args": {"library_name": "Default Library"}},
+        {"op": "list_clips", "args": {"library_name": "Default Library",
+                                      "reel_name": "Reel 1"}}
+      ]
+    }
+    ```
+
+    Example — single op (heartbeat):
+    ```json
+    {"ops": [{"op": "ping", "args": {}}]}
+    ```
+
+    Example — clip metadata:
+    ```json
+    {
+      "ops": [
+        {"op": "get_clip_metadata", "args": {
+          "library_name": "Shots", "reel_name": "R1", "clip_name": "shot_010"
+        }}
+      ]
+    }
+    ```
+
+    A schema rejection returns a structured error and execution does
+    NOT start — fix the plan and resubmit, or switch to
+    `execute_python` for unregistered ops.
+
 ---
 
 ## Flame Environment
