@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-05-19
+
 ### Added — F5b: Ruta A — structured plan output (Issue #12, AJUSTE 1)
 
 The deepest reliability win of the chat 51 roadmap. The LLM can now
