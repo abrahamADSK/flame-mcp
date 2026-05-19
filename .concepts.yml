@@ -501,3 +501,40 @@ concepts:
           type: file_regex_matches
           file: src/flame_mcp/_workspace_snapshot.py
           pattern: 'def (invalidate)'
+
+  ast_dry_run_validator:
+    description: >
+      F4b — Static AST walker validates every flame.X.Y reference in
+      execute_python's incoming snippet against rag/api_graph.json
+      (F2-intro output). Rejects hallucinated symbols before the
+      socket round-trip. Degrades to no-op when the graph file is
+      missing (CI / fresh clone). Opt-in via config.json `ast_dry_run`
+      (default true).
+    source_of_truth:
+      file: src/flame_mcp/_ast_validate.py
+      symbol: validate_python
+    mirrors:
+      - file: src/flame_mcp/server.py
+        kind: "execute_python pre-flight call to validate_python"
+      - file: tests/test_ast_validate.py
+        kind: unit tests covering happy-path + rejection + degradation
+    invariants:
+      - id: ast_validate_module_exists
+        type: file_exists
+        path: src/flame_mcp/_ast_validate.py
+        context: F4b AST walker module
+      - id: ast_validate_tests_exist
+        type: file_exists
+        path: tests/test_ast_validate.py
+        context: F4b unit tests
+      - id: execute_python_calls_validator
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: file_regex_matches
+          file: src/flame_mcp/server.py
+          pattern: 'from flame_mcp\._ast_validate import (validate_python)'
+        b_source:
+          type: file_regex_matches
+          file: src/flame_mcp/_ast_validate.py
+          pattern: 'def (validate_python)'

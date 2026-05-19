@@ -750,6 +750,19 @@ def execute_python(
             lines.append("\n❌ Code would NOT execute due to above blocks.")
         return '\n'.join(lines)
 
+    # ── F4b: AST dry-run walker ──────────────────────────────────────────────
+    # Static validation: every `flame.X.Y` reference in the snippet must
+    # resolve against rag/api_graph.json (produced by F2-intro). When the
+    # graph is missing (CI / fresh clone / introspector not yet run), the
+    # walker degrades to a no-op and the call proceeds. Opt-out via
+    # config.json -> ast_dry_run: false.
+    if _get_config().get('ast_dry_run', True):
+        from flame_mcp._ast_validate import validate_python, format_issues
+        _validation = validate_python(code)
+        if _validation.issues:
+            _stats['ast_dry_run_rejected'] = _stats.get('ast_dry_run_rejected', 0) + 1
+            return format_issues(_validation) + _stats_footer()
+
     # OBS-013: soft nudge (post-gate, only fires after RAG was called but
     # score was low — the hard gate above catches the no-RAG case)
     rag_nudge = ""
