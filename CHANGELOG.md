@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — F5b: Ruta A — structured plan output (Issue #12, AJUSTE 1)
+
+The deepest reliability win of the chat 51 roadmap. The LLM can now
+submit a structured JSON plan via the new `execute_plan` MCP tool
+instead of writing raw Python. The plan is validated against a closed
+schema (each op carries a typed pydantic args model with
+`extra="forbid"`). Hallucinated symbols and wrong arg shapes are
+rejected at the protocol level — they never reach Flame.
+
+- New `src/flame_mcp/_plan_schema.py` module:
+  - Schema shape v1: `{"ops": [{"op": "<name>", "args": {...}}, ...]}`.
+  - 6 registered ops in v1: `list_libraries`, `list_reels`,
+    `list_clips`, `get_project_info`, `get_clip_metadata`, `ping`.
+  - Per-op pydantic models enforce `extra="forbid"` +
+    `str_strip_whitespace=True`.
+  - `validate_plan(plan)` returns parsed (op_name, args_instance)
+    pairs or raises `PlanValidationError` with LLM-facing message.
+  - `dispatch_plan(plan)` validates then dispatches op-by-op with
+    per-op headers + final summary; short-circuits on handler
+    failure with the exact index reported.
+  - `register_op(name, handler)` wires server-side handlers at
+    import time (server.py is the only caller); raises on unknown
+    name to surface typos loudly.
+- New `execute_plan` MCP tool in `src/flame_mcp/server.py`:
+  - Wires handlers for the 6 ops above (each delegates to its
+    existing dedicated tool — F5b is a protocol change, not a
+    behaviour change).
+  - On schema rejection: increments `_stats['plan_ops_rejected_by_schema']`
+    and returns the rejection message without touching Flame.
+  - On success: increments `_stats['plan_ops_executed']` by the op
+    count.
+- `execute_python` is NOT deprecated. F5b co-exists. Migration path:
+  observe F0 telemetry, migrate frequent `execute_python` calls into
+  new plan ops, only deprecate `execute_python` once the corresponding
+  plan ops are stable.
+- `tests/test_plan_schema.py` — 21 unit tests covering schema
+  rejection (unknown op, extra keys, missing keys, wrong types, empty
+  ops, non-dict plan), args model rejection (missing required, unknown
+  arg), dispatch order preservation, short-circuit on handler failure
+  (subsequent ops NOT invoked), `register_op` typo detection,
+  `describe_registry` JSON-serialisability, sorted `op_names`.
+- `README.md` — tool count `27 → 28`, `execute_plan` added to the
+  tool table.
+- `CLAUDE.md` — new rule 16 with 3 worked examples for `execute_plan`.
+- `.concepts.yml` — new `structured_plan_output` concept with 3
+  invariants: 2 × `file_exists` (module, tests) + `every_op_is_a_tool`
+  subset (op keys in `_OP_REGISTRY` ⊂ `@mcp.tool` decorator names in
+  server.py). Pre-commit verifier: 36/36 (was 33/33).
+
+Tests: 512 passed, 113 skipped, 0 failed (was 491/113).
+
 ### Changed — F6a: trim CLAUDE.md (Issue #13, AJUSTE 3 — unblocked by F3b)
 
 - `CLAUDE.md` reduced 359 → 290 lines (~19 %, ~69 lines / ~4.8 KB

@@ -212,13 +212,14 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (27)
+## MCP Tools (28)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
 | Tool | Description |
 |------|-------------|
 | `execute_python` | Execute arbitrary Python code inside Flame with full API access |
+| `execute_plan` | Run a structured JSON plan against Flame (F5b — preferred over execute_python for covered ops) |
 | `get_project_info` | Return name, frame rate, resolution, bit depth of the active project |
 | `list_libraries` | List all libraries in the project with reel counts |
 | `list_reels` | List reels in a library, or across all libraries |

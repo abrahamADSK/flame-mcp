@@ -573,3 +573,42 @@ concepts:
           regex: 'brew install ollama'
           file_pattern: 'CLAUDE.md'
         expected: not_found
+
+  structured_plan_output:
+    description: >
+      F5b — Ruta A: the LLM submits a structured JSON plan via the
+      execute_plan MCP tool instead of writing raw Python. The plan is
+      validated against a closed schema (every op has a typed pydantic
+      args model with extra="forbid"). Co-exists with execute_python;
+      not a replacement (yet). Each registered op maps to a known
+      dedicated MCP tool — the every_op_is_a_tool invariant pins this.
+    source_of_truth:
+      file: src/flame_mcp/_plan_schema.py
+      symbol: _OP_REGISTRY
+    mirrors:
+      - file: src/flame_mcp/server.py
+        kind: "execute_plan MCP tool + register_op handler wiring"
+      - file: tests/test_plan_schema.py
+        kind: schema rejection + dispatch tests
+      - file: CLAUDE.md
+        kind: rule 16 examples
+    invariants:
+      - id: plan_schema_module_exists
+        type: file_exists
+        path: src/flame_mcp/_plan_schema.py
+        context: F5b plan schema module
+      - id: plan_schema_tests_exist
+        type: file_exists
+        path: tests/test_plan_schema.py
+        context: F5b unit tests
+      - id: every_op_is_a_tool
+        type: subset
+        direction: a_subset_b
+        a_source:
+          type: ast_dict_keys
+          file: src/flame_mcp/_plan_schema.py
+          symbol: _OP_REGISTRY
+        b_source:
+          type: ast_decorator_functions
+          file: src/flame_mcp/server.py
+          decorator: mcp.tool
