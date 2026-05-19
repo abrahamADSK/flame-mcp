@@ -538,3 +538,38 @@ concepts:
           type: file_regex_matches
           file: src/flame_mcp/_ast_validate.py
           pattern: 'def (validate_python)'
+
+  claude_md_trim:
+    description: >
+      F6a — Operator-only sections of CLAUDE.md have been moved to
+      docs/DEPLOY.md so the LLM system prompt no longer carries
+      ~80 lines of install/symlink/pkill workflow it never acts on.
+      The trim is gated by F3b's adversarial dataset (16 ≥ 10 required)
+      which now provides executable defense for the API traps the
+      previous CLAUDE.md warnings used to remind the LLM about.
+      Re-expanding CLAUDE.md must NOT re-add the deploy section.
+    source_of_truth:
+      file: docs/DEPLOY.md
+      symbol: operator deploy workflow
+    mirrors:
+      - file: CLAUDE.md
+        kind: redirect pointer to docs/DEPLOY.md
+    invariants:
+      - id: deploy_md_exists
+        type: file_exists
+        path: docs/DEPLOY.md
+        context: F6a operator-only deploy guide
+      - id: claude_md_no_deploy_section
+        type: claim_verifies
+        claim: "CLAUDE.md must not carry '## Deploy workflow — after every code change' (moved to docs/DEPLOY.md)"
+        code_grep:
+          regex: '^## Deploy workflow — after every code change'
+          file_pattern: 'CLAUDE.md'
+        expected: not_found
+      - id: claude_md_no_brew_install
+        type: claim_verifies
+        claim: "CLAUDE.md must not embed 'brew install ollama' shell command (moved to docs/DEPLOY.md)"
+        code_grep:
+          regex: 'brew install ollama'
+          file_pattern: 'CLAUDE.md'
+        expected: not_found

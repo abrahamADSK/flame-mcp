@@ -196,82 +196,17 @@ flame-mcp supports multiple LLM backends via the model selector widget in the Fl
 | `ollama_mac` | 🍎 models | `config.json → ollama_mac_url` | Mac-local, offline |
 
 ### Prerequisites for local models
-```bash
-# Install Ollama (macOS)
-brew install ollama
-brew services start ollama
 
-# Pull the model
-ollama pull qwen3.5:9b
-# On Mac 24GB (fallback):
-ollama pull qwen3.5:4b
-```
+Operator-only setup. See [`docs/DEPLOY.md`](docs/DEPLOY.md) for
+Ollama install and `qwen3.5-mcp` alias setup.
 
 ---
 
-## Deploy workflow — after every code change
+## Deploy workflow
 
-### One-time setup: symlink `flame_mcp_bridge.py` (recommended)
-
-Flame loads the bridge hook from the hardcoded path
-`/opt/Autodesk/shared/python/flame_mcp_bridge.py`. On a fresh workstation,
-symlink that path to the working tree so every `git pull` deploys the
-latest bridge instantly — no per-change `cp` required:
-
-```bash
-sudo ln -sf ~/Projects/flame-mcp/hooks/flame_mcp_bridge.py \
-           /opt/Autodesk/shared/python/flame_mcp_bridge.py
-```
-
-Verify:
-```bash
-ls -la /opt/Autodesk/shared/python/flame_mcp_bridge.py
-# Should show: ... -> /Users/<you>/Projects/flame-mcp/hooks/flame_mcp_bridge.py
-```
-
-The M4 Pro workstation has this symlink in place since 2026-03-09. You
-still need **MCP Bridge → Reload hook** in Flame after each bridge
-change, because the Flame Python process caches the compiled bytecode
-of the hook module in memory — the symlink serves the source file, not
-the bytecode. Reload forces `importlib.reload` inside Flame.
-
-### `src/flame_mcp/server.py` only:
-```bash
-git push && pkill -f flame_mcp.server
-```
-Claude Desktop respawns the server automatically with the new code.
-
-### `hooks/flame_mcp_bridge.py` only:
-
-**With symlink in place** (recommended — current M4 Pro setup):
-```bash
-git push
-```
-Then in Flame: **MCP Bridge → Reload hook**
-
-**Without symlink** (fresh machine, pre-setup fallback):
-```bash
-git push && cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
-```
-Then in Flame: **MCP Bridge → Reload hook**
-
-The `cp` is idempotent — running it on a host that already has the
-symlink reports "identical" and does nothing, so you can script either
-workflow without branching.
-
-### Both files:
-
-**With symlink**:
-```bash
-git push && pkill -f flame_mcp.server
-```
-
-**Without symlink**:
-```bash
-git push && pkill -f flame_mcp.server && cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/flame_mcp_bridge.py
-```
-
-Then in Flame: **MCP Bridge → Reload hook**
+Operator-only. See [`docs/DEPLOY.md`](docs/DEPLOY.md) for symlink
+setup, `pkill` + `cp` recipes, and the **MCP Bridge → Reload hook**
+step in Flame.
 
 ---
 
@@ -293,10 +228,6 @@ The Python `flame` module covers most operations. Use Wiretap only when:
 - Bridge from Python to Wiretap: `obj.get_wiretap_node_id()` and
   `flame.find_by_wiretap_node_id(node_id)`
 - Wiretap server runs at `localhost` inside Flame
-
-### Community
-- Logik Forum: https://forum.logik.tv
-- Autodesk Community: https://forums.autodesk.com/t5/flame/ct-p/area_flame
 
 ---
 
