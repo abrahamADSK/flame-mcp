@@ -8,13 +8,13 @@ GitHub navigation. See [`docs/CHAT_51_PLAN.md`](./CHAT_51_PLAN.md) for full plan
 
 ```
 phases_total:    11
-phases_done:     10   (F0, F1a, F1b, F2-intro, F2-wt, F3a, F3b, F4a, F4b, F6a)
-phases_pending:   1   (F5b)
+phases_done:     11   ★ ALL ★
+phases_pending:   0
 open_prs:         0
-prs_merged:      10   (#3 F0, #4 F1a, #5 F1b, #6 F2-intro, #7 F2-wt, #8 F3b, #15 F3a, #16 F4a, #17 F4b, #18 F6a)
-open_issues:     1    (#12 F5b)
+prs_merged:      11   (#3 F0, #4 F1a, #5 F1b, #6 F2-intro, #7 F2-wt, #8 F3b, #15 F3a, #16 F4a, #17 F4b, #18 F6a, #19 F5b)
+open_issues:      0
 last_updated:     2026-05-19
-post_merge:       main at F6a; tests 491 passed / 113 skipped; invariants 33/33
+post_merge:       main at F5b; tests 512 passed / 113 skipped; invariants 36/36; CHAT 51 PLAN CLOSED
 ```
 
 ## Status table
@@ -30,7 +30,7 @@ post_merge:       main at F6a; tests 491 passed / 113 skipped; invariants 33/33
 | F3b | Golden routing dataset + adversarial gate | ✅ Merged | [PR #8](https://github.com/abrahamADSK/flame-mcp/pull/8) | F0 ✓ | Merged 2026-05-18 → main; **unblocks F6a** |
 | F4a | Workspace snapshot TTL 12s + write-invalidation (AJUSTE 2) | ✅ Merged | [PR #16](https://github.com/abrahamADSK/flame-mcp/pull/16) | F0 ✓ | Merged 2026-05-18 → main; closes #10; 7 RO tools cached, execute_python invalidates after every exec |
 | F4b | AST dry-run walker | ✅ Merged | [PR #17](https://github.com/abrahamADSK/flame-mcp/pull/17) | F2-intro ✓ | Merged 2026-05-19 → main; closes #11; rejects hallucinated `flame.X.Y` before bridge round-trip |
-| F5b | Ruta A — structured plan output (AJUSTE 1) | ⏳ Pending | [Issue #12](https://github.com/abrahamADSK/flame-mcp/issues/12) | F2-intro ✓ | Not started — deepest architectural change; LLM stops writing raw Python |
+| F5b | Ruta A — structured plan output (AJUSTE 1) | ✅ Merged | [PR #19](https://github.com/abrahamADSK/flame-mcp/pull/19) | F2-intro ✓ | Merged 2026-05-19 → main; closes #12; new `execute_plan` MCP tool, 6 ops in v1 registry, schema validation rejects hallucinations at the protocol level |
 | F6a | Trim CLAUDE.md (AJUSTE 3) | ✅ Merged | [PR #18](https://github.com/abrahamADSK/flame-mcp/pull/18) | F3b ✓ | Merged 2026-05-19 → main; closes #13; 359→290 lines, ~1200 tokens/turn saved |
 
 **Legend:** ✅ Merged (in main) · ✅ Done (on branch, MERGEABLE) · ⏳ Pending · 🔒 Blocked
