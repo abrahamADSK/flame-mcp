@@ -212,7 +212,7 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (30)
+## MCP Tools (36)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
@@ -245,6 +245,12 @@ Then talk naturally:
 | `create_sequence` | Create a new empty sequence in a Flame library/reel |
 | `render_batch` | Render the current Batch Group (Background Reactor by default; scheduled via idle event — never blocks Flame) |
 | `export_clip` | Export a clip to disk via a Flame export preset (PyExporter, scheduled via idle event — never deadlocks Flame) |
+| `create_library` | Create a new library in the active project workspace |
+| `create_reel` | Create a new reel inside a library |
+| `create_folder` | Create a new folder inside a library |
+| `create_reel_group` | Create a new reel group inside a library |
+| `create_batch_group` | Create a new empty Batch Group on the desktop |
+| `import_clips` | Import media from disk into a library (or a reel within it) |
 | `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
 | `operation_history` | Show the last N execute_python operations recorded this session |
 | `undo_last_operation` | Undo the last undoable execute_python operation |
