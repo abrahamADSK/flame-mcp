@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-05-21
+
 ### Added — 4C write tools + execute_plan ops (Chat 53)
 
 - Ten dedicated write tools, each registered as a closed-schema
