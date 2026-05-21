@@ -1,6 +1,6 @@
-# Wiretap CLI Tools Reference (Flame 2026.2)
+# Wiretap CLI Tools Reference (Flame 2027)
 
-Command-line tools installed under `/opt/Autodesk/wiretap/tools/2026.2/`. These talk to the IFFFS server (default `127.0.0.1:IFFFS`) and expose the same object model as the Wiretap SDK from a shell. Use them for project creation, node traversal, metadata read/write, and frame-level I/O outside the Flame process.
+Command-line tools installed under `/opt/Autodesk/wiretap/tools/2027/`. These talk to the IFFFS server (default `127.0.0.1:IFFFS`) and expose the same object model as the Wiretap SDK from a shell. Use them for project creation, node traversal, metadata read/write, and frame-level I/O outside the Flame process.
 
 Each section below is the `--help` output of one tool captured verbatim. Calling a tool with no arguments typically prints the same usage block.
 
@@ -827,7 +827,7 @@ SEE ALSO
 ## wiretap_multicast_listener
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_multicast_listener', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_multicast_listener', '--help']' timed out after 5 seconds]
 ```
 
 ## wiretap_network_tool
@@ -977,13 +977,13 @@ SEE ALSO
 ## wiretap_read_stream
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_read_stream', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_read_stream', '--help']' timed out after 5 seconds]
 ```
 
 ## wiretap_remove_server
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_remove_server', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_remove_server', '--help']' timed out after 5 seconds]
 ```
 
 ## wiretap_rename_node
@@ -1051,7 +1051,7 @@ Path not specified.
 ## wiretap_resolve_storage_id
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_resolve_storage_id', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_resolve_storage_id', '--help']' timed out after 5 seconds]
 ```
 
 ## wiretap_rw_file
@@ -1153,7 +1153,7 @@ SEE ALSO
 ## wiretap_services_snapshot
 
 ```
-Usage: /opt/Autodesk/wiretap/tools/2026.2/wiretap_services_snapshot [-p <port>|...] [-f <output> ] [<hostname>|...] [-h]
+Usage: /opt/Autodesk/wiretap/tools/2027/wiretap_services_snapshot [-p <port>|...] [-f <output> ] [<hostname>|...] [-h]
 
   Extract information for wiretap servers running on a given host and save
   them either in /opt/Autodesk/cfg/services.cfg or a specified file.
@@ -1172,11 +1172,11 @@ Usage: /opt/Autodesk/wiretap/tools/2026.2/wiretap_services_snapshot [-p <port>|.
 ## wiretap_set_metadata
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_set_metadata', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_set_metadata', '--help']' timed out after 5 seconds]
 ```
 
 ## wiretap_set_num_frames
 
 ```
-[--help failed: Command '['/opt/Autodesk/wiretap/tools/2026.2/wiretap_set_num_frames', '--help']' timed out after 5 seconds]
+[--help failed: Command '['/opt/Autodesk/wiretap/tools/2027/wiretap_set_num_frames', '--help']' timed out after 5 seconds]
 ```

@@ -1,7 +1,7 @@
-# Wiretap SDK — Python Bindings Reference (Flame 2026.2)
+# Wiretap SDK — Python Bindings Reference (Flame 2027)
 
-Python bindings for the Wiretap C++ client API, shipped with Flame 2026 at
-`/opt/Autodesk/python/2026.2.2/lib/python3.11/site-packages/adsk/libwiretapPythonClientAPI.so`.
+Python bindings for the Wiretap C++ client API, shipped with Flame 2027 at
+`/opt/Autodesk/python/2027/lib/python3.13/site-packages/adsk/libwiretapPythonClientAPI.so`.
 Usable from standalone scripts (outside Flame) to traverse the IFFFS node tree,
 read/write metadata, and do frame-level media I/O. The C++ `.dylib` lives at
 `/opt/Autodesk/lib64/2026.2.2/libwiretapClientAPI.dylib`.
@@ -10,7 +10,7 @@ Import pattern:
 
 ```python
 import sys
-sys.path.insert(0, '/opt/Autodesk/python/2026.2.2/lib/python3.11/site-packages')
+sys.path.insert(0, '/opt/Autodesk/python/2027/lib/python3.13/site-packages')
 from adsk import libwiretapPythonClientAPI as WT
 
 WT.WireTapClientInit()
