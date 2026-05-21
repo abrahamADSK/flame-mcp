@@ -2026,6 +2026,8 @@ def execute_plan(plan: dict) -> str:
       - create_reel_group (library_name, reel_group_name) — DESTRUCTIVE.
       - create_batch_group (name) — DESTRUCTIVE: create an empty Batch Group.
       - import_clips (path, library_name, reel_name?) — DESTRUCTIVE: import media.
+      - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
+      - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
     Example — discover a clip's metadata in one call:
 
@@ -2590,6 +2592,129 @@ _plan.register_op(
     "import_clips",
     lambda args: import_clips(
         path=args.path, library_name=args.library_name, reel_name=args.reel_name
+    ),
+)
+
+
+def _timeline_edit(
+    op: str,
+    sequence_library: str,
+    sequence_reel: str,
+    sequence_name: str,
+    source_library: str,
+    source_reel: str,
+    source_clip: str,
+) -> str:
+    """Shared resolver + dispatch for timeline_insert / timeline_overwrite.
+
+    Resolves the target PySequence (from a reel's ``sequences``) and the source
+    PyClip (from a reel's ``clips``) by name, then calls PySequence.<op>(src)
+    with Flame defaults for the edit time and destination track.
+    """
+    _track_dedicated()
+    code_template = '''import flame
+ws = flame.projects.current_project.current_workspace
+def _find(lib_name, reel_name, item_name, attr):
+    lib = next((l for l in ws.libraries if str(l.name).strip("'") == lib_name), None)
+    if not lib:
+        return None
+    reel = next((r for r in lib.reels if str(r.name).strip("'") == reel_name), None)
+    if not reel:
+        return None
+    coll = getattr(reel, attr, []) or []
+    return next((x for x in coll if str(x.name).strip("'") == item_name), None)
+seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
+src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
+if seq is None:
+    print("ERROR: sequence not found (check sequence library/reel/name)")
+elif src is None:
+    print("ERROR: source clip not found (check source library/reel/clip)")
+else:
+    ok = seq.{op}(src)
+    print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
+'''
+    code = code_template.format(
+        op=op,
+        seq_lib=sequence_library,
+        seq_reel=sequence_reel,
+        seq_name=sequence_name,
+        src_lib=source_library,
+        src_reel=source_reel,
+        src_clip=source_clip,
+    )
+    return _fmt(_call_flame(code, timeout=30, dedicated_tool=True))
+
+
+@mcp.tool(annotations=_DST)
+def timeline_insert(
+    sequence_library: str,
+    sequence_reel: str,
+    sequence_name: str,
+    source_library: str,
+    source_reel: str,
+    source_clip: str,
+) -> str:
+    """
+    Insert a source clip into a sequence's timeline (PySequence.insert — ripple).
+
+    Resolves the target sequence (from its reel's ``sequences``) and the source
+    clip (from its reel's ``clips``) by name, then calls insert with Flame
+    defaults for insert_time (start) and destination_track (first video track).
+
+    Args:
+        sequence_library / sequence_reel / sequence_name: locate the sequence.
+        source_library / source_reel / source_clip:       locate the source clip.
+    """
+    return _timeline_edit(
+        "insert", sequence_library, sequence_reel, sequence_name,
+        source_library, source_reel, source_clip,
+    )
+
+
+@mcp.tool(annotations=_DST)
+def timeline_overwrite(
+    sequence_library: str,
+    sequence_reel: str,
+    sequence_name: str,
+    source_library: str,
+    source_reel: str,
+    source_clip: str,
+) -> str:
+    """
+    Overwrite part of a sequence's timeline with a source clip
+    (PySequence.overwrite). Same resolution as timeline_insert; overwrite_time
+    and destination_track use Flame defaults.
+
+    Args:
+        sequence_library / sequence_reel / sequence_name: locate the sequence.
+        source_library / source_reel / source_clip:       locate the source clip.
+    """
+    return _timeline_edit(
+        "overwrite", sequence_library, sequence_reel, sequence_name,
+        source_library, source_reel, source_clip,
+    )
+
+
+_plan.register_op(
+    "timeline_insert",
+    lambda args: timeline_insert(
+        sequence_library=args.sequence_library,
+        sequence_reel=args.sequence_reel,
+        sequence_name=args.sequence_name,
+        source_library=args.source_library,
+        source_reel=args.source_reel,
+        source_clip=args.source_clip,
+    ),
+)
+_plan.register_op(
+    "timeline_overwrite",
+    lambda args: timeline_overwrite(
+        sequence_library=args.sequence_library,
+        sequence_reel=args.sequence_reel,
+        sequence_name=args.sequence_name,
+        source_library=args.source_library,
+        source_reel=args.source_reel,
+        source_clip=args.source_clip,
     ),
 )
 
