@@ -321,15 +321,62 @@ def _stats_footer(mode: str | None = None) -> str:
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
-# A13 — Unix domain socket path (more secure than TCP; owner-only file permissions).
-# Override with FLAME_BRIDGE_SOCKET env var. Falls back to TCP if socket file absent.
-# Socket discovery: env var -> repo run/ -> /tmp/ (installed hook) -> TCP fallback
-_BRIDGE_SOCKET = Path(os.environ.get(
-    'FLAME_BRIDGE_SOCKET',
-    str(_SERVER_DIR / 'run' / 'flame_mcp.sock')
-    if (_SERVER_DIR / 'run' / 'flame_mcp.sock').exists()
-    else '/tmp/flame_mcp.sock'
-))
+# A13 — Unix domain socket transport (more secure than TCP; owner-only file
+# permissions). F7 fix: resolve the socket at CONNECT time by probing
+# candidates, NOT at import by trusting file existence. A stale leftover
+# socket file (e.g. <repo>/run/flame_mcp.sock from a prior dev session) must
+# never trap the resolver when the live bridge listens on /tmp/flame_mcp.sock.
+def _socket_candidates() -> list[str]:
+    """Ordered Unix-socket paths to probe, most-specific first.
+
+    - ``FLAME_BRIDGE_SOCKET`` env override → that path only.
+    - Otherwise repo ``run/`` (dev tree) then ``/tmp/`` (installed hook).
+    """
+    env = os.environ.get('FLAME_BRIDGE_SOCKET')
+    if env:
+        return [env]
+    return [
+        str(_SERVER_DIR / 'run' / 'flame_mcp.sock'),
+        '/tmp/flame_mcp.sock',
+    ]
+
+
+def _connect_bridge(timeout: float) -> socket.socket:
+    """Open a connection to the Flame bridge, probing transports in order.
+
+    Tries each EXISTING Unix-socket candidate by actually connecting; the
+    first that accepts wins. Falls back to TCP only when no Unix socket is
+    live. Raises ConnectionRefusedError when nothing is reachable so the
+    caller surfaces the standard guidance message. This probe-on-connect
+    design is what makes a stale leftover socket file harmless: a dead
+    socket refuses the connection and we move on to the next candidate
+    (and finally TCP), instead of trusting that the file's mere presence
+    means a live bridge.
+    """
+    last_exc: OSError = ConnectionRefusedError(
+        "no Flame bridge transport reachable"
+    )
+    if hasattr(socket, 'AF_UNIX'):
+        for cand in _socket_candidates():
+            if not os.path.exists(cand):
+                continue
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                s.settimeout(timeout)
+                s.connect(cand)
+                return s
+            except OSError as exc:
+                last_exc = exc
+                s.close()
+    # TCP fallback — only reached when no Unix socket accepted.
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.settimeout(timeout)
+        s.connect((BRIDGE_HOST, BRIDGE_PORT))
+        return s
+    except OSError:
+        s.close()
+        raise last_exc
 
 mcp = FastMCP(
     "flame",
@@ -388,7 +435,7 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    - ws.libraries includes hidden system libraries NOT visible to the user:
      "Timeline FX" and "Grabbed References" — always filter them out:
      HIDDEN = {"Timeline FX", "Grabbed References"}
-     visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
+     visible = [l for l in ws.libraries if str(l.name).strip("'") not in HIDDEN]
 
 4. Never call flame.batch.render() or PyExporter().export() directly — both block
    Flame's main thread and freeze the application (even with foreground=False).
@@ -556,19 +603,10 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
     """
     _track_call()
     _t0_bridge = time.monotonic()
-    # A13 — choose transport: Unix socket (preferred) or TCP fallback
-    use_unix = hasattr(socket, 'AF_UNIX') and _BRIDGE_SOCKET.exists()
+    # A13/F7 — connect by probing transports at call time (see _connect_bridge).
     try:
-        if use_unix:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            addr: str | tuple = str(_BRIDGE_SOCKET)
-        else:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            addr = (BRIDGE_HOST, BRIDGE_PORT)
-
-        with sock as s:
+        with _connect_bridge(timeout) as s:
             s.settimeout(timeout)
-            s.connect(addr)
 
             # Dedicated tools prepend '# DT\n' so the bridge skips redirect check.
             # execute_python passes dedicated_tool=False → no prefix → bridge enforces.
@@ -1026,11 +1064,11 @@ def list_libraries() -> str:
     code = """
 ws = flame.projects.current_project.current_workspace
 HIDDEN = {"Timeline FX", "Grabbed References"}
-visible = [l for l in ws.libraries if str(l.name) not in HIDDEN]
+visible = [l for l in ws.libraries if str(l.name).strip("'") not in HIDDEN]
 if not visible:
     print("No libraries found.")
 for lib in visible:
-    name    = str(lib.name)
+    name    = str(lib.name).strip("'")
     reels   = len(lib.reels)
     try:
         folders = len(list(lib.folders or []))
@@ -1068,7 +1106,7 @@ def list_reels(library_name: str = "") -> str:
         safe_lib = repr(library_name)
         code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
+lib = next((l for l in ws.libraries if str(l.name).strip("'") == {safe_lib}), None)
 if lib is None:
     print(f"Library {safe_lib} not found.")
 else:
@@ -1080,7 +1118,7 @@ else:
 ws = flame.projects.current_project.current_workspace
 HIDDEN = {"Timeline FX", "Grabbed References"}
 for lib in ws.libraries:
-    if str(lib.name) in HIDDEN:
+    if str(lib.name).strip("'") in HIDDEN:
         continue
     print(f"[{str(lib.name)}]")
     for reel in lib.reels:
@@ -1119,7 +1157,7 @@ def list_clips(
     if library_name:
         code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
+lib = next((l for l in ws.libraries if str(l.name).strip("'") == {safe_lib}), None)
 if lib is None:
     print(f"Library {safe_lib} not found.")
 else:
@@ -1127,7 +1165,7 @@ else:
     limit = {limit}
     found = False
     for reel in lib.reels:
-        if reel_filter and str(reel.name) != reel_filter:
+        if reel_filter and str(reel.name).strip("'") != reel_filter:
             continue
         found = True
         clips = list(reel.clips)
@@ -1149,7 +1187,7 @@ ws = flame.projects.current_project.current_workspace
 HIDDEN = {{"Timeline FX", "Grabbed References"}}
 limit = {limit}
 for lib in ws.libraries:
-    if str(lib.name) in HIDDEN:
+    if str(lib.name).strip("'") in HIDDEN:
         continue
     for reel in lib.reels:
         clips = list(reel.clips)
@@ -1311,15 +1349,15 @@ def get_clip_metadata(library_name: str, reel_name: str, clip_name: str) -> str:
     safe_clip = repr(clip_name)
     code = f"""
 ws = flame.projects.current_project.current_workspace
-lib = next((l for l in ws.libraries if str(l.name) == {safe_lib}), None)
+lib = next((l for l in ws.libraries if str(l.name).strip("'") == {safe_lib}), None)
 if lib is None:
     print(f"Library {safe_lib} not found.")
 else:
-    reel = next((r for r in lib.reels if str(r.name) == {safe_reel}), None)
+    reel = next((r for r in lib.reels if str(r.name).strip("'") == {safe_reel}), None)
     if reel is None:
         print(f"Reel {safe_reel} not found in library {safe_lib}.")
     else:
-        clip = next((c for c in reel.clips if str(c.name) == {safe_clip}), None)
+        clip = next((c for c in reel.clips if str(c.name).strip("'") == {safe_clip}), None)
         if clip is None:
             print(f"Clip {safe_clip} not found in reel {safe_reel}.")
         else:
@@ -2097,13 +2135,13 @@ def get_source_path(
         code = (
             f"import flame\n"
             f"ws = flame.projects.current_project.current_workspace\n"
-            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
             f"if not lib: print('ERROR: library not found: {library_name}')\n"
             f"else:\n"
-            f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+            f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
             f"  if not reel: print('ERROR: reel not found: {reel_name}')\n"
             f"  else:\n"
-            f"    clip = next((c for c in reel.clips if str(c.name) == {clip_name!r}), None)\n"
+            f"    clip = next((c for c in reel.clips if str(c.name).strip(\"'\") == {clip_name!r}), None)\n"
             f"    if not clip: print('ERROR: clip not found: {clip_name}')\n"
             f"    else:\n"
             f"      versions = clip.versions\n"
@@ -2121,10 +2159,10 @@ def get_source_path(
         code = (
             f"import flame\n"
             f"ws = flame.projects.current_project.current_workspace\n"
-            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
             f"if not lib: print('ERROR: library not found: {library_name}')\n"
             f"else:\n"
-            f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+            f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
             f"  if not reel: print('ERROR: reel not found: {reel_name}')\n"
             f"  else: print('Reel: ' + str(reel.name) + ' — clips: ' + str(len(reel.clips)))\n"
         )
@@ -2132,7 +2170,7 @@ def get_source_path(
         code = (
             f"import flame\n"
             f"ws = flame.projects.current_project.current_workspace\n"
-            f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+            f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
             f"if not lib: print('ERROR: library not found: {library_name}')\n"
             f"else: print('Library: ' + str(lib.name) + ' — reels: ' + str(len(lib.reels)))\n"
         )
@@ -2162,13 +2200,13 @@ def rename_segments(
     code = (
         f"import flame\n"
         f"ws = flame.projects.current_project.current_workspace\n"
-        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
         f"if not lib: print('ERROR: library not found')\n"
         f"else:\n"
-        f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+        f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
         f"  if not reel: print('ERROR: reel not found')\n"
         f"  else:\n"
-        f"    clip = next((c for c in reel.clips if str(c.name) == {clip_name!r}), None)\n"
+        f"    clip = next((c for c in reel.clips if str(c.name).strip(\"'\") == {clip_name!r}), None)\n"
         f"    if not clip: print('ERROR: clip not found: {clip_name}')\n"
         f"    else:\n"
         f"      clip.name = {new_name!r}\n"
@@ -2196,10 +2234,10 @@ def create_sequence(
     code = (
         f"import flame\n"
         f"ws = flame.projects.current_project.current_workspace\n"
-        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
         f"if not lib: print('ERROR: library not found')\n"
         f"else:\n"
-        f"  reel = next((r for r in lib.reels if str(r.name) == {reel_name!r}), None)\n"
+        f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
         f"  if not reel: print('ERROR: reel not found')\n"
         f"  else:\n"
         f"    seq = flame.media_panel.create_sequence(name={sequence_name!r})\n"
@@ -2252,11 +2290,11 @@ def collect_media_paths(
         reel_name:    Optional reel filter. If omitted, scans all reels.
     """
     _track_dedicated()
-    reel_filter = f"if str(r.name) == {reel_name!r}" if reel_name else ""
+    reel_filter = f"if str(r.name).strip(\"'\") == {reel_name!r}" if reel_name else ""
     code = (
         f"import flame\n"
         f"ws = flame.projects.current_project.current_workspace\n"
-        f"lib = next((l for l in ws.libraries if str(l.name) == {library_name!r}), None)\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
         f"if not lib: print('ERROR: library not found')\n"
         f"else:\n"
         f"  paths = []\n"
