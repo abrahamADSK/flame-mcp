@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Chat 52 in-vivo validation findings
+
+- **Name comparisons failed against real Flame.** On Flame 2026,
+  `str(obj.name)` returns a single-quote-wrapped string for
+  libraries/reels/clips (`'Default Library'`, not `Default Library`).
+  Every name comparison (`== name`, `in HIDDEN`) therefore mismatched
+  against a live bridge: hidden system libraries (`Timeline FX`,
+  `Grabbed References`) leaked into `list_libraries`, and name-based
+  lookups in `list_reels`, `list_clips`, `get_clip_metadata` and
+  `get_source_path` always returned "not found". Normalised every
+  `str(x.name)` comparison with `.strip("'")` (the convention already
+  used in `FLAME_API.md`). Mock-only tests masked this because the
+  mocked bridge returns clean names.
+
+- **Bridge socket resolution trapped by stale files.** `_BRIDGE_SOCKET`
+  was resolved once at import time by file *existence*, so a leftover
+  socket file (e.g. `<repo>/run/flame_mcp.sock` from a prior dev
+  session) hijacked the resolver even when the live bridge listened on
+  `/tmp/flame_mcp.sock` — every tool returned "Cannot connect to Flame".
+  Replaced with probe-on-connect (`_connect_bridge`): try each candidate
+  socket by actually connecting, first that accepts wins, TCP fallback
+  last. A dead socket file is now harmless. Added
+  `tests/test_bridge_connect.py` (real local sockets, runs in CI).
+
 ## [1.8.0] — 2026-05-19
 
 ### Added — F5b: Ruta A — structured plan output (Issue #12, AJUSTE 1)
