@@ -134,6 +134,25 @@ class PingArgs(BaseModel):
     model_config = _STRICT
 
 
+class ExportClipArgs(BaseModel):
+    """Export a single clip to disk via a Flame export preset (PyExporter).
+
+    DESTRUCTIVE op: schedules an export inside Flame. Mirrors the export_clip
+    dedicated tool 1:1.
+    """
+
+    model_config = _STRICT
+    library_name: str = Field(..., description="Library holding the clip.")
+    reel_name: str = Field(..., description="Reel within the library.")
+    clip_name: str = Field(..., description="Clip to export.")
+    preset_path: str = Field(
+        ..., description="Absolute path to a Flame export preset (.xml)."
+    )
+    output_directory: str = Field(
+        ..., description="Destination folder (created if missing)."
+    )
+
+
 class RenderBatchArgs(BaseModel):
     """Render the current Batch Group's active Render/Write File nodes.
 
@@ -210,6 +229,15 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
             "(Background Reactor by default; scheduled via idle event)."
         ),
         "tool": "render_batch",
+    },
+    "export_clip": {
+        "args_model": ExportClipArgs,
+        "handler": None,
+        "description": (
+            "DESTRUCTIVE — export a clip to disk via a Flame preset "
+            "(PyExporter; scheduled via idle event)."
+        ),
+        "tool": "export_clip",
     },
 }
 

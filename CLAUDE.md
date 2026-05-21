@@ -162,8 +162,8 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     `execute_plan` accepts a structured JSON plan validated against a
     closed schema. Currently registered ops: `list_libraries`,
     `list_reels`, `list_clips`, `get_project_info`,
-    `get_clip_metadata`, `ping`, `render_batch`. Use `execute_plan`
-    whenever the task is fully expressible as those ops — the schema
+    `get_clip_metadata`, `ping`, `render_batch`, `export_clip`. Use
+    `execute_plan` whenever the task is fully expressible as those ops — the schema
     rejects hallucinated symbols at the protocol level, eliminating an
     entire class of errors. Fall back to `execute_python` only when an
     operation is NOT yet in the registry.

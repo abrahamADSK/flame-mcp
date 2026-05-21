@@ -2018,6 +2018,8 @@ def execute_plan(plan: dict) -> str:
       - render_batch (render_option?, generate_proxies?, include_history?) —
         DESTRUCTIVE: schedules a Background Reactor render of the current Batch
         Group (this is why execute_plan is annotated destructive).
+      - export_clip (library_name, reel_name, clip_name, preset_path,
+        output_directory) — DESTRUCTIVE: schedules a PyExporter export of a clip.
 
     Example — discover a clip's metadata in one call:
 
@@ -2281,17 +2283,21 @@ def render_batch(
     code = (
         "import flame, os\n"
         f"result_file = {result_file!r}\n"
-        "def _do_render():\n"
-        "    try:\n"
-        f"        flame.batch.render(render_option={render_option!r}, "
+        "if not hasattr(flame, 'schedule_idle_event'):\n"
+        "    print('ERROR: Flame idle-event API unavailable — bring Flame to the "
+        "foreground (active app) and retry.')\n"
+        "else:\n"
+        "    def _do_render():\n"
+        "        try:\n"
+        f"            flame.batch.render(render_option={render_option!r}, "
         f"generate_proxies={generate_proxies!r}, include_history={include_history!r})\n"
-        "        msg = 'OK: render started'\n"
-        "    except Exception as e:\n"
-        "        msg = 'ERROR: ' + str(e)\n"
-        "    with open(result_file, 'w') as f:\n"
-        "        f.write(msg)\n"
-        "flame.schedule_idle_event(_do_render)\n"
-        "print('Render scheduled via idle event.')\n"
+        "            msg = 'OK: render started'\n"
+        "        except Exception as e:\n"
+        "            msg = 'ERROR: ' + str(e)\n"
+        "        with open(result_file, 'w') as f:\n"
+        "            f.write(msg)\n"
+        "    flame.schedule_idle_event(_do_render)\n"
+        "    print('Render scheduled via idle event.')\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
     out = _fmt(result)
@@ -2312,6 +2318,99 @@ _plan.register_op(
         render_option=args.render_option,
         generate_proxies=args.generate_proxies,
         include_history=args.include_history,
+    ),
+)
+
+
+@mcp.tool(annotations=_DST)
+def export_clip(
+    library_name: str,
+    reel_name: str,
+    clip_name: str,
+    preset_path: str,
+    output_directory: str,
+) -> str:
+    """
+    Export a single clip to disk using a Flame export preset (PyExporter).
+
+    IMPORTANT: PyExporter().export() called synchronously DEADLOCKS Flame's main
+    thread (even with foreground=False), and the execute_python guard blocks it.
+    This dedicated tool runs the export inside flame.schedule_idle_event and
+    writes the outcome to a result file. The export runs ASYNCHRONOUSLY; this
+    call returns once the export is SCHEDULED. Do NOT poll — read the result
+    file (path returned below) in a separate step to confirm.
+
+    Args:
+        library_name: Library holding the clip.
+        reel_name:    Reel within the library.
+        clip_name:    Clip to export.
+        preset_path:  Absolute path to a Flame export preset (.xml) that exists
+                      on this workstation (e.g. under /opt/Autodesk/presets/).
+        output_directory: Destination folder. Created if it does not exist.
+    """
+    _track_dedicated()
+    result_file = os.path.expanduser("~/flame_export_result.txt")
+    code_template = '''import flame, os
+result_file = {result_file!r}
+def _resolve_clip():
+    ws = flame.projects.current_project.current_workspace
+    for l in ws.libraries:
+        if str(l.name).strip("'") == {lib!r}:
+            for r in l.reels:
+                if str(r.name).strip("'") == {reel!r}:
+                    for c in r.clips:
+                        if str(c.name).strip("'") == {clip!r}:
+                            return c
+    return None
+_clip = _resolve_clip()
+if _clip is None:
+    print("ERROR: clip not found (check library/reel/clip names)")
+elif not hasattr(flame, "PyExporter") or not hasattr(flame, "schedule_idle_event"):
+    print("ERROR: Flame export API unavailable — bring Flame to the foreground (active app) and retry.")
+else:
+    os.makedirs({outdir!r}, exist_ok=True)
+    def _do_export():
+        try:
+            exp = flame.PyExporter()
+            exp.foreground = False
+            exp.export([_clip], {preset!r}, {outdir!r})
+            msg = "OK: export started"
+        except Exception as e:
+            msg = "ERROR: " + str(e)
+        with open(result_file, "w") as f:
+            f.write(msg)
+    flame.schedule_idle_event(_do_export)
+    print("Export scheduled via idle event.")
+'''
+    code = code_template.format(
+        result_file=result_file,
+        lib=library_name,
+        reel=reel_name,
+        clip=clip_name,
+        outdir=output_directory,
+        preset=preset_path,
+    )
+    result = _call_flame(code, timeout=20, dedicated_tool=True)
+    out = _fmt(result)
+    if result.get("status") == "error" or "ERROR:" in out:
+        return out
+    return (
+        f"{out}\n"
+        f"Export scheduled (preset: {preset_path}). It runs asynchronously inside "
+        "Flame; this call does not wait for completion.\n"
+        f"Outcome is written to: {result_file}\n"
+        "Read that file in a separate step to confirm (expect 'OK: export started')."
+    )
+
+
+_plan.register_op(
+    "export_clip",
+    lambda args: export_clip(
+        library_name=args.library_name,
+        reel_name=args.reel_name,
+        clip_name=args.clip_name,
+        preset_path=args.preset_path,
+        output_directory=args.output_directory,
     ),
 )
 
