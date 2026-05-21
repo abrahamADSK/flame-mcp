@@ -27,7 +27,7 @@ segs = seg.connected_segments(scoping='all reels')
 clip = seg.copy_to_media_panel(destination, duplicate_action='add')
 
 # Create a sync connection to another segment
-seg.create_connection(other_segment)
+seg.create_connection()
 
 # Add a Timeline FX to this segment
 # effect_type: 'Blur', 'Colour Management', 'Colour Warper', 'Sapphire BlurMoCurves', etc.
@@ -47,15 +47,12 @@ seg.duplicate_source()
 # Return the colour space at a given time (uses record_in if no time given)
 cs = seg.get_colour_space(time=None)
 
-# Return whether the segment is fully rendered
-rendered = seg.is_rendered(render_quality='Full Resolution')
-
 # Match segment media out to a destination (for conform / re-link)
 clip = seg.match(destination, preserve_handle=False, use_sequence_info=True,
                  include_nested_content=False, include_timeline_fx=False)
 
 # Remove a sync connection
-seg.remove_connection(other_segment)
+seg.remove_connection()
 
 # Set gap bar display style
 seg.set_gap_bars(style)
@@ -83,9 +80,9 @@ seg.slide_keyframes(offset, sync=False)
 success = seg.slip(offset, sync=False, keyframes_move_mode='Shift')
 # Operators say: "slip it back 10 frames", "slip the clip"
 
-# Smart replace — replace source with best match from a reel
-seg.smart_replace(source_reel)
-seg.smart_replace_media(source_reel)
+# Smart replace — replace source with best match from a clip
+seg.smart_replace(source_clip)
+seg.smart_replace_media(source_clip)
 
 # Sync connected segments
 seg.sync_connected_segments()
@@ -412,7 +409,7 @@ Operators say: *"open the sequence"*, *"create a version"*, *"add an audio track
 seq.open()
 
 # Create a new version (track layer)
-version = seq.create_version(name="V2")
+version = seq.create_version(stereo=False)
 
 # Create an audio track
 audio_track = seq.create_audio(stereo=False)

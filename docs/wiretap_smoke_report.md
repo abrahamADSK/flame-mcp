@@ -63,7 +63,7 @@ Total tools processed: 37 (5 destructive hard-skipped, 32 probed)
 
 ```json
 {
-  "sdk_path": "/opt/Autodesk/python/2026.2.2/lib/python3.11/site-packages",
+  "sdk_path": "/opt/Autodesk/python/2027/lib/python3.13/site-packages",
   "module": "libwiretapPythonClientAPI",
   "host": "localhost",
   "ok": null,
@@ -75,7 +75,7 @@ Total tools processed: 37 (5 destructive hard-skipped, 32 probed)
 
 ## How to populate this report
 
-On a Flame 2026.2.2 workstation:
+On a Flame 2027 workstation:
 
 ```bash
 cd ~/Projects/flame-mcp
@@ -113,5 +113,5 @@ matters; reserve the CLI for batch/scripted contexts.
 
 The SDK probe on this box reported `import libwiretapPythonClientAPI failed:
 ModuleNotFoundError` because the dev Mac uses Python 3.14 while the SDK targets
-3.11. On the Flame workstation (which runs the embedded 3.11 interpreter) this
+3.13. On the Flame workstation (which runs the embedded 3.13 interpreter) this
 step succeeds and produces the full symbol list.
