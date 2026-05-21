@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — 4C write tools + execute_plan ops (Chat 53)
+
+- Ten dedicated write tools, each registered as a closed-schema
+  `execute_plan` op and **validated live against Flame 2027**:
+  - `render_batch` — Background Reactor render of the current Batch Group,
+    scheduled via `flame.schedule_idle_event` (calling `flame.batch.render()`
+    synchronously crashes Flame and the `execute_python` AST guard blocks it,
+    so a dedicated `# DT` tool is required to run the documented-safe form).
+  - `export_clip` — `PyExporter` export via idle event (same deadlock guard).
+  - `import_clips` — import media from disk into a library/reel.
+  - `create_library`, `create_reel`, `create_folder`, `create_reel_group`,
+    `create_batch_group` — container creation.
+  - `timeline_insert`, `timeline_overwrite` — `PySequence.insert` / `overwrite`.
+- `execute_plan` annotation flipped read-only → destructive, since a plan can
+  now trigger these write ops.
+- MCP tool count 28 → 38; README table, CLAUDE.md rule 16 and the
+  `execute_plan` docstring updated in lockstep under the concept registry.
+- `render_batch` / `export_clip` detect when the GUI-thread APIs
+  (`schedule_idle_event`, `PyExporter`) are unbound (Flame backgrounded) and
+  return a clear "bring Flame to the foreground" message instead of a raw
+  `AttributeError`.
+
+### Fixed — docs Flame 2027 correctness (Chat 53)
+
+- Wiretap SDK/CLI documentation paths updated 2026.2.2 → 2027
+  (python3.11 → 3.13).
+- Four PySegment/PySequence API-signature errors corrected against the 2027
+  graph: `is_rendered` removed from PySegment (clip-level only);
+  `create_version(stereo=…)` not `name=`; `create_connection` /
+  `remove_connection` take no argument; `smart_replace*` take a `PyClip`,
+  not a reel.
+
 ### Changed — Flame 2027 support (Chat 52)
 
 - Migrated the supported Flame version 2026 → **2027**. Regenerated
