@@ -75,7 +75,7 @@ dedicated MCP tool name.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -134,6 +134,29 @@ class PingArgs(BaseModel):
     model_config = _STRICT
 
 
+class RenderBatchArgs(BaseModel):
+    """Render the current Batch Group's active Render/Write File nodes.
+
+    DESTRUCTIVE op: schedules a render inside Flame (default Background
+    Reactor). Mirrors the render_batch dedicated tool 1:1.
+    """
+
+    model_config = _STRICT
+    render_option: Literal["Background Reactor", "Foreground", "Burn"] = Field(
+        default="Background Reactor",
+        description=(
+            "Rendering method. 'Background Reactor' (off-thread, recommended), "
+            "'Foreground' (blocks Flame's UI), or 'Burn'."
+        ),
+    )
+    generate_proxies: bool = Field(
+        default=False, description="Render at proxy resolution."
+    )
+    include_history: bool = Field(
+        default=False, description="Create History with the rendering."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Op registry — single source of truth for "what does the LLM see?"
 # ---------------------------------------------------------------------------
@@ -178,6 +201,15 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "handler": None,
         "description": "Bridge heartbeat — confirms Flame is reachable.",
         "tool": "ping",
+    },
+    "render_batch": {
+        "args_model": RenderBatchArgs,
+        "handler": None,
+        "description": (
+            "DESTRUCTIVE — schedule a render of the current Batch Group "
+            "(Background Reactor by default; scheduled via idle event)."
+        ),
+        "tool": "render_batch",
     },
 }
 

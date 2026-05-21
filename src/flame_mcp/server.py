@@ -22,7 +22,7 @@ import subprocess
 import datetime
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import Field
 from mcp.server.fastmcp import FastMCP
 
@@ -1985,7 +1985,7 @@ _plan.register_op(
 )
 
 
-@mcp.tool(annotations=_RO)
+@mcp.tool(annotations=_DST)
 def execute_plan(plan: dict) -> str:
     """
     Run a structured plan against Flame (F5b / AJUSTE 1).
@@ -2015,6 +2015,9 @@ def execute_plan(plan: dict) -> str:
       - get_project_info (no args)
       - get_clip_metadata (library_name, reel_name, clip_name)
       - ping (no args)
+      - render_batch (render_option?, generate_proxies?, include_history?) —
+        DESTRUCTIVE: schedules a Background Reactor render of the current Batch
+        Group (this is why execute_plan is annotated destructive).
 
     Example — discover a clip's metadata in one call:
 
@@ -2245,6 +2248,72 @@ def create_sequence(
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
     return _fmt(result)
+
+
+@mcp.tool(annotations=_DST)
+def render_batch(
+    render_option: Literal["Background Reactor", "Foreground", "Burn"] = "Background Reactor",
+    generate_proxies: bool = False,
+    include_history: bool = False,
+) -> str:
+    """
+    Render the CURRENT Batch Group — all its active Render and Write File nodes.
+
+    IMPORTANT: calling flame.batch.render() synchronously CRASHES Flame, so this
+    tool schedules the render via flame.schedule_idle_event and writes the
+    outcome to a result file. The render runs ASYNCHRONOUSLY inside Flame; this
+    call returns as soon as the render is SCHEDULED. Do NOT poll Flame — read the
+    result file (path returned below) in a separate step to confirm completion.
+
+    Ensure the intended Batch Group is the current/open one before calling
+    (the API renders flame.batch, i.e. the open Batch Group).
+
+    Args:
+        render_option: Rendering method. "Background Reactor" (default — runs off
+            Flame's main thread, recommended), "Foreground" (blocks the UI), or
+            "Burn". If the workstation does not support the chosen option, Flame
+            returns an error (captured in the result file).
+        generate_proxies: Render at proxy resolution. Default False.
+        include_history: Create History with the rendering. Default False.
+    """
+    _track_dedicated()
+    result_file = os.path.expanduser("~/flame_render_result.txt")
+    code = (
+        "import flame, os\n"
+        f"result_file = {result_file!r}\n"
+        "def _do_render():\n"
+        "    try:\n"
+        f"        flame.batch.render(render_option={render_option!r}, "
+        f"generate_proxies={generate_proxies!r}, include_history={include_history!r})\n"
+        "        msg = 'OK: render started'\n"
+        "    except Exception as e:\n"
+        "        msg = 'ERROR: ' + str(e)\n"
+        "    with open(result_file, 'w') as f:\n"
+        "        f.write(msg)\n"
+        "flame.schedule_idle_event(_do_render)\n"
+        "print('Render scheduled via idle event.')\n"
+    )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    out = _fmt(result)
+    if result.get("status") == "error":
+        return out
+    return (
+        f"{out}\n"
+        f"Render scheduled ({render_option}). It runs asynchronously inside Flame; "
+        "this call does not wait for completion.\n"
+        f"Outcome is written to: {result_file}\n"
+        "Read that file in a separate step to confirm (expect 'OK: render started')."
+    )
+
+
+_plan.register_op(
+    "render_batch",
+    lambda args: render_batch(
+        render_option=args.render_option,
+        generate_proxies=args.generate_proxies,
+        include_history=args.include_history,
+    ),
+)
 
 
 @mcp.tool(annotations=_RO)

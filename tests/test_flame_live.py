@@ -71,3 +71,35 @@ class TestLiveHiddenLibraries:
             "hidden system library 'Timeline FX' leaked into "
             "list_libraries output (quote-normalisation regression):\n" + out
         )
+
+
+@pytest.mark.skipif(
+    _BRIDGE_DOWN,
+    reason="Live Flame bridge not reachable — open Flame to run this guard.",
+)
+class TestLiveRenderBatch:
+    """Guards 4C.1: render_batch must schedule a render against REAL Flame
+    without being blocked or crashing.
+
+    This is the case execute_python CANNOT cover: the generic guard blocks any
+    snippet containing ``flame.batch.render(`` (it cannot tell the call is
+    safely wrapped in schedule_idle_event). render_batch is a dedicated tool
+    whose payload is marked ``# DT``, so the bridge skips that guard. This test
+    proves the dedicated path reaches Flame and the schedule is accepted.
+
+    NOTE: this fires a real Background-Reactor render of the CURRENT batch
+    group. Run only against a scratch/test project.
+    """
+
+    def test_render_batch_schedules_without_block(self):
+        from flame_mcp.server import render_batch
+
+        out = render_batch()  # defaults: Background Reactor, current batch group
+        assert "scheduled" in out.lower(), (
+            "render_batch did not report a scheduled render against live Flame:\n" + out
+        )
+        # The dedicated-tool path must NOT trip the redirect/crash guard.
+        assert "Blocked" not in out and "🛑" not in out, (
+            "render_batch was blocked by the crash guard — the dedicated-tool "
+            "(# DT) bypass regressed:\n" + out
+        )
