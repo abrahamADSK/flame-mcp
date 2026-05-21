@@ -1,7 +1,7 @@
 # flame-mcp — Claude Agent Instructions
 
 ## What this project is
-An MCP server that lets Claude control Autodesk Flame 2026 via natural language.
+An MCP server that lets Claude control Autodesk Flame 2027 via natural language.
 Use the `execute_python` MCP tool to run Python inside Flame.
 Do NOT communicate with the bridge socket directly — the MCP tool handles that internally.
 
@@ -204,12 +204,12 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
 
 ## Flame Environment
 
-- **Application:** Autodesk Flame 2026, macOS
+- **Application:** Autodesk Flame 2027, macOS
 - **Bridge:** Internal — use the `execute_python` MCP tool. Do NOT write Bash/shell
   commands to talk to the bridge socket; that bypasses tool-selection enforcement.
 - **Entry point:** the `flame` module is always available inside the bridge
-- **Qt:** Flame 2026 uses PySide6 (not PySide2)
-- **Python:** the Flame-embedded Python interpreter (not system Python)
+- **Qt:** Flame 2026+ uses PySide6 (not PySide2)
+- **Python:** the Flame-embedded Python interpreter (not system Python). Flame 2027 ships Python 3.13.
 - **Hook path:** `/opt/Autodesk/shared/python/flame_mcp_bridge.py`
 
 ---
@@ -256,11 +256,12 @@ step in Flame.
 
 ### Primary — embedded cheatsheet (read this, do not fetch URLs)
 - **`FLAME_API.md`** in this project — full cheatsheet with patterns, gotchas,
-  and common code snippets for Flame 2026. Always read this file first.
+  and common code snippets for Flame 2027 (valid on 2026 too — 2027 is a
+  superset). Always read this file first.
 
 ### Fallback — fetch only if FLAME_API.md doesn't cover the operation
-- Official Python API: https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Flame_Python_API_html
-- Wiretap SDK: https://help.autodesk.com/view/FLAME/2026/ENU/?guid=Flame_API_Wiretap_SDK_html
+- Official Python API: https://help.autodesk.com/view/FLAME/2027/ENU/?guid=Flame_API_Flame_Python_API_html
+- Wiretap SDK: https://help.autodesk.com/view/FLAME/2027/ENU/?guid=Flame_API_Wiretap_SDK_html
 
 ### Wiretap — when to use it
 The Python `flame` module covers most operations. Use Wiretap only when:

@@ -1,7 +1,7 @@
 # Flame Python API — Full Reference
 
 > Manually curated cheatsheet, extended at runtime by `learn_pattern()`.
-> Flame version: 2026
+> Flame version: 2027 (patterns valid on 2026 too — 2027 is a superset)
 
 This document is indexed by the RAG system and searched automatically.
 It supplements FLAME_API.md with the complete class and method reference.
