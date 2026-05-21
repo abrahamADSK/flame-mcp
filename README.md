@@ -212,7 +212,7 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (28)
+## MCP Tools (29)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
@@ -243,6 +243,7 @@ Then talk naturally:
 | `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
 | `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
 | `create_sequence` | Create a new empty sequence in a Flame library/reel |
+| `render_batch` | Render the current Batch Group (Background Reactor by default; scheduled via idle event — never blocks Flame) |
 | `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
 | `operation_history` | Show the last N execute_python operations recorded this session |
 | `undo_last_operation` | Undo the last undoable execute_python operation |

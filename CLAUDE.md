@@ -162,11 +162,17 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     `execute_plan` accepts a structured JSON plan validated against a
     closed schema. Currently registered ops: `list_libraries`,
     `list_reels`, `list_clips`, `get_project_info`,
-    `get_clip_metadata`, `ping`. Use `execute_plan` whenever the
-    task is fully expressible as those ops — the schema rejects
-    hallucinated symbols at the protocol level, eliminating an entire
-    class of errors. Fall back to `execute_python` only when an
+    `get_clip_metadata`, `ping`, `render_batch`. Use `execute_plan`
+    whenever the task is fully expressible as those ops — the schema
+    rejects hallucinated symbols at the protocol level, eliminating an
+    entire class of errors. Fall back to `execute_python` only when an
     operation is NOT yet in the registry.
+
+    Note: `render_batch` is DESTRUCTIVE — it schedules a Background
+    Reactor render of the current Batch Group via `schedule_idle_event`
+    (the documented-safe form of the `flame.batch.render()` call the
+    execute_python guard blocks). Because a plan can now trigger it,
+    `execute_plan` is annotated destructive.
 
     Example — discover a clip's metadata in one call:
     ```json

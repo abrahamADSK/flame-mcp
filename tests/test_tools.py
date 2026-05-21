@@ -78,6 +78,7 @@ from flame_mcp.server import (
     flame_wiretap_tree,
     list_flame_logs,
     read_flame_log,
+    render_batch,
 )
 
 
@@ -142,6 +143,60 @@ class TestGetProjectInfo:
         # When bridge is unreachable, get_project_info falls back to cfg parsing.
         # The fallback path returns an IFFFS-unreachable notice or a SELF-HEAL prompt.
         assert "IFFFS" in result or "SELF-HEAL" in result or "unreachable" in result.lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestRenderBatch
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestRenderBatch:
+    """render_batch() schedules a Background-Reactor render via idle event.
+
+    Critical safety contract: it must NEVER emit a bare synchronous
+    flame.batch.render() (that crashes Flame); the render call must live
+    inside a function handed to flame.schedule_idle_event, and the payload
+    must go through the dedicated-tool path (# DT prefix → the bridge skips
+    the redirect guard that would otherwise block flame.batch.render).
+    """
+
+    def test_defaults_schedule_background_reactor(self, mock_bridge):
+        """Defaults: Background Reactor, render scheduled (never synchronous)."""
+        mock_bridge.return_value = {
+            "output": "Render scheduled via idle event.\n", "error": "", "_bridge_ms": 7,
+        }
+
+        result = render_batch()
+
+        code = mock_bridge.call_args[0][0]  # first positional arg = code string
+        assert "flame.schedule_idle_event(_do_render)" in code, (
+            "render must be scheduled via idle event, not called synchronously"
+        )
+        assert "render_option='Background Reactor'" in code
+        # dedicated-tool path so the bridge skips the crash-redirect guard
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "scheduled" in result.lower()
+        assert "flame_render_result.txt" in result
+
+    def test_render_option_and_flags_forwarded(self, mock_bridge):
+        """render_option / generate_proxies / include_history reach the code."""
+        mock_bridge.return_value = {
+            "output": "Render scheduled via idle event.\n", "error": "", "_bridge_ms": 7,
+        }
+
+        render_batch(render_option="Foreground", generate_proxies=True, include_history=True)
+
+        code = mock_bridge.call_args[0][0]
+        assert "render_option='Foreground'" in code
+        assert "generate_proxies=True" in code
+        assert "include_history=True" in code
+
+    def test_bridge_error_passthrough(self, mock_bridge):
+        """A bridge error is surfaced verbatim, not swallowed."""
+        mock_bridge.return_value = {"status": "error", "error": "boom"}
+
+        result = render_batch()
+
+        assert "ERROR" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
