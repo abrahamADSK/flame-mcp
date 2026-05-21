@@ -80,6 +80,12 @@ from flame_mcp.server import (
     read_flame_log,
     render_batch,
     export_clip,
+    create_library,
+    create_reel,
+    create_folder,
+    create_reel_group,
+    create_batch_group,
+    import_clips,
 )
 
 
@@ -240,6 +246,81 @@ class TestExportClip:
             preset_path="/p.xml", output_directory="/tmp/exp",
         )
 
+        assert "ERROR" in result and "not found" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestCreates
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestCreates:
+    """create_library/reel/folder/reel_group emit the right Flame create call."""
+
+    def test_create_library(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created library: Shots\n", "error": "", "_bridge_ms": 5}
+        result = create_library(library_name="Shots")
+        code = mock_bridge.call_args[0][0]
+        assert "ws.create_library('Shots')" in code
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "Shots" in result
+
+    def test_create_reel(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created reel: R1\n", "error": "", "_bridge_ms": 5}
+        create_reel(library_name="Shots", reel_name="R1")
+        code = mock_bridge.call_args[0][0]
+        assert "lib.create_reel('R1')" in code
+        assert "Shots" in code
+
+    def test_create_folder(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created folder: F1\n", "error": "", "_bridge_ms": 5}
+        create_folder(library_name="Shots", folder_name="F1")
+        code = mock_bridge.call_args[0][0]
+        assert "lib.create_folder('F1')" in code
+
+    def test_create_reel_group(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created reel group: RG1\n", "error": "", "_bridge_ms": 5}
+        create_reel_group(library_name="Shots", reel_group_name="RG1")
+        code = mock_bridge.call_args[0][0]
+        assert "lib.create_reel_group('RG1')" in code
+
+    def test_create_reel_library_not_found(self, mock_bridge):
+        mock_bridge.return_value = {"output": "ERROR: library not found\n", "error": "", "_bridge_ms": 5}
+        result = create_reel(library_name="Nope", reel_name="R1")
+        assert "ERROR" in result and "not found" in result
+
+
+class TestCreateBatchGroup:
+    """create_batch_group() creates an empty Batch Group on the desktop."""
+
+    def test_create_batch_group(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created batch group: BG1\n", "error": "", "_bridge_ms": 5}
+        result = create_batch_group(name="BG1")
+        code = mock_bridge.call_args[0][0]
+        assert "flame.batch.create_batch_group('BG1')" in code
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "BG1" in result
+
+
+class TestImportClips:
+    """import_clips() imports media into a library or a reel."""
+
+    def test_import_into_library(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Imported 3 clip(s) into Shots\n", "error": "", "_bridge_ms": 9}
+        result = import_clips(path="/media/x.mov", library_name="Shots")
+        code = mock_bridge.call_args[0][0]
+        assert "flame.import_clips('/media/x.mov', lib)" in code
+        assert "Imported" in result
+
+    def test_import_into_reel(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Imported 1 clip(s) into reel R1\n", "error": "", "_bridge_ms": 9}
+        import_clips(path="/media/x.mov", library_name="Shots", reel_name="R1")
+        code = mock_bridge.call_args[0][0]
+        assert "flame.import_clips('/media/x.mov', reel)" in code
+        assert "R1" in code
+
+    def test_import_library_not_found(self, mock_bridge):
+        mock_bridge.return_value = {"output": "ERROR: library not found\n", "error": "", "_bridge_ms": 5}
+        result = import_clips(path="/m.mov", library_name="Nope")
         assert "ERROR" in result and "not found" in result
 
 

@@ -176,6 +176,55 @@ class RenderBatchArgs(BaseModel):
     )
 
 
+class CreateLibraryArgs(BaseModel):
+    """Create a new library in the active workspace."""
+
+    model_config = _STRICT
+    library_name: str = Field(..., description="Name for the new library.")
+
+
+class CreateReelArgs(BaseModel):
+    """Create a new reel inside a library."""
+
+    model_config = _STRICT
+    library_name: str = Field(..., description="Target library.")
+    reel_name: str = Field(..., description="Name for the new reel.")
+
+
+class CreateFolderArgs(BaseModel):
+    """Create a new folder inside a library."""
+
+    model_config = _STRICT
+    library_name: str = Field(..., description="Target library.")
+    folder_name: str = Field(..., description="Name for the new folder.")
+
+
+class CreateReelGroupArgs(BaseModel):
+    """Create a new reel group inside a library."""
+
+    model_config = _STRICT
+    library_name: str = Field(..., description="Target library.")
+    reel_group_name: str = Field(..., description="Name for the new reel group.")
+
+
+class CreateBatchGroupArgs(BaseModel):
+    """Create a new empty Batch Group on the desktop."""
+
+    model_config = _STRICT
+    name: str = Field(..., description="Name for the new batch group.")
+
+
+class ImportClipsArgs(BaseModel):
+    """Import media from disk into a library (optionally a reel)."""
+
+    model_config = _STRICT
+    path: str = Field(..., description="Absolute filesystem path to the media.")
+    library_name: str = Field(..., description="Destination library.")
+    reel_name: str = Field(
+        default="", description="Optional destination reel within the library."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Op registry — single source of truth for "what does the LLM see?"
 # ---------------------------------------------------------------------------
@@ -238,6 +287,42 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
             "(PyExporter; scheduled via idle event)."
         ),
         "tool": "export_clip",
+    },
+    "create_library": {
+        "args_model": CreateLibraryArgs,
+        "handler": None,
+        "description": "Create a new library in the active workspace.",
+        "tool": "create_library",
+    },
+    "create_reel": {
+        "args_model": CreateReelArgs,
+        "handler": None,
+        "description": "Create a new reel inside a library.",
+        "tool": "create_reel",
+    },
+    "create_folder": {
+        "args_model": CreateFolderArgs,
+        "handler": None,
+        "description": "Create a new folder inside a library.",
+        "tool": "create_folder",
+    },
+    "create_reel_group": {
+        "args_model": CreateReelGroupArgs,
+        "handler": None,
+        "description": "Create a new reel group inside a library.",
+        "tool": "create_reel_group",
+    },
+    "create_batch_group": {
+        "args_model": CreateBatchGroupArgs,
+        "handler": None,
+        "description": "Create a new empty Batch Group on the desktop.",
+        "tool": "create_batch_group",
+    },
+    "import_clips": {
+        "args_model": ImportClipsArgs,
+        "handler": None,
+        "description": "Import media from disk into a library/reel.",
+        "tool": "import_clips",
     },
 }
 

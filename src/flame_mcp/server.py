@@ -2020,6 +2020,12 @@ def execute_plan(plan: dict) -> str:
         Group (this is why execute_plan is annotated destructive).
       - export_clip (library_name, reel_name, clip_name, preset_path,
         output_directory) — DESTRUCTIVE: schedules a PyExporter export of a clip.
+      - create_library (library_name) — DESTRUCTIVE: create a library.
+      - create_reel (library_name, reel_name) — DESTRUCTIVE: create a reel.
+      - create_folder (library_name, folder_name) — DESTRUCTIVE: create a folder.
+      - create_reel_group (library_name, reel_group_name) — DESTRUCTIVE.
+      - create_batch_group (name) — DESTRUCTIVE: create an empty Batch Group.
+      - import_clips (path, library_name, reel_name?) — DESTRUCTIVE: import media.
 
     Example — discover a clip's metadata in one call:
 
@@ -2411,6 +2417,179 @@ _plan.register_op(
         clip_name=args.clip_name,
         preset_path=args.preset_path,
         output_directory=args.output_directory,
+    ),
+)
+
+
+@mcp.tool(annotations=_DST)
+def create_library(library_name: str) -> str:
+    """
+    Create a new library in the active project's workspace.
+
+    Args:
+        library_name: Name for the new library.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = ws.create_library({library_name!r})\n"
+        f"print('Created library: ' + str(lib.name).strip(\"'\"))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+
+@mcp.tool(annotations=_DST)
+def create_reel(library_name: str, reel_name: str) -> str:
+    """
+    Create a new reel inside a library.
+
+    Args:
+        library_name: Target library.
+        reel_name:    Name for the new reel.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  reel = lib.create_reel({reel_name!r})\n"
+        f"  print('Created reel: ' + str(reel.name).strip(\"'\"))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+
+@mcp.tool(annotations=_DST)
+def create_folder(library_name: str, folder_name: str) -> str:
+    """
+    Create a new folder inside a library.
+
+    Args:
+        library_name: Target library.
+        folder_name:  Name for the new folder.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  folder = lib.create_folder({folder_name!r})\n"
+        f"  print('Created folder: ' + str(folder.name).strip(\"'\"))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+
+@mcp.tool(annotations=_DST)
+def create_reel_group(library_name: str, reel_group_name: str) -> str:
+    """
+    Create a new reel group inside a library.
+
+    Args:
+        library_name:    Target library.
+        reel_group_name: Name for the new reel group.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"  rg = lib.create_reel_group({reel_group_name!r})\n"
+        f"  print('Created reel group: ' + str(rg.name).strip(\"'\"))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+
+_plan.register_op(
+    "create_library",
+    lambda args: create_library(library_name=args.library_name),
+)
+_plan.register_op(
+    "create_reel",
+    lambda args: create_reel(
+        library_name=args.library_name, reel_name=args.reel_name
+    ),
+)
+_plan.register_op(
+    "create_folder",
+    lambda args: create_folder(
+        library_name=args.library_name, folder_name=args.folder_name
+    ),
+)
+_plan.register_op(
+    "create_reel_group",
+    lambda args: create_reel_group(
+        library_name=args.library_name, reel_group_name=args.reel_group_name
+    ),
+)
+
+
+@mcp.tool(annotations=_DST)
+def create_batch_group(name: str) -> str:
+    """
+    Create a new (empty) Batch Group on the desktop.
+
+    Args:
+        name: Name for the new batch group.
+    """
+    _track_dedicated()
+    code = (
+        f"import flame\n"
+        f"bg = flame.batch.create_batch_group({name!r})\n"
+        f"print('Created batch group: ' + str(bg.name).strip(\"'\"))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+
+@mcp.tool(annotations=_DST)
+def import_clips(path: str, library_name: str, reel_name: str = "") -> str:
+    """
+    Import media from disk into a library (optionally a reel within it).
+
+    Args:
+        path:         Absolute filesystem path to the media (file or sequence).
+        library_name: Destination library.
+        reel_name:    Optional destination reel within the library. Empty =
+                      import into the library directly.
+    """
+    _track_dedicated()
+    if reel_name:
+        dest_lines = (
+            f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
+            f"  if not reel: print('ERROR: reel not found')\n"
+            f"  else:\n"
+            f"    clips = flame.import_clips({path!r}, reel)\n"
+            f"    print('Imported ' + str(len(clips)) + ' clip(s) into reel ' + {reel_name!r})\n"
+        )
+    else:
+        dest_lines = (
+            f"  clips = flame.import_clips({path!r}, lib)\n"
+            f"  print('Imported ' + str(len(clips)) + ' clip(s) into ' + str(lib.name).strip(\"'\"))\n"
+        )
+    code = (
+        f"import flame\n"
+        f"ws = flame.projects.current_project.current_workspace\n"
+        f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
+        f"if not lib: print('ERROR: library not found')\n"
+        f"else:\n"
+        f"{dest_lines}"
+    )
+    return _fmt(_call_flame(code, timeout=120, dedicated_tool=True))
+
+
+_plan.register_op(
+    "create_batch_group",
+    lambda args: create_batch_group(name=args.name),
+)
+_plan.register_op(
+    "import_clips",
+    lambda args: import_clips(
+        path=args.path, library_name=args.library_name, reel_name=args.reel_name
     ),
 )
 
