@@ -79,6 +79,7 @@ from flame_mcp.server import (
     list_flame_logs,
     read_flame_log,
     render_batch,
+    export_clip,
 )
 
 
@@ -197,6 +198,49 @@ class TestRenderBatch:
         result = render_batch()
 
         assert "ERROR" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestExportClip
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestExportClip:
+    """export_clip() schedules a PyExporter export via idle event."""
+
+    def test_schedules_export_via_idle_event(self, mock_bridge):
+        """Export goes through schedule_idle_event + PyExporter (never direct)."""
+        mock_bridge.return_value = {
+            "output": "Export scheduled via idle event.\n", "error": "", "_bridge_ms": 9,
+        }
+
+        result = export_clip(
+            library_name="Default Library", reel_name="Reel 1", clip_name="shot_010",
+            preset_path="/opt/Autodesk/presets/2027/export/x.xml",
+            output_directory="/tmp/exp",
+        )
+
+        code = mock_bridge.call_args[0][0]
+        assert "flame.schedule_idle_event(_do_export)" in code
+        assert "flame.PyExporter()" in code
+        assert "exp.foreground = False" in code
+        assert "/opt/Autodesk/presets/2027/export/x.xml" in code
+        assert "/tmp/exp" in code
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "scheduled" in result.lower()
+
+    def test_clip_not_found_surfaced(self, mock_bridge):
+        """A Flame-side 'clip not found' is surfaced, not masked as success."""
+        mock_bridge.return_value = {
+            "output": "ERROR: clip not found (check library/reel/clip names)\n",
+            "error": "", "_bridge_ms": 5,
+        }
+
+        result = export_clip(
+            library_name="X", reel_name="Y", clip_name="Z",
+            preset_path="/p.xml", output_directory="/tmp/exp",
+        )
+
+        assert "ERROR" in result and "not found" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
