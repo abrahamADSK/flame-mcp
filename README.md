@@ -212,7 +212,7 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (36)
+## MCP Tools (38)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
@@ -251,6 +251,8 @@ Then talk naturally:
 | `create_reel_group` | Create a new reel group inside a library |
 | `create_batch_group` | Create a new empty Batch Group on the desktop |
 | `import_clips` | Import media from disk into a library (or a reel within it) |
+| `timeline_insert` | Ripple-insert a source clip into a sequence's timeline |
+| `timeline_overwrite` | Overwrite part of a sequence's timeline with a source clip |
 | `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
 | `operation_history` | Show the last N execute_python operations recorded this session |
 | `undo_last_operation` | Undo the last undoable execute_python operation |

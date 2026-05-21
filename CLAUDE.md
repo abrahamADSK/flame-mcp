@@ -164,7 +164,8 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     `list_reels`, `list_clips`, `get_project_info`,
     `get_clip_metadata`, `ping`, `render_batch`, `export_clip`,
     `create_library`, `create_reel`, `create_folder`, `create_reel_group`,
-    `create_batch_group`, `import_clips`.
+    `create_batch_group`, `import_clips`, `timeline_insert`,
+    `timeline_overwrite`.
     Use `execute_plan` whenever the task is fully expressible as those ops — the schema
     rejects hallucinated symbols at the protocol level, eliminating an
     entire class of errors. Fall back to `execute_python` only when an

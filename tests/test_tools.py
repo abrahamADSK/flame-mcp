@@ -86,6 +86,8 @@ from flame_mcp.server import (
     create_reel_group,
     create_batch_group,
     import_clips,
+    timeline_insert,
+    timeline_overwrite,
 )
 
 
@@ -321,6 +323,39 @@ class TestImportClips:
     def test_import_library_not_found(self, mock_bridge):
         mock_bridge.return_value = {"output": "ERROR: library not found\n", "error": "", "_bridge_ms": 5}
         result = import_clips(path="/m.mov", library_name="Nope")
+        assert "ERROR" in result and "not found" in result
+
+
+class TestTimeline:
+    """timeline_insert/overwrite resolve sequence + source clip then dispatch."""
+
+    def test_insert(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Timeline insert: OK\n", "error": "", "_bridge_ms": 9}
+        result = timeline_insert(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "seq.insert(src)" in code
+        assert '"sequences"' in code and '"clips"' in code
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "OK" in result
+
+    def test_overwrite(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Timeline overwrite: OK\n", "error": "", "_bridge_ms": 9}
+        timeline_overwrite(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "seq.overwrite(src)" in code
+
+    def test_sequence_not_found(self, mock_bridge):
+        mock_bridge.return_value = {"output": "ERROR: sequence not found\n", "error": "", "_bridge_ms": 5}
+        result = timeline_insert(
+            sequence_library="X", sequence_reel="Y", sequence_name="Z",
+            source_library="A", source_reel="B", source_clip="C",
+        )
         assert "ERROR" in result and "not found" in result
 
 

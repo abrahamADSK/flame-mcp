@@ -225,6 +225,26 @@ class ImportClipsArgs(BaseModel):
     )
 
 
+class _TimelineEditArgs(BaseModel):
+    """Shared args for timeline_insert / timeline_overwrite."""
+
+    model_config = _STRICT
+    sequence_library: str = Field(..., description="Library holding the target sequence.")
+    sequence_reel: str = Field(..., description="Reel holding the target sequence.")
+    sequence_name: str = Field(..., description="Target sequence name.")
+    source_library: str = Field(..., description="Library holding the source clip.")
+    source_reel: str = Field(..., description="Reel holding the source clip.")
+    source_clip: str = Field(..., description="Source clip name.")
+
+
+class TimelineInsertArgs(_TimelineEditArgs):
+    """Insert a source clip into a sequence's timeline (ripple)."""
+
+
+class TimelineOverwriteArgs(_TimelineEditArgs):
+    """Overwrite part of a sequence's timeline with a source clip."""
+
+
 # ---------------------------------------------------------------------------
 # Op registry — single source of truth for "what does the LLM see?"
 # ---------------------------------------------------------------------------
@@ -323,6 +343,18 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "handler": None,
         "description": "Import media from disk into a library/reel.",
         "tool": "import_clips",
+    },
+    "timeline_insert": {
+        "args_model": TimelineInsertArgs,
+        "handler": None,
+        "description": "DESTRUCTIVE — ripple-insert a clip into a sequence's timeline.",
+        "tool": "timeline_insert",
+    },
+    "timeline_overwrite": {
+        "args_model": TimelineOverwriteArgs,
+        "handler": None,
+        "description": "DESTRUCTIVE — overwrite part of a sequence's timeline with a clip.",
+        "tool": "timeline_overwrite",
     },
 }
 
