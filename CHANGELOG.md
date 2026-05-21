@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Flame 2027 support (Chat 52)
+
+- Migrated the supported Flame version 2026 → **2027**. Regenerated
+  `rag/api_graph.json` from a live Flame 2027 box (`flame_version: 2027`;
+  72 classes / 25 functions / 10 module attrs). The 2027 Python API is a
+  strict **superset** of 2026 — 5 new classes (`PyMetadataNode`,
+  `PyMetadataTimelineFX`, `PyMetadataValue`, `PyNodeMarker`,
+  `PyReadFileNode`) and 2 new functions (`flame.clear_graphics_memory`,
+  `flame.clear_unreferenced_cache`), **zero removals** — so F4b now
+  accepts 2027 symbols and no existing pattern breaks.
+- Updated version strings and Autodesk doc URLs (2026 → 2027) in
+  `CLAUDE.md`, the `README.md` compatibility table (2027 row now
+  3.13.3 / PySide6 / Tested), and the `FLAME_API.md` header. Flame 2027
+  ships Python 3.13.
+- Validation: 517 tests + 36/36 concept invariants green against the 2027
+  graph; live `get_flame_version` → `2027` on the bridge. **Not yet
+  re-validated on 2027:** Wiretap SDK/CLI paths (docs still cite 2026.2.2)
+  and the full write-op tool round-trip. Installed build is `2027.pr238`.
+
 ### Fixed — Chat 52 in-vivo validation findings
 
 - **Name comparisons failed against real Flame.** On Flame 2026,

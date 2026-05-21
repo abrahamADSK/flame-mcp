@@ -63,7 +63,7 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** �
   `num_ctx` for some reason, see the advanced Ollama setup below.
 - See [Ollama setup](#ollama-setup-optional) below for backend options
 
-> **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5).
+> **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5; Flame 2027 ships Python 3.13.3).
 
 ---
 
@@ -543,7 +543,7 @@ Add `--no-user` to pip commands. Happens when `install.user = true` is set globa
 | 2024          | 3.9.x          | PySide2  | ✓ Compatible |
 | 2025          | 3.11.x         | PySide2  | ✓ Compatible |
 | 2026          | 3.11.5         | PySide6  | ✓ Tested |
-| 2027 preview  | 3.13.3         | PySide6  | ✓ Compatible |
+| 2027          | 3.13.3         | PySide6  | ✓ Tested |
 
 ---
 
