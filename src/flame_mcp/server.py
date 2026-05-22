@@ -2253,8 +2253,8 @@ def create_sequence(
         f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
         f"  if not reel: print('ERROR: reel not found')\n"
         f"  else:\n"
-        f"    seq = flame.media_panel.create_sequence(name={sequence_name!r})\n"
-        f"    print('Created sequence: ' + str(seq.name))\n"
+        f"    seq = reel.create_sequence(name={sequence_name!r})\n"
+        f"    print('Created sequence: ' + str(seq.name).strip(\"'\"))\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
     return _fmt(result)
