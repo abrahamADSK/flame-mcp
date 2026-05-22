@@ -378,6 +378,38 @@ class TestTimeline:
         )
         assert "ERROR" in result and "not found" in result
 
+    def test_default_refuses_library_lock_and_offers_desktop(self, mock_bridge):
+        # Library sequences raise "Clip is locked" (verified in-vivo, Flame 2027).
+        # Default (to_desktop=False) must NOT move anything: it catches the lock
+        # and returns a LOCKED offer. The move lives only behind `elif to_desktop:`.
+        mock_bridge.return_value = {"output": "LOCKED: ...\n", "error": "", "_bridge_ms": 5}
+        timeline_insert(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "to_desktop = False" in code
+        assert 'except RuntimeError' in code and '"locked"' in code
+        assert "to_desktop=True" in code  # the offer text
+        # auto-move is impossible in default mode: move is gated under elif to_desktop
+        assert "elif to_desktop:" in code
+        assert "flame.media_panel.move(seq, dreel)" in code
+        # default path still dispatches the plain edit
+        assert "seq.insert(src)" in code
+
+    def test_to_desktop_moves_then_edits(self, mock_bridge):
+        # Explicit confirmation: move the sequence to the desktop, then edit it.
+        mock_bridge.return_value = {"output": "Timeline insert: OK - moved 'SEQ' ...\n", "error": "", "_bridge_ms": 9}
+        timeline_overwrite(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+            to_desktop=True,
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "to_desktop = True" in code
+        assert "flame.media_panel.move(seq, dreel)" in code
+        assert "target.overwrite(src)" in code
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TestListLibraries

@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `media_panel.create_sequence`) plus a reel-not-found case. `create_sequence`
   is a pre-4C tool and was outside the Chat 53 "validated live" set, which is
   why the bug shipped uncaught.
+- `timeline_insert` / `timeline_overwrite` surfaced a raw
+  `RuntimeError: Clip is locked` on **library** sequences. Verified in-vivo on
+  Flame 2027 that library sequences are read-only for timeline edits (fails on
+  any library, fresh or persisted, 1-arg or 2-arg form, even after
+  `acquire_exclusive_access()`); only desktop sequences are editable. The single-arg
+  `seq.insert(src)` / `overwrite(src)` form was confirmed correct (works on the
+  desktop, `ret=True`) — the lock, not the call shape, was the blocker. The tools
+  now catch that lock and, when the sequence and source both resolved (so the lock
+  is the only blocker), return a `LOCKED` message offering an opt-in `to_desktop`
+  flag instead of crashing. With `to_desktop=True` — set only on explicit user
+  confirmation — the sequence is moved to the first desktop reel via
+  `flame.media_panel.move` and edited there; it is never moved automatically.
 
 ## [1.9.0] — 2026-05-21
 
