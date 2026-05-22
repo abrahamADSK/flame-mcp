@@ -2604,12 +2604,24 @@ def _timeline_edit(
     source_library: str,
     source_reel: str,
     source_clip: str,
+    to_desktop: bool = False,
 ) -> str:
     """Shared resolver + dispatch for timeline_insert / timeline_overwrite.
 
     Resolves the target PySequence (from a reel's ``sequences``) and the source
     PyClip (from a reel's ``clips``) by name, then calls PySequence.<op>(src)
     with Flame defaults for the edit time and destination track.
+
+    Sequences stored in a library are read-only for timeline edits — Flame
+    raises ``RuntimeError: Clip is locked`` (verified in-vivo on Flame 2027:
+    fails on any library, fresh or persisted, 1-arg or 2-arg form, even after
+    ``acquire_exclusive_access()``; only desktop sequences are editable). When
+    that lock is the only blocker (sequence and source both resolved), the
+    default (``to_desktop=False``) does NOT move anything: it returns a LOCKED
+    message offering ``to_desktop``. With ``to_desktop=True`` — set only on
+    explicit user confirmation — the sequence is moved to the first desktop reel
+    (``flame.media_panel.move``) and edited there; it then lives on the desktop,
+    not in the library. It is never moved automatically.
     """
     _track_dedicated()
     code_template = '''import flame
@@ -2625,13 +2637,38 @@ def _find(lib_name, reel_name, item_name, attr):
     return next((x for x in coll if str(x.name).strip("'") == item_name), None)
 seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
 src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
+to_desktop = {to_desktop}
 if seq is None:
     print("ERROR: sequence not found (check sequence library/reel/name)")
 elif src is None:
     print("ERROR: source clip not found (check source library/reel/clip)")
+elif to_desktop:
+    rgs = ws.desktop.reel_groups
+    dreel = rgs[0].reels[0] if (rgs and rgs[0].reels) else None
+    if dreel is None:
+        print("ERROR: no desktop reel available to move the sequence into")
+    else:
+        moved = flame.media_panel.move(seq, dreel)
+        target = moved[0] if (isinstance(moved, list) and moved) else (moved if moved is not None else seq)
+        ok = target.{op}(src)
+        dname = str(dreel.name).strip("'")
+        if ok:
+            print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
+        else:
+            print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
 else:
-    ok = seq.{op}(src)
-    print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
+    try:
+        ok = seq.{op}(src)
+        print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
+    except RuntimeError as exc:
+        if "locked" in str(exc).lower():
+            print("LOCKED: sequence {seq_name!r} is in library {seq_lib!r} and is read-only for "
+                  "timeline edits. The sequence and source clip both resolved, so the only "
+                  "blocker is the library lock. To edit it, re-run with to_desktop=True - this "
+                  "MOVES the sequence to the desktop and edits it there, only on explicit user "
+                  "confirmation. It is never moved automatically.")
+        else:
+            raise
 '''
     code = code_template.format(
         op=op,
@@ -2641,6 +2678,7 @@ else:
         src_lib=source_library,
         src_reel=source_reel,
         src_clip=source_clip,
+        to_desktop=to_desktop,
     )
     return _fmt(_call_flame(code, timeout=30, dedicated_tool=True))
 
@@ -2653,6 +2691,7 @@ def timeline_insert(
     source_library: str,
     source_reel: str,
     source_clip: str,
+    to_desktop: bool = False,
 ) -> str:
     """
     Insert a source clip into a sequence's timeline (PySequence.insert — ripple).
@@ -2661,13 +2700,20 @@ def timeline_insert(
     clip (from its reel's ``clips``) by name, then calls insert with Flame
     defaults for insert_time (start) and destination_track (first video track).
 
+    Library sequences are read-only for timeline edits. If the only blocker is
+    that lock, the tool returns a LOCKED message offering ``to_desktop`` — it
+    never moves the sequence on its own.
+
     Args:
         sequence_library / sequence_reel / sequence_name: locate the sequence.
         source_library / source_reel / source_clip:       locate the source clip.
+        to_desktop: set True ONLY after the user explicitly confirms. Moves the
+            sequence to the first desktop reel and edits it there (it then lives
+            on the desktop, not the library). Default False = refuse + offer.
     """
     return _timeline_edit(
         "insert", sequence_library, sequence_reel, sequence_name,
-        source_library, source_reel, source_clip,
+        source_library, source_reel, source_clip, to_desktop,
     )
 
 
@@ -2679,19 +2725,27 @@ def timeline_overwrite(
     source_library: str,
     source_reel: str,
     source_clip: str,
+    to_desktop: bool = False,
 ) -> str:
     """
     Overwrite part of a sequence's timeline with a source clip
     (PySequence.overwrite). Same resolution as timeline_insert; overwrite_time
     and destination_track use Flame defaults.
 
+    Library sequences are read-only for timeline edits. If the only blocker is
+    that lock, the tool returns a LOCKED message offering ``to_desktop`` — it
+    never moves the sequence on its own.
+
     Args:
         sequence_library / sequence_reel / sequence_name: locate the sequence.
         source_library / source_reel / source_clip:       locate the source clip.
+        to_desktop: set True ONLY after the user explicitly confirms. Moves the
+            sequence to the first desktop reel and edits it there (it then lives
+            on the desktop, not the library). Default False = refuse + offer.
     """
     return _timeline_edit(
         "overwrite", sequence_library, sequence_reel, sequence_name,
-        source_library, source_reel, source_clip,
+        source_library, source_reel, source_clip, to_desktop,
     )
 
 
