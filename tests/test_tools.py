@@ -85,6 +85,7 @@ from flame_mcp.server import (
     create_folder,
     create_reel_group,
     create_batch_group,
+    create_sequence,
     import_clips,
     timeline_insert,
     timeline_overwrite,
@@ -288,6 +289,25 @@ class TestCreates:
     def test_create_reel_library_not_found(self, mock_bridge):
         mock_bridge.return_value = {"output": "ERROR: library not found\n", "error": "", "_bridge_ms": 5}
         result = create_reel(library_name="Nope", reel_name="R1")
+        assert "ERROR" in result and "not found" in result
+
+    def test_create_sequence(self, mock_bridge):
+        mock_bridge.return_value = {"output": "Created sequence: SEQ\n", "error": "", "_bridge_ms": 5}
+        result = create_sequence(library_name="Shots", reel_name="R1", sequence_name="SEQ")
+        code = mock_bridge.call_args[0][0]
+        # Regression guard: the sequence MUST be created in the resolved reel.
+        # The original bug called flame.media_panel.create_sequence(name=...),
+        # which raises AttributeError on Flame 2027 (PyMediaPanel has no such
+        # method) and never targets the resolved reel. Confirmed in-vivo on
+        # Flame 2027 (build 2027.pr238). Correct API is PyReel.create_sequence.
+        assert "reel.create_sequence(name='SEQ')" in code
+        assert "media_panel.create_sequence" not in code
+        assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
+        assert "SEQ" in result
+
+    def test_create_sequence_reel_not_found(self, mock_bridge):
+        mock_bridge.return_value = {"output": "ERROR: reel not found\n", "error": "", "_bridge_ms": 5}
+        result = create_sequence(library_name="Shots", reel_name="Nope", sequence_name="SEQ")
         assert "ERROR" in result and "not found" in result
 
 

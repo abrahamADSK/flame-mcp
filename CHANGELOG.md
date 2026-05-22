@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `create_sequence` raised `AttributeError: 'PyMediaPanel' object has no
+  attribute 'create_sequence'` on Flame 2027 — it called
+  `flame.media_panel.create_sequence(name=…)` (which does not exist) and
+  ignored the resolved reel. Now calls `PyReel.create_sequence(name=…)`, so the
+  sequence is created in the target library/reel — the API already canonical in
+  the RAG docs, test fixtures and golden set. Confirmed in-vivo on Flame 2027
+  (build 2027.pr238). Adds the previously-missing `test_create_sequence`
+  regression guard (asserts `reel.create_sequence(`, rejects
+  `media_panel.create_sequence`) plus a reel-not-found case. `create_sequence`
+  is a pre-4C tool and was outside the Chat 53 "validated live" set, which is
+  why the bug shipped uncaught.
+
 ## [1.9.0] — 2026-05-21
 
 ### Added — 4C write tools + execute_plan ops (Chat 53)
