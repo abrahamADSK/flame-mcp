@@ -125,7 +125,15 @@ _DANGEROUS_PATTERNS = [
         "and check for None before using the result."
     ),
     (
-        r'=\s*next\s*\(.*\bNone\b.*\)(?![\s\S]{0,200}if\s+\w+\s+is\s+(?:not\s+)?None)',
+        # TAREA 7: accept the common existence-guard forms, not just
+        # `if x is [not] None`. `if not x:` and `if x:` are valid None checks.
+        r'=\s*next\s*\(.*\bNone\b.*\)'
+        r'(?![\s\S]{0,200}(?:'
+        r'if\s+\w+\s+is\s+(?:not\s+)?None'   # if x is None / if x is not None
+        r'|if\s+not\s+\w+'                    # if not x
+        r'|if\s+\w+\s*:'                      # if x:
+        r'|if\s+\w+\s+and\b'                  # if x and ...
+        r'))',
         "Result of next(..., None) is used without a None check. "
         "Accessing attributes on None causes AttributeError.",
         "Always check: result = next(..., None); if result is None: print('not found'); else: use result"
@@ -252,11 +260,17 @@ _SOFT_REDIRECT_PATTERNS: set = {
 # Regex that detects creation / modification intent in execute_python code.
 # When matched, soft redirect patterns above are suppressed so the model can
 # traverse the hierarchy (libraries -> reels -> clips) to operate on it.
+# TAREA 7: copy / move / method-form delete / timeline insert are modification
+# intents too — without them, a legitimate copy/move/delete that traverses
+# .reels/.clips was redirected as if it were a read query, forcing the model to
+# obfuscate the traversal with getattr() to dodge the redirect.
 _CREATION_INTENT_RE = re.compile(
     r'create_sequence\s*\('
     r'|\.overwrite\s*\('
+    r'|\.insert\s*\('                          # timeline insert (seq.insert)
     r'|import_clips\s*\('
-    r'|flame\.delete\s*\('
+    r'|\.delete\s*\('                          # flame.delete(...) AND method form clip.delete()
+    r'|media_panel\s*\.\s*(?:copy|move)\s*\('  # media-panel copy / move
     r'|schedule_idle_event'
     r'|create_reel\s*\('
     r'|create_library\s*\('

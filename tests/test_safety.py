@@ -155,3 +155,62 @@ class TestDangerousPatterns:
         assert bullet_count >= 2, (
             f"Expected at least 2 bullet hits, got {bullet_count} in:\n{result}"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestNextNoneGuardForms (TAREA 7 — sub-part 2)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestNextNoneGuardForms:
+    """The `next(..., None)` 'unchecked result' guard accepts the common
+    existence-check forms, not just `if x is None`.
+
+    Before TAREA 7 the negative-lookahead only recognised `if x is [not] None`,
+    so a perfectly valid `if not lib:` / `if lib:` guard was flagged as an
+    unchecked result and the code was blocked.
+    """
+
+    def _none_check_flagged(self, code: str) -> bool:
+        result = _check_dangerous(code)
+        return result is not None and "None check" in result
+
+    def test_if_not_x_is_accepted(self):
+        """`if not lib:` is a valid None check — must NOT be flagged."""
+        code = (
+            "lib = next((l for l in ws.libraries), None)\n"
+            "if not lib:\n"
+            "    print('not found')\n"
+            "else:\n"
+            "    print(str(lib.name))\n"
+        )
+        assert not self._none_check_flagged(code), (
+            f"`if not x:` is a valid guard, should not be flagged: {code!r}"
+        )
+
+    def test_if_truthy_is_accepted(self):
+        """`if lib:` (truthy guard) must NOT be flagged."""
+        code = (
+            "lib = next((l for l in ws.libraries), None)\n"
+            "if lib:\n"
+            "    print(str(lib.name))\n"
+        )
+        assert not self._none_check_flagged(code)
+
+    def test_if_is_none_still_accepted(self):
+        """The canonical `if x is None:` guard remains accepted."""
+        code = (
+            "lib = next((l for l in ws.libraries), None)\n"
+            "if lib is None:\n"
+            "    print('nf')\n"
+        )
+        assert not self._none_check_flagged(code)
+
+    def test_unchecked_result_still_flagged(self):
+        """No guard at all — the result IS used unchecked, must still flag."""
+        code = (
+            "lib = next((l for l in ws.libraries), None)\n"
+            "print(str(lib.name))\n"
+        )
+        assert self._none_check_flagged(code), (
+            "An unchecked next(..., None) result must still be flagged"
+        )
