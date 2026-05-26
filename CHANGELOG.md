@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **execute_python redirect/safety false positives (TAREA 7)** — three
+  legitimate-code patterns were wrongly blocked:
+  - **copy / move / method-form delete / timeline insert were redirected.**
+    `_CREATION_INTENT_RE` (which suppresses the soft `.libraries`/`.reels`/`.clips`
+    redirect when the code is a modification, not a read query) only recognised
+    `create_*` / `.overwrite(` / `import_clips(` / `flame.delete(`. A
+    `flame.media_panel.copy(...)`, `.move(...)`, method-form `clip.delete()`, or
+    `seq.insert(...)` that traversed the hierarchy was redirected as if it were a
+    read — which forced the model to obfuscate the traversal with `getattr()` to
+    dodge the redirect. The intent regex now also matches `media_panel.copy/move(`,
+    any `.delete(` (not just `flame.delete(`), and `.insert(`.
+  - **`if not x:` / `if x:` guards were flagged as unchecked.** The
+    `next(..., None)` "result used without a None check" guard only accepted
+    `if x is [not] None`; the equally valid `if not x:` and `if x:` truthy forms
+    were treated as missing and the code blocked. The negative-lookahead now
+    accepts those forms (a genuinely unchecked result is still flagged).
+  - Confirmed the AST validator no longer false-positives on `flame.PyTime`
+    (already present in `rag/api_graph.json`, Flame 2027).
+  - Adds 8 regression tests (4 in `test_redirect.py`, 4 in `test_safety.py`).
+
 - `create_sequence` raised `AttributeError: 'PyMediaPanel' object has no
   attribute 'create_sequence'` on Flame 2027 — it called
   `flame.media_panel.create_sequence(name=…)` (which does not exist) and

@@ -145,3 +145,76 @@ class TestSoftRedirectSuppression:
             f"Soft redirect should fire without creation intent, got: {result!r}"
         )
         mock_bridge.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestModificationIntentSuppression (TAREA 7 — sub-parts 1 & 3)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestModificationIntentSuppression:
+    """copy / move / method-form delete / timeline insert are modification
+    intents: a soft redirect on the hierarchy traversal they require
+    (.libraries / .reels / .clips) must be suppressed, not fired.
+
+    Before TAREA 7 only create_* / .overwrite / import_clips / flame.delete(
+    counted as intent, so a legitimate copy/move/delete/insert that walked the
+    hierarchy was redirected as if it were a read query — which forced the
+    model to obfuscate the traversal with getattr() to dodge the redirect.
+    """
+
+    def test_media_panel_copy_suppresses_redirect(self, mock_bridge):
+        """flame.media_panel.copy(...) traversing .reels/.clips → NOT redirected."""
+        code = (
+            "ws = flame.projects.current_project.current_workspace\n"
+            "src = ws.libraries[0].reels[0].clips[0]\n"
+            "flame.media_panel.copy(src, ws.libraries[0].reels[1])\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"copy intent should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_media_panel_move_suppresses_redirect(self, mock_bridge):
+        """flame.media_panel.move(...) traversing .reels → NOT redirected."""
+        code = (
+            "flame.media_panel.move(lib.reels[0].clips[0], lib.reels[1])\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"move intent should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_method_delete_suppresses_redirect(self, mock_bridge):
+        """Method-form delete (clip.delete()) traversing .reels/.clips → NOT redirected.
+
+        Only ``flame.delete(`` used to count as intent; the equally common
+        ``obj.delete()`` method form did not, so the traversal was redirected.
+        """
+        code = (
+            "for c in lib.reels[0].clips:\n"
+            "    c.delete()\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"method-form delete should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_timeline_insert_suppresses_redirect(self, mock_bridge):
+        """seq.insert(...) traversing .reels/.clips → NOT redirected."""
+        code = (
+            "dst = lib.reels[1]\n"
+            "seq = dst.clips[0]\n"
+            "seq.insert(src_clip, insert_time=t, destination_track=0)\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"insert intent should suppress the soft redirect, got: {result!r}"
+        )
