@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-06-10
+
 ### Changed
 - **Cloud model selector refreshed** — `AVAILABLE_MODELS` now offers Claude
   Fable 5 (`claude-fable-5`), Claude Opus 4.8 (`claude-opus-4-8`) and Claude
