@@ -53,6 +53,13 @@ REFERENCE_DOC="${REPO_ROOT}/docs/wiretap_cli_reference.md"
 REPORT="${REPORT:-${REPO_ROOT}/docs/wiretap_smoke_report.md}"
 SDK_SMOKE_SCRIPT="${SCRIPT_DIR}/wiretap_sdk_smoke.py"
 TIMEOUT_S="${TIMEOUT_S:-5}"
+# Python used for the SDK probe. The SDK .so is compiled against Flame's
+# embedded Python ABI: loading it from the system python3 SEGFAULTS even when
+# the minor versions match (verified on Flame 2027 / system Python 3.13.9).
+# Default to the Flame-embedded interpreter; fall back to python3 only on
+# boxes without Flame (where the probe reports a clean "SDK not found" skip).
+FLAME_PYTHON="${FLAME_PYTHON:-/opt/Autodesk/python/2027/bin/python3}"
+command -v "${FLAME_PYTHON}" >/dev/null 2>&1 || FLAME_PYTHON="python3"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -278,7 +285,7 @@ main() {
         # for the operator. `|| true` so a non-zero exit (SDK missing → 2)
         # doesn't abort the whole smoke run.
         printf '```json\n' >> "${REPORT}"
-        python3 "${SDK_SMOKE_SCRIPT}" >> "${REPORT}" || true
+        "${FLAME_PYTHON}" "${SDK_SMOKE_SCRIPT}" >> "${REPORT}" || true
         printf '```\n' >> "${REPORT}"
     else
         printf '_SDK smoke script not present: `%s`_\n' "${SDK_SMOKE_SCRIPT}" >> "${REPORT}"
