@@ -109,8 +109,9 @@ MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud (default — needs internet + API key) ─────────
+    ("Claude Fable 5",        "claude-fable-5",            "anthropic"),
+    ("Claude Opus 4.8",       "claude-opus-4-8",           "anthropic"),
     ("Claude Sonnet 4.6",     "claude-sonnet-4-6",         "anthropic"),
-    ("Claude Opus 4.7",       "claude-opus-4-7",           "anthropic"),
     # ── Self-hosted Ollama (glorfindel RTX 3090, LAN) ────────────────
     ("Qwen3.5 9B 🖥",         "qwen3.5-mcp",               "ollama"),
     ("GLM-4.7 Flash 🖥",      "glm-4.7-flash",             "ollama"),

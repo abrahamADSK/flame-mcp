@@ -6,7 +6,7 @@
 
   "rag_fallback_threshold": 60,
   "fallback_model": "claude-sonnet-4-6",
-  "write_allowed_models": ["claude-opus", "claude-sonnet"],
+  "write_allowed_models": ["claude-opus", "claude-fable"],
 
   "stats_footer_mode": "minimal",
   "ollama_keep_alive": "30m"
