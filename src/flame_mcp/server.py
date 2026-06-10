@@ -61,12 +61,13 @@ except ImportError:
 # API paths that contaminate the knowledge base and cause future failures.
 
 WRITE_ALLOWED_MODELS = {
-    # Forward-compatible prefixes — any Opus / Sonnet release satisfies these.
+    # Forward-compatible prefixes — any Opus / Fable release satisfies these.
+    # Self-learning is reserved for the two top cloud tiers: Opus and Fable.
     "claude-opus",
-    "claude-sonnet",
+    "claude-fable",
     # Explicit current releases (canonical source: ~/Projects/.external_versions.yml).
-    "claude-sonnet-4-6",
-    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable-5",
 }
 
 

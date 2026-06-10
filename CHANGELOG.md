@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Cloud model selector refreshed** — `AVAILABLE_MODELS` now offers Claude
+  Fable 5 (`claude-fable-5`), Claude Opus 4.8 (`claude-opus-4-8`) and Claude
+  Sonnet 4.6 (Opus 4.7 removed). Self-learning (`learn_pattern` write-trust) is
+  now reserved for **Opus + Fable** — Sonnet and local models are read-only
+  (`WRITE_ALLOWED_MODELS`, `rag/validate_index.py`, `config.example.json`,
+  README + ARCHITECTURE.md updated in lockstep; concept registry green).
+
 ## [1.9.1] — 2026-05-26
 
 ### Fixed

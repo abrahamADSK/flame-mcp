@@ -36,8 +36,8 @@ CONFIG    = ROOT / 'config.json'
 
 # ── Allowed model substrings (mirrors src/flame_mcp/server.py WRITE_ALLOWED_MODELS)
 _DEFAULT_WRITE_ALLOWED = {
-    "claude-opus", "claude-sonnet", "claude-3-5-sonnet",
-    "claude-3-7-sonnet", "claude-sonnet-4", "claude-sonnet-4-6", "claude-opus-4",
+    # Self-learning is reserved for the two top cloud tiers: Opus and Fable.
+    "claude-opus", "claude-fable",
 }
 
 # ── Flame API categories to check coverage for
