@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **glm-4.7-flash doc-drift corrected** — `scripts/setup_ollama_linux.sh` had a
+  wrong ~4 GB download estimate for `glm-4.7-flash` (real size ~19 GB at q4 quant)
+  and wrongly recommended it for GPUs with 6 GB VRAM (impossible at ~19 GB). The
+  6 GB / CPU tiers now recommend `qwen3.5:4b` (the ecosystem's validated small-GPU
+  fallback, ~2.5 GB Q4_K_M). All three tier branches (`6 GB`, `CPU/RAM`, fallback)
+  updated. Size estimate corrected: `~4 GB` → `~19 GB`.
+- **glm-4.7-flash not-recommended notice added to all docs** — `glm-4.7-flash` was
+  evaluated and rejected for the ecosystem (Ollama tool-calling bugs, upstream issues
+  #13820/#13840, as of June 2026). README, `docs/ARCHITECTURE.md`, `install.sh` Ollama
+  prompts, and `scripts/setup_ollama_linux.sh` model comment block all updated with
+  clear "NOT recommended" notices. Historical mentions preserved; only active
+  recommendations corrected.
+- **Stale model example `qwen3-coder:30b-a3b` in `install.sh`** — the "skip Ollama"
+  section showed an outdated model name as a config example. Replaced with the current
+  canonical local model `qwen3.5-mcp`.
+
 ## [1.9.2] — 2026-06-10
 
 ### Changed

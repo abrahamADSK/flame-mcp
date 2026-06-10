@@ -57,25 +57,27 @@ echo "     RAM: ${RAM_GB} GB"
 # Recommend model (from AVAILABLE_MODELS in hooks/flame_mcp_bridge.py).
 # concept:ollama_gpu_models_linux start
 # Supported IDs (match AVAILABLE_MODELS in hooks/flame_mcp_bridge.py):
-#   `qwen3.5-mcp`       - Qwen3.5 9B alias of qwen3.5:9b, ~6.6 GB VRAM Q4_K_M
-#   `glm-4.7-flash`     - GLM-4.7 Flash, lightweight and fast
+#   `qwen3.5-mcp`       - Qwen3.5 9B alias of qwen3.5:9b, ~6.6 GB Q4_K_M, needs ~8+ GB VRAM
+#   `qwen3.5:4b`        - Qwen3.5 4B, small-GPU fallback (~2.5 GB Q4_K_M, needs ~4+ GB VRAM)
+#   `glm-4.7-flash`     - GLM-4.7 Flash — NOT recommended (tool-calling broken in Ollama,
+#                          issues #13820/#13840, as of June 2026; real download size ~19 GB q4)
 # concept:ollama_gpu_models_linux end
 if   [ "$VRAM_MB" -ge 10000 ] 2>/dev/null; then
     RECOMMENDED="qwen3.5-mcp"
     MODEL_INFO="~6.6 GB VRAM · alias of qwen3.5:9b · good general-purpose"
     NEEDS_ALIAS="yes"
 elif [ "$VRAM_MB" -ge  6000 ] 2>/dev/null; then
-    RECOMMENDED="glm-4.7-flash"
-    MODEL_INFO="lightweight, fits in 6 GB VRAM"
+    RECOMMENDED="qwen3.5:4b"
+    MODEL_INFO="~2.5 GB VRAM · small-GPU fallback · fits in 6 GB cards"
     NEEDS_ALIAS="no"
 elif [ "$RAM_GB"  -ge    16 ] 2>/dev/null; then
-    RECOMMENDED="glm-4.7-flash"
+    RECOMMENDED="qwen3.5:4b"
     MODEL_INFO="CPU inference (slow — GPU strongly recommended)"
     NEEDS_ALIAS="no"
 else
     warn "Insufficient resources detected. Proceeding anyway."
-    RECOMMENDED="glm-4.7-flash"
-    MODEL_INFO="smallest supported model"
+    RECOMMENDED="qwen3.5:4b"
+    MODEL_INFO="small-GPU / CPU fallback model"
     NEEDS_ALIAS="no"
 fi
 
@@ -145,7 +147,7 @@ echo ""
 echo -e "${YELLOW}─── Step 4: Pull model ──────────────────────────────────────────${NC}"
 
 ESTIMATED_SIZE="~6.6 GB"
-[ "$MODEL" = "glm-4.7-flash" ] && ESTIMATED_SIZE="~4 GB"
+[ "$MODEL" = "glm-4.7-flash" ] && ESTIMATED_SIZE="~19 GB"
 
 read -r -p "  Pull $MODEL now? ($ESTIMATED_SIZE download) [Y/n] " pull_ans
 if [[ ! "$pull_ans" =~ ^[Nn]$ ]]; then

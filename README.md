@@ -174,7 +174,7 @@ In addition to natural language, the chat input accepts these special commands:
 | Backend | Models available (model IDs in backticks) | Requires | Works offline? |
 |---------|-------------------------------------------|----------|----------------|
 | anthropic | Claude Fable 5 (`claude-fable-5`), Claude Opus 4.8 (`claude-opus-4-8`), Claude Sonnet 4.6 (`claude-sonnet-4-6`) | Anthropic API key | ✗ |
-| ollama | Qwen3.5 9B (`qwen3.5-mcp`), GLM-4.7 Flash (`glm-4.7-flash`) | gpu-server on LAN + GPU, LAN reachable at `config.json → ollama_url` | ✗ |
+| ollama | Qwen3.5 9B (`qwen3.5-mcp`), GLM-4.7 Flash (`glm-4.7-flash`) ⚠ not recommended — tool-calling broken in Ollama as of June 2026 (issues #13820/#13840) | gpu-server on LAN + GPU, LAN reachable at `config.json → ollama_url` | ✗ |
 | ollama_mac 🍎 | Qwen3.5 9B (`qwen3.5-mcp`), Qwen3.5 4B (`qwen3.5:4b`) | Ollama on Mac (`brew install ollama`), models pulled locally | ✓ |
 <!-- concept:llm_backend_table end -->
 
@@ -417,18 +417,21 @@ sudo systemctl edit ollama --force --full
 #   Environment="OLLAMA_NEW_ENGINE=true"
 sudo systemctl restart ollama
 
-# Pull the two models defined in AVAILABLE_MODELS (hooks/flame_mcp_bridge.py)
+# Pull the models defined in AVAILABLE_MODELS (hooks/flame_mcp_bridge.py)
 ollama pull qwen3.5:9b
 ollama cp qwen3.5:9b qwen3.5-mcp          # matches the `qwen3.5-mcp` tag
+# NOTE: glm-4.7-flash is NOT recommended — tool-calling broken in Ollama
+# (upstream issues #13820/#13840, as of June 2026; real download size ~19 GB q4).
+# The model remains in AVAILABLE_MODELS for existing users. Prefer qwen3.5-mcp.
 ollama pull glm-4.7-flash                  # matches the `glm-4.7-flash` tag
 ```
 
 **In the Flame widget:**
-1. Select **Qwen3.5 9B 🖥** (or **GLM-4.7 Flash 🖥**) from the model dropdown
+1. Select **Qwen3.5 9B 🖥** from the model dropdown (GLM-4.7 Flash is not recommended — see note above)
 2. Enter the server URL (e.g. `http://192.168.1.50:11434`) and press Enter
 3. The combo label updates to show `· gpu-server` confirming the server is saved
 
-> **GPU requirements:** Qwen3.5 9B (~6.6 GB Q4_K_M) and GLM-4.7 Flash fit comfortably in a 24 GB GPU (RTX 3090) with `num_ctx=24576` set at runtime by the bridge. The bridge pre-flight overrides Modelfile `num_ctx` on every session (Ollama's Anthropic-compat endpoint ignores it otherwise).
+> **GPU requirements:** Qwen3.5 9B (~6.6 GB Q4_K_M) needs ~8+ GB VRAM with `num_ctx=24576` set at runtime by the bridge. The bridge pre-flight overrides Modelfile `num_ctx` on every session (Ollama's Anthropic-compat endpoint ignores it otherwise). GLM-4.7 Flash (~19 GB q4) requires at least ~20 GB VRAM and is NOT recommended due to tool-calling bugs in Ollama (issues #13820/#13840).
 
 ### Option 2 — Ollama cloud proxy (ollama_cloud backend)
 
