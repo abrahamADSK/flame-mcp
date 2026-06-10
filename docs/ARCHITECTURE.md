@@ -151,8 +151,9 @@ No circular imports.
 - **`AVAILABLE_MODELS`** (`hooks/flame_mcp_bridge.py`) is a list of
   `(display_name, model_id, backend)` tuples. Current entries:
   `claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-4-6` (anthropic); `qwen3.5-mcp`,
-  `glm-4.7-flash` (ollama, LAN GPU); `qwen3.5-mcp`, `qwen3.5:4b` (ollama_mac,
-  local CPU/MPS).
+  `glm-4.7-flash` (ollama, LAN GPU — glm-4.7-flash is NOT recommended, tool-calling
+  broken in Ollama as of June 2026, issues #13820/#13840); `qwen3.5-mcp`, `qwen3.5:4b`
+  (ollama_mac, local CPU/MPS).
 - **Widget**: a Qt combo box in the Flame panel selects the active entry.
   The selection is persisted in `config.json -> model` + `config.json -> backend`.
 - **Backend environments** (`_get_ollama_env`, lines ~1483–1514):

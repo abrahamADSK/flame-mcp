@@ -473,12 +473,14 @@ if [ -n "$OLLAMA_ADDR" ]; then
     # concept:ollama_gpu_models_install start
     echo '  Models exposed by AVAILABLE_MODELS (hooks/flame_mcp_bridge.py):'
     echo '    `qwen3.5-mcp`       -  Qwen3.5 9B (alias of qwen3.5:9b, ~6.6 GB VRAM Q4_K_M)'
-    echo '    `glm-4.7-flash`     -  GLM-4.7 Flash (lightweight, fast)'
+    echo '    `qwen3.5:4b`        -  Qwen3.5 4B (~2.5 GB Q4_K_M, small-GPU fallback)'
+    echo '    `glm-4.7-flash`     -  GLM-4.7 Flash (NOT recommended — tool-calling broken in Ollama as of June 2026, issues #13820/#13840)'
     # concept:ollama_gpu_models_install end
     echo ""
     echo "  Pull commands on the Linux server (scripts/setup_ollama_linux.sh automates this):"
-    echo "    ollama pull qwen3.5:9b && ollama cp qwen3.5:9b qwen3.5-mcp"
-    echo "    ollama pull glm-4.7-flash"
+    echo "    ollama pull qwen3.5:9b && ollama cp qwen3.5:9b qwen3.5-mcp  # recommended (10+ GB VRAM)"
+    echo "    ollama pull qwen3.5:4b                                        # small-GPU fallback (4+ GB VRAM)"
+    echo "    # ollama pull glm-4.7-flash  (NOT recommended — tool-calling broken in Ollama as of June 2026)"
     echo ""
     read -r -p "  Model to activate [default: qwen3.5-mcp]: " OLLAMA_MODEL
     OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5-mcp}"
@@ -516,7 +518,7 @@ else
     echo "  To configure Ollama later, edit $CONFIG_FILE:"
     echo '    "backend":    "ollama"'
     echo '    "ollama_url": "http://<linux-ip>:11434"'
-    echo '    "model":      "qwen3-coder:30b-a3b"'
+    echo '    "model":      "qwen3.5-mcp"'
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
