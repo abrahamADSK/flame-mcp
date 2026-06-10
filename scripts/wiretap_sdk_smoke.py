@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for the Wiretap Python SDK shipped with Autodesk Flame 2026.
+"""Smoke test for the Wiretap Python SDK shipped with Autodesk Flame 2027.
 
 Purpose
 -------
@@ -56,7 +56,7 @@ from typing import Any
 #: ``WIRETAP_SDK_PATH`` env var if Autodesk moves it in a future release.
 SDK_PATH = os.environ.get(
     "WIRETAP_SDK_PATH",
-    "/opt/Autodesk/python/2026.2.2/lib/python3.11/site-packages",
+    "/opt/Autodesk/python/2027/lib/python3.13/site-packages/adsk",
 )
 
 #: Module name exported by the SDK.

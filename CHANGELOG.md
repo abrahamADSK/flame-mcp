@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale model example `qwen3-coder:30b-a3b` in `install.sh`** — the "skip Ollama"
   section showed an outdated model name as a config example. Replaced with the current
   canonical local model `qwen3.5-mcp`.
+- **`wiretap_smoke.sh` SDK probe segfaulted on Flame 2027** — the script invoked
+  `wiretap_sdk_smoke.py` with the system `python3`, but the Wiretap SDK `.so` is
+  compiled against Flame's embedded Python ABI and segfaults under the system
+  interpreter even at matching minor versions (3.13 vs 3.13). New `FLAME_PYTHON`
+  env var (default `/opt/Autodesk/python/2027/bin/python3`, falls back to
+  `python3` on non-Flame boxes); `wiretap_sdk_smoke.py` default `SDK_PATH`
+  updated 2026.2.2 → 2027 (`…/python/2027/lib/python3.13/site-packages/adsk`).
+
+### Validated
+- **Wiretap smoke suite on Flame 2027 (build 2027.pr238)** — first run against
+  2027, GUI not required (stone+wire / ifffsWiretapServer standalone): CLI
+  32/32 non-destructive tools OK (5 destructive hard-skipped, 37 total), SDK
+  probe 5/5 steps OK (22 symbols). `docs/wiretap_smoke_report.md` regenerated
+  from this run. Closes the last "Flame 2027 Tested" gap.
 
 ## [1.9.2] — 2026-06-10
 
