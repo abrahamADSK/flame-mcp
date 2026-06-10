@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-06-10
+
 ### Fixed
 
 - **glm-4.7-flash doc-drift corrected** — `scripts/setup_ollama_linux.sh` had a
