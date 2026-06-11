@@ -30,7 +30,7 @@ TestSoftRedirectSuppression (3 tests):
 """
 
 
-from flame_mcp.server import execute_python
+from flame_mcp.server import _execute_python_impl as execute_python
 
 
 # ═══════════════════════════════════════════════════════════════════════════

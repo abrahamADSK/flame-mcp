@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Visible-progress streaming (Chat 62 design, MCP-native)** — the five
+  long-running tools (`execute_python`, `flame_wiretap_tree`, `render_batch`,
+  `export_clip`, `import_clips`) now stream a `ctx.info` heartbeat every 10 s
+  while the operation blocks inside Flame (`_to_thread_with_heartbeat`); fast
+  operations emit nothing. Design adjusted from the original "convert tools to
+  async" plan: the `execute_plan` op registry is synchronous, so each tool is
+  split into a sync `_<name>_impl` body (called by the registry and the test
+  suite) plus an async `@mcp.tool` wrapper that adds the heartbeat. 9 new
+  tests (545 → 554); `pytest-asyncio` added to the CI test deps.
+
+### Fixed
+- **AST tool scanners missed `async def` tools** — both `install.sh` Step 8
+  (pre-approved tools list) and the server's own settings sync block walked
+  only `ast.FunctionDef`; the five tools converted to `async def` would have
+  silently vanished from the pre-approved list (permission prompts on every
+  use). Both scanners now match `(FunctionDef, AsyncFunctionDef)`; all 38
+  tools verified detected.
+
 ## [1.9.3] — 2026-06-10
 
 ### Fixed

@@ -92,7 +92,7 @@ class TestLiveRenderBatch:
     """
 
     def test_render_batch_schedules_without_block(self):
-        from flame_mcp.server import render_batch
+        from flame_mcp.server import _render_batch_impl as render_batch
 
         out = render_batch()  # defaults: Background Reactor, current batch group
         # The dedicated-tool path must NEVER trip the execute_python crash guard.
@@ -125,7 +125,7 @@ class TestLiveExportClip:
     """
 
     def test_export_clip_reaches_flame_without_block(self):
-        from flame_mcp.server import export_clip
+        from flame_mcp.server import _export_clip_impl as export_clip
 
         out = export_clip(
             library_name="Default Library",

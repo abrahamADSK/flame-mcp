@@ -61,7 +61,12 @@ if "mcp" not in sys.modules:
         def __init__(self, *a, **kw):
             pass
 
+    class _StubContext:
+        """Minimal Context type-annotation stand-in (visible-progress port)."""
+        pass
+
     _mcp_fastmcp.FastMCP                = _StubFastMCP
+    _mcp_fastmcp.Context                = _StubContext
     _mcp_types_mod.ToolAnnotations      = _StubToolAnnotations
     _mcp_pkg.server                     = _mcp_server_mod
     _mcp_server_mod.fastmcp             = _mcp_fastmcp

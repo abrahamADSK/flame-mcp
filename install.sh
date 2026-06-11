@@ -402,7 +402,7 @@ with open(server_script) as f:
 
 new_tools = []
 for node in ast.walk(tree):
-    if isinstance(node, ast.FunctionDef):
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         for dec in node.decorator_list:
             if (isinstance(dec, ast.Call)
                     and isinstance(dec.func, ast.Attribute)
