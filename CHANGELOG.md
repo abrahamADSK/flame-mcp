@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] — 2026-06-11
+
 ### Fixed
 - **`create_sequence` accepts a `duration` (frames)** — the tool had no
   duration parameter at all (Chat 63 gotcha: asking for a 50-frame sequence
