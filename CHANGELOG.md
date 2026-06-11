@@ -13,8 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   produced Flame's 1-frame default). A `duration > 0` is now forwarded to
   `PyReel.create_sequence` as `flame.PyTime(frames)`; the success message
   echoes the resulting `seq.duration.frame` so the created length is visible.
-  Omitting it preserves the previous behaviour. Pending in-vivo validation
-  against Flame 2027.
+  Omitting it preserves the previous behaviour. Validated in-vivo against
+  Flame 2027 (project `2027_test`: 50 requested → 50 created, confirmed
+  independently via `list_clips`).
+- **F4b AST validator falsely rejected `flame.<ClassName>` references** —
+  the introspector records classes without the `flame.` prefix while every
+  Flame class is also exposed as a module attribute, so official cookbook
+  patterns like `flame.PyTime(50)` were blocked as "unresolved symbol"
+  (found in-vivo when the validator rejected the create_sequence duration
+  pattern). `_graph_symbols` now also registers `flame.{ClassName}`.
 
 ## [1.11.0] — 2026-06-11
 
