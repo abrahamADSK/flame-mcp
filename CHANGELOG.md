@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-06-11
+
 ### Added
 - **Visible-progress streaming (Chat 62 design, MCP-native)** — the five
   long-running tools (`execute_python`, `flame_wiretap_tree`, `render_batch`,
