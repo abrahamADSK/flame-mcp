@@ -158,7 +158,11 @@ def _graph_symbols(graph: dict) -> set[str]:
     Includes:
     - ``flame.X`` for each module attribute.
     - ``flame.X`` for each module-level function.
-    - ``ClassName`` for each class.
+    - ``ClassName`` AND ``flame.ClassName`` for each class — every Flame
+      class is also exposed as an attribute of the ``flame`` module
+      (``flame.PyTime(50)``, ``isinstance(x, flame.PyClip)`` are official
+      cookbook patterns), but the introspector records classes without the
+      prefix, so prefixed references used to be falsely rejected.
     - ``ClassName.method`` for each class method.
     - ``ClassName.attr`` for each class attribute.
 
@@ -171,6 +175,7 @@ def _graph_symbols(graph: dict) -> set[str]:
         out.add(key)
     for class_name, class_info in (graph.get("classes") or {}).items():
         out.add(class_name)
+        out.add(f"flame.{class_name}")
         for method_name in (class_info.get("methods") or {}):
             out.add(f"{class_name}.{method_name}")
         for attr_name in (class_info.get("attrs") or {}):

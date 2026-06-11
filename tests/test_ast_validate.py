@@ -75,6 +75,7 @@ def test_graph_symbols_includes_module_functions_and_classes(
     assert "flame.schedule_idle_event" in symbols
     assert "flame.batch" in symbols  # module attribute
     assert "PyBatch" in symbols  # class itself
+    assert "flame.PyBatch" in symbols  # class as a flame-module attribute
     assert "PyBatch.create_batch_group" in symbols  # method
     assert "PyClip.name" in symbols  # attr
 
@@ -95,6 +96,22 @@ def test_validate_accepts_real_attribute_chain(sample_graph: dict) -> None:
     src = (
         "ws = flame.batch\n"
         "print(flame.get_version())\n"
+    )
+    result = av.validate_python(src, graph=sample_graph)
+    assert result.ok
+
+
+def test_validate_accepts_flame_prefixed_class(sample_graph: dict) -> None:
+    """``flame.PyClip`` resolves — classes are flame-module attributes.
+
+    Regression guard (Chat 64): the introspector records classes WITHOUT
+    the ``flame.`` prefix, so official cookbook patterns like
+    ``flame.PyTime(50)`` / ``isinstance(x, flame.PyClip)`` were falsely
+    rejected as unresolved symbols.
+    """
+    src = (
+        "c = flame.PyClip\n"
+        "t = flame.PyBatch.create_batch_group\n"
     )
     result = av.validate_python(src, graph=sample_graph)
     assert result.ok
