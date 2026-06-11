@@ -398,6 +398,7 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    "list libraries / show libraries"         → list_libraries()
    "reels in library X"                      → list_reels(library_name)
    "clips in reel / library"                 → list_clips(library_name, reel_name)
+   "sequences in reel / sequence duration"   → list_clips(library_name, reel_name)
    "desktop reels / desktop clips"           → list_desktop_reels()
    "batch groups"                            → list_batch_groups()
    "all projects / other projects on disk"   → list_all_projects()
@@ -706,7 +707,7 @@ async def execute_python(
     - Project info (name, resolution, fps, bit depth) → get_project_info()
     - List libraries                                  → list_libraries()
     - List reels in a library                         → list_reels()
-    - List clips in a library/reel                    → list_clips()
+    - List clips/sequences + durations in a reel      → list_clips()
     - Desktop structure (reel groups, reels, clips)   → list_desktop_reels()
     - Batch groups on desktop                         → list_batch_groups()
     - All projects on workstation                     → list_all_projects()
@@ -1178,11 +1179,15 @@ def list_clips(
     limit: Annotated[int, Field(ge=0, le=5000, description="Max clips per reel (0 = unlimited, default 50)")] = 50,
 ) -> str:
     """
-    List clips inside a library, optionally filtered by reel name.
-    If library_name is empty, lists clips across all user-visible libraries.
-    If reel_name is also given, shows only that reel's clips.
+    List clips AND sequences inside a library, optionally filtered by reel
+    name, with durations (clips show their native duration; sequences are
+    tagged [SEQ] with duration in frames — TAREA 7 sub-5: reel.sequences
+    were previously invisible to this tool, making "how long is sequence X"
+    a redirect dead end).
+    If library_name is empty, lists across all user-visible libraries.
     Excludes hidden system libraries ("Timeline FX", "Grabbed References").
-    Use this instead of execute_python for any 'show/list clips' request.
+    Use this instead of execute_python for any 'show/list clips, sequences
+    or durations' request.
 
     Args:
         library_name: Filter to a specific library (empty = all libraries).
@@ -1207,15 +1212,21 @@ else:
             continue
         found = True
         clips = list(reel.clips)
+        seqs = list(getattr(reel, 'sequences', None) or [])
         total = len(clips)
         shown = clips if limit <= 0 else clips[:limit]
-        print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s)")
+        print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s), {{len(seqs)}} sequence(s)")
         for c in shown:
             dur = getattr(c, 'duration', None)
             dur_str = f"  {{dur}}" if dur else ""
             print(f"  {{str(c.name)}}{{dur_str}}")
         if limit > 0 and total > limit:
             print(f"  … and {{total - limit}} more (use limit=0 to see all)")
+        for s in seqs:
+            dur = getattr(s, 'duration', None)
+            frames = getattr(dur, 'frame', dur)
+            dur_str = f"  duration={{frames}}" if dur is not None else ""
+            print(f"  [SEQ] {{str(s.name)}}{{dur_str}}")
     if not found:
         print(f"No reels matched filter {safe_reel}.")
 """
@@ -1229,14 +1240,22 @@ for lib in ws.libraries:
         continue
     for reel in lib.reels:
         clips = list(reel.clips)
-        if clips:
+        seqs = list(getattr(reel, 'sequences', None) or [])
+        if clips or seqs:
             total = len(clips)
             shown = clips if limit <= 0 else clips[:limit]
-            print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s)")
+            print(f"[{{str(lib.name)}}] / [{{str(reel.name)}}] — {{total}} clip(s), {{len(seqs)}} sequence(s)")
             for c in shown:
-                print(f"  {{str(c.name)}}")
+                dur = getattr(c, 'duration', None)
+                dur_str = f"  {{dur}}" if dur else ""
+                print(f"  {{str(c.name)}}{{dur_str}}")
             if limit > 0 and total > limit:
                 print(f"  … and {{total - limit}} more (use limit=0 to see all)")
+            for s in seqs:
+                dur = getattr(s, 'duration', None)
+                frames = getattr(dur, 'frame', dur)
+                dur_str = f"  duration={{frames}}" if dur is not None else ""
+                print(f"  [SEQ] {{str(s.name)}}{{dur_str}}")
 """
     from flame_mcp.suggestions import maybe_annotate_with_suggestions
     result = _call_flame(code)

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`list_clips` now lists sequences with durations (TAREA 7 sub-5)** —
+  `reel.sequences` were invisible to the tool, so "list sequences" / "how
+  long is sequence X" requests redirected from `execute_python` into a dead
+  end. Both branches (filtered and all-libraries) now print `[SEQ] <name>
+  duration=<frames>` rows and clip durations; headers show clip AND sequence
+  counts. Query lookup tables (server instructions, CLAUDE.md, README)
+  updated. Validated in-vivo against Flame 2027 (project 2027_test).
+
+### Changed
+- **Live harness gates on a fully loaded project (TAREA 7 sub-6 hardening)** —
+  `test_flame_live.py`'s render/export guards used to run whenever the bridge
+  socket answered; with Flame at the project picker they queued idle events
+  against a half-initialized main thread and froze Flame (Chat 63 incident,
+  force quit required). The scheduling tests now skip unless a read-only
+  probe confirms `flame.projects.current_project` answers. User-declared
+  invariant: never queue main-thread work against a half-loaded Flame.
+  Full harness validated in-vivo: 3/3 passed with a loaded project, the
+  scheduled render executed and Flame stayed healthy.
+
 ## [1.10.0] — 2026-06-11
 
 ### Added
