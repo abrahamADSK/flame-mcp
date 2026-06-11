@@ -258,6 +258,14 @@ Then talk naturally:
 | `undo_last_operation` | Undo the last undoable execute_python operation |
 <!-- concept:mcp_tool_table end -->
 
+**Visible progress on long operations** — the five long-running tools
+(`execute_python`, `flame_wiretap_tree`, `render_batch`, `export_clip`,
+`import_clips`) stream an MCP `ctx.info` heartbeat every 10 s while the
+operation blocks inside Flame, instead of staying silent until done. Fast
+operations emit nothing. Internally each of these tools is an async wrapper
+over a sync `_<name>_impl` body — the `execute_plan` op registry and the test
+suite call the sync bodies directly.
+
 ### Tool workflow
 
 Every Claude response to a Flame request follows this sequence:

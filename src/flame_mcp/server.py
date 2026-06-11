@@ -22,9 +22,10 @@ import subprocess
 import datetime
 import time
 from pathlib import Path
+import asyncio
 from typing import Annotated, Literal
 from pydantic import Field
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from flame_mcp.safety import (
     _check_dangerous,
@@ -662,13 +663,37 @@ def _fmt(result: dict) -> str:
     return '\n'.join(parts) if parts else '(executed successfully, no output)'
 
 
+
+async def _to_thread_with_heartbeat(fn, ctx, label, interval=10):
+    """Run a blocking tool body in a worker thread, streaming heartbeats.
+
+    Long Flame operations block on the bridge socket (or a subprocess) until
+    they finish; without this, MCP clients see total silence for the whole
+    duration. Operations faster than ``interval`` seconds emit nothing — no
+    noise on the common path. Visible-progress streaming port (Chat 62
+    design adjusted in Chat 63: the execute_plan op registry is synchronous,
+    so tools are split into sync ``_<name>_impl`` bodies, which the registry
+    and tests call, plus async MCP wrappers that add the heartbeat).
+    """
+    task = asyncio.ensure_future(asyncio.to_thread(fn))
+    elapsed = 0
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=interval)
+        if done:
+            return task.result()
+        elapsed += interval
+        if ctx:
+            await ctx.info(f"{label} still running in Flame... ({elapsed}s)")
+
+
 # ─── MCP tools ────────────────────────────────────────────────────────────────
 
 @mcp.tool(annotations=_DST)
-def execute_python(
+async def execute_python(
     code: str,
     timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
     dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
+    ctx: Context | None = None,
 ) -> str:
     """
     Execute arbitrary Python code inside Autodesk Flame.
@@ -713,6 +738,18 @@ def execute_python(
         execute_python(long_import_code, timeout=60)
         execute_python(risky_code, dry_run=True)  # preview without executing
     """
+    return await _to_thread_with_heartbeat(
+        lambda: _execute_python_impl(code, timeout, dry_run), ctx, "execute_python",
+    )
+
+
+def _execute_python_impl(
+    code: str,
+    timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+    dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
+) -> str:
+    """Sync body of execute_python — called by the execute_plan registry and
+    tests; the async MCP tool above wraps it with progress heartbeats."""
     danger = _check_dangerous(code)
     if danger:
         return danger + _stats_footer()
@@ -1419,7 +1456,7 @@ except Exception as e:
 
 
 @mcp.tool(annotations=_RO)
-def flame_wiretap_tree(path: str = "/") -> str:
+async def flame_wiretap_tree(path: str = "/", ctx: Context | None = None) -> str:
     """
     Inspect the Wiretap IFFFS node tree at the given path using the
     wiretap_print_tree CLI tool. This exposes the underlying content
@@ -1439,6 +1476,14 @@ def flame_wiretap_tree(path: str = "/") -> str:
 
     Note: Runs the CLI tool via subprocess — does NOT execute code inside Flame.
     """
+    return await _to_thread_with_heartbeat(
+        lambda: _flame_wiretap_tree_impl(path), ctx, "flame_wiretap_tree",
+    )
+
+
+def _flame_wiretap_tree_impl(path: str = "/") -> str:
+    """Sync body of flame_wiretap_tree — called by the execute_plan registry and
+    tests; the async MCP tool above wraps it with progress heartbeats."""
     wt_tool = "/opt/Autodesk/wiretap/tools/current/wiretap_print_tree"
     host    = "localhost:IFFFS"
     try:
@@ -2262,10 +2307,11 @@ def create_sequence(
 
 
 @mcp.tool(annotations=_DST)
-def render_batch(
+async def render_batch(
     render_option: Literal["Background Reactor", "Foreground", "Burn"] = "Background Reactor",
     generate_proxies: bool = False,
     include_history: bool = False,
+    ctx: Context | None = None,
 ) -> str:
     """
     Render the CURRENT Batch Group — all its active Render and Write File nodes.
@@ -2287,6 +2333,18 @@ def render_batch(
         generate_proxies: Render at proxy resolution. Default False.
         include_history: Create History with the rendering. Default False.
     """
+    return await _to_thread_with_heartbeat(
+        lambda: _render_batch_impl(render_option, generate_proxies, include_history), ctx, "render_batch",
+    )
+
+
+def _render_batch_impl(
+    render_option: Literal["Background Reactor", "Foreground", "Burn"] = "Background Reactor",
+    generate_proxies: bool = False,
+    include_history: bool = False,
+) -> str:
+    """Sync body of render_batch — called by the execute_plan registry and
+    tests; the async MCP tool above wraps it with progress heartbeats."""
     _track_dedicated()
     result_file = os.path.expanduser("~/flame_render_result.txt")
     code = (
@@ -2323,7 +2381,7 @@ def render_batch(
 
 _plan.register_op(
     "render_batch",
-    lambda args: render_batch(
+    lambda args: _render_batch_impl(
         render_option=args.render_option,
         generate_proxies=args.generate_proxies,
         include_history=args.include_history,
@@ -2332,12 +2390,13 @@ _plan.register_op(
 
 
 @mcp.tool(annotations=_DST)
-def export_clip(
+async def export_clip(
     library_name: str,
     reel_name: str,
     clip_name: str,
     preset_path: str,
     output_directory: str,
+    ctx: Context | None = None,
 ) -> str:
     """
     Export a single clip to disk using a Flame export preset (PyExporter).
@@ -2357,6 +2416,20 @@ def export_clip(
                       on this workstation (e.g. under /opt/Autodesk/presets/).
         output_directory: Destination folder. Created if it does not exist.
     """
+    return await _to_thread_with_heartbeat(
+        lambda: _export_clip_impl(library_name, reel_name, clip_name, preset_path, output_directory), ctx, "export_clip",
+    )
+
+
+def _export_clip_impl(
+    library_name: str,
+    reel_name: str,
+    clip_name: str,
+    preset_path: str,
+    output_directory: str,
+) -> str:
+    """Sync body of export_clip — called by the execute_plan registry and
+    tests; the async MCP tool above wraps it with progress heartbeats."""
     _track_dedicated()
     result_file = os.path.expanduser("~/flame_export_result.txt")
     code_template = '''import flame, os
@@ -2414,7 +2487,7 @@ else:
 
 _plan.register_op(
     "export_clip",
-    lambda args: export_clip(
+    lambda args: _export_clip_impl(
         library_name=args.library_name,
         reel_name=args.reel_name,
         clip_name=args.clip_name,
@@ -2550,7 +2623,7 @@ def create_batch_group(name: str) -> str:
 
 
 @mcp.tool(annotations=_DST)
-def import_clips(path: str, library_name: str, reel_name: str = "") -> str:
+async def import_clips(path: str, library_name: str, reel_name: str = "", ctx: Context | None = None) -> str:
     """
     Import media from disk into a library (optionally a reel within it).
 
@@ -2560,6 +2633,14 @@ def import_clips(path: str, library_name: str, reel_name: str = "") -> str:
         reel_name:    Optional destination reel within the library. Empty =
                       import into the library directly.
     """
+    return await _to_thread_with_heartbeat(
+        lambda: _import_clips_impl(path, library_name, reel_name), ctx, "import_clips",
+    )
+
+
+def _import_clips_impl(path: str, library_name: str, reel_name: str = "") -> str:
+    """Sync body of import_clips — called by the execute_plan registry and
+    tests; the async MCP tool above wraps it with progress heartbeats."""
     _track_dedicated()
     if reel_name:
         dest_lines = (
@@ -2591,7 +2672,7 @@ _plan.register_op(
 )
 _plan.register_op(
     "import_clips",
-    lambda args: import_clips(
+    lambda args: _import_clips_impl(
         path=args.path, library_name=args.library_name, reel_name=args.reel_name
     ),
 )
@@ -2910,7 +2991,7 @@ def _sync_tool_permissions() -> None:
             _tree = _ast.parse(_f.read())
         current_tools = set()
         for _node in _ast.walk(_tree):
-            if isinstance(_node, _ast.FunctionDef):
+            if isinstance(_node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
                 for _dec in _node.decorator_list:
                     if (isinstance(_dec, _ast.Call)
                             and isinstance(_dec.func, _ast.Attribute)
