@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Live-Flame harness is now opt-in via `FLAME_LIVE=1`** — Chat 64
+  incident: a routine `pytest tests/` run with Flame open armed
+  `test_flame_live.py` (its gates probe the bridge at collection time) and
+  queued render/export idle events on the main thread → Flame froze
+  (second main-thread violation after Chat 63). Without the env var the
+  module now skips at collection WITHOUT touching the bridge socket;
+  firing at the real Flame is a user decision, never a suite side effect.
+  Lock tests in `tests/test_live_optin.py`. Run a live pass with
+  `FLAME_LIVE=1 pytest tests/test_flame_live.py`.
+
 ## [1.11.1] — 2026-06-11
 
 ### Fixed
