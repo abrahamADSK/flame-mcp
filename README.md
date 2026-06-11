@@ -223,7 +223,7 @@ Then talk naturally:
 | `get_project_info` | Return name, frame rate, resolution, bit depth of the active project |
 | `list_libraries` | List all libraries in the project with reel counts |
 | `list_reels` | List reels in a library, or across all libraries |
-| `list_clips` | List clips in a library/reel, or across all libraries |
+| `list_clips` | List clips and sequences (with durations) in a library/reel, or across all libraries |
 | `list_desktop_reels` | List the full desktop structure: reel groups, reels, and clip names |
 | `list_batch_groups` | List all batch groups in the active desktop with their reel counts |
 | `list_all_projects` | List all Flame projects available on this workstation |

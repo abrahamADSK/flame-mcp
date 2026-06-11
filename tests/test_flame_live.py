@@ -46,6 +46,37 @@ def _flame_unreachable() -> bool:
 _BRIDGE_DOWN = _flame_unreachable()
 
 
+def _no_project_loaded() -> bool:
+    """True unless a Flame project is FULLY loaded.
+
+    Chat 63 incident: with Flame at the project picker (bridge up, project
+    NOT loaded), this harness scheduled a real render + export via idle
+    events; they queued against a half-initialized main thread and Flame
+    deadlocked (force quit required). A reachable bridge is NOT enough —
+    these tests queue main-thread work, so they only run when a cheap
+    read-only probe confirms the project context exists. User-declared
+    invariant: never queue main-thread work against a half-loaded Flame.
+    """
+    if _BRIDGE_DOWN:
+        return True
+    from flame_mcp.server import _call_flame
+
+    try:
+        probe = _call_flame(
+            "print(str(flame.projects.current_project.name))", timeout=5
+        )
+    except Exception:
+        return True
+    if probe.get("status") == "error":
+        return True
+    out = (probe.get("output") or "").strip()
+    err = probe.get("error") or ""
+    return not out or "Traceback" in err or "Error" in err
+
+
+_NO_PROJECT = _no_project_loaded()
+
+
 @pytest.mark.skipif(
     _BRIDGE_DOWN,
     reason="Live Flame bridge not reachable — open Flame to run this guard.",
@@ -74,8 +105,10 @@ class TestLiveHiddenLibraries:
 
 
 @pytest.mark.skipif(
-    _BRIDGE_DOWN,
-    reason="Live Flame bridge not reachable — open Flame to run this guard.",
+    _NO_PROJECT,
+    reason="No Flame project fully loaded — this guard queues main-thread "
+    "work (idle-event render) and must never run against a half-loaded "
+    "Flame (Chat 63 freeze).",
 )
 class TestLiveRenderBatch:
     """Guards 4C.1: render_batch must schedule a render against REAL Flame
@@ -111,8 +144,9 @@ class TestLiveRenderBatch:
 
 
 @pytest.mark.skipif(
-    _BRIDGE_DOWN,
-    reason="Live Flame bridge not reachable — open Flame to run this guard.",
+    _NO_PROJECT,
+    reason="No Flame project fully loaded — this guard sends main-thread "
+    "work and must never run against a half-loaded Flame (Chat 63 freeze).",
 )
 class TestLiveExportClip:
     """Guards 4C.2: export_clip reaches REAL Flame via the dedicated path and is

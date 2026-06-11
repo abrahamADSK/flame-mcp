@@ -19,6 +19,7 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
    | What libraries exist? | `list_libraries()` |
    | What reels are in library X? | `list_reels(library_name)` |
    | What clips are in library/reel X? | `list_clips(library_name, reel_name)` |
+   | Sequences in a reel / sequence duration | `list_clips(library_name, reel_name)` |
    | Desktop structure (reel groups, reels, clips) | `list_desktop_reels()` |
    | Batch groups on desktop | `list_batch_groups()` |
    | All Flame projects on this workstation | `list_all_projects()` |
