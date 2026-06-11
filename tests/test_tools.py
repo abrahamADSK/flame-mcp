@@ -310,6 +310,25 @@ class TestCreates:
         result = create_sequence(library_name="Shots", reel_name="Nope", sequence_name="SEQ")
         assert "ERROR" in result and "not found" in result
 
+    def test_create_sequence_duration_passed_as_pytime(self, mock_bridge):
+        # Regression guard (Chat 63 gotcha): the tool had no duration parameter
+        # at all, so "create a 50-frame sequence" silently produced Flame's
+        # 1-frame default. The frame count must reach PyReel.create_sequence
+        # wrapped in flame.PyTime(frames).
+        mock_bridge.return_value = {"output": "Created sequence: SEQ (50 frames)\n", "error": "", "_bridge_ms": 5}
+        result = create_sequence(library_name="Shots", reel_name="R1", sequence_name="SEQ", duration=50)
+        code = mock_bridge.call_args[0][0]
+        assert "reel.create_sequence(name='SEQ', duration=flame.PyTime(50))" in code
+        assert "SEQ" in result
+
+    def test_create_sequence_duration_omitted_keeps_flame_default(self, mock_bridge):
+        # duration=0 (the default) must NOT emit a duration kwarg, preserving
+        # Flame's own default behaviour for callers that never asked for one.
+        mock_bridge.return_value = {"output": "Created sequence: SEQ (1 frames)\n", "error": "", "_bridge_ms": 5}
+        create_sequence(library_name="Shots", reel_name="R1", sequence_name="SEQ")
+        code = mock_bridge.call_args[0][0]
+        assert "duration=" not in code
+
 
 class TestCreateBatchGroup:
     """create_batch_group() creates an empty Batch Group on the desktop."""

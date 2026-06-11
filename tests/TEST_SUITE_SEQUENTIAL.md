@@ -300,7 +300,8 @@ Show me all the nodes currently in the "MCP_Batch_Test" batch group, with their 
 ```
 Create an empty sequence called "MCP_Sequence_Test" in the "Comps" reel of the "MCP_Test_Group" reel group.
 ```
-**Expected code**: `reel.create_sequence("MCP_Sequence_Test")`
+**Expected code**: `reel.create_sequence(name='MCP_Sequence_Test')` (with
+`duration=flame.PyTime(N)` appended when a frame count is requested)
 
 ### T7.2 · Inspect the created sequence (requires T7.1)
 ```

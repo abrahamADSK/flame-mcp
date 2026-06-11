@@ -2299,6 +2299,7 @@ def create_sequence(
     library_name: str,
     reel_name: str,
     sequence_name: str,
+    duration: int = 0,
 ) -> str:
     """
     Create a new empty sequence in a Flame library/reel.
@@ -2307,8 +2308,14 @@ def create_sequence(
         library_name: Target library.
         reel_name:    Target reel within the library.
         sequence_name: Name for the new sequence.
+        duration:     Sequence length in frames (> 0). 0 keeps Flame's
+                      default (a 1-frame sequence).
     """
     _track_dedicated()
+    # PyReel.create_sequence declares duration as an (object) kwarg defaulting
+    # to 00:00:00+01 (1 frame); a frame count is expressed via the
+    # flame.PyTime(frames) constructor (FLAME_API.md, PyTime section).
+    duration_kwarg = f", duration=flame.PyTime({int(duration)})" if duration > 0 else ""
     code = (
         f"import flame\n"
         f"ws = flame.projects.current_project.current_workspace\n"
@@ -2318,8 +2325,8 @@ def create_sequence(
         f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
         f"  if not reel: print('ERROR: reel not found')\n"
         f"  else:\n"
-        f"    seq = reel.create_sequence(name={sequence_name!r})\n"
-        f"    print('Created sequence: ' + str(seq.name).strip(\"'\"))\n"
+        f"    seq = reel.create_sequence(name={sequence_name!r}{duration_kwarg})\n"
+        f"    print('Created sequence: ' + str(seq.name).strip(\"'\") + ' (' + str(seq.duration.frame) + ' frames)')\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
     return _fmt(result)

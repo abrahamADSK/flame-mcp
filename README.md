@@ -242,7 +242,7 @@ Then talk naturally:
 | `reset_session_stats` | Zero the session stats counters immediately (idle auto-reset fires after 30 min inactivity) |
 | `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
 | `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
-| `create_sequence` | Create a new empty sequence in a Flame library/reel |
+| `create_sequence` | Create a new empty sequence in a Flame library/reel (optional duration in frames) |
 | `render_batch` | Render the current Batch Group (Background Reactor by default; scheduled via idle event — never blocks Flame) |
 | `export_clip` | Export a clip to disk via a Flame export preset (PyExporter, scheduled via idle event — never deadlocks Flame) |
 | `create_library` | Create a new library in the active project workspace |
