@@ -330,14 +330,14 @@ Then read `~/flame_render_result.txt` in a separate call to confirm.
 
 ### flame.delete() on a reel deadlocks Flame — 2026-06-11
 **Task:** Delete an empty reel (`Reel 1`, last reel of Default Library) after deleting its sequences
-**Works:** ❌ — `flame.delete(reel)` blocks Flame 2027's main thread (bridge timeout at 15s, UI frozen, force quit required) even with the reel verified empty, dry-run done, and ops spaced. `flame.delete(sequence)` seconds earlier worked fine. The "Delete a reel by name" snippet in `flame_reference_guide.md` is WRONG as written for 2027 — reel deletion looks like a GUI-thread structural op.
-**Rule:** NEVER `flame.delete` a PyReel/PyLibrary/PyFolder via the bridge. Sequences and clips are OK. Structural deletes → user does them manually in the Flame UI. Untested hypothesis (only with the user watching, scratch project): wrap in `schedule_idle_event`.
+**Works:** ❌ direct / ✅ via idle event — `flame.delete(reel)` called directly blocks Flame 2027's main thread (bridge timeout at 15s, UI frozen, force quit required) even with the reel verified empty. `flame.delete(sequence)` directly is fine. Reel/folder/library deletion is a GUI-thread structural op: wrap it in `schedule_idle_event` with a result file (render/export-style) — **validated in-vivo same day** (result in ~5s, Flame healthy). Full pattern: FLAME_API.md → "Delete a reel without deadlocking Flame"; `flame_reference_guide.md` delete section rewritten accordingly.
 
 ```python
 # FORBIDDEN — deadlocks Flame 2027:
-flame.delete(reel)        # PyReel
-# OK (validated in-vivo same session):
-flame.delete(sequence)    # PySequence inside a reel
+flame.delete(reel)                                  # direct PyReel/PyFolder/PyLibrary
+# OK (both validated in-vivo 2026-06-11):
+flame.delete(sequence)                              # PySequence/PyClip, direct
+flame.schedule_idle_event(lambda: flame.delete(r))  # structural, + result file
 ```
 
 ---

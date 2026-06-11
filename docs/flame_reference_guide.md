@@ -69,28 +69,34 @@ IMPORTANT: `flame.projects.current_project.libraries` returns `None` — always 
 `flame.delete()` works on any Media Panel object: clips, reels, folders, libraries, sequences, batch groups.
 Always wrap in a list for multiple objects.
 
+⚠️ STRUCTURAL DELETES (reel / folder / library) DEADLOCK Flame 2027 when
+called directly through the bridge — `flame.delete(reel)` froze Flame
+in-vivo (2026-06-11) even on an empty, verified reel. Only clips and
+sequences may be deleted with a direct `flame.delete()`. Structural
+objects MUST be deleted inside a `flame.schedule_idle_event` callback
+with a result file (render/export-style); see the Auto-learned pattern
+"Delete a reel without deadlocking Flame" in FLAME_API.md.
+
 ```python
 import flame
 ws = flame.projects.current_project.current_workspace
 
-# Delete a reel by name
-lib  = next(l for l in ws.libraries if l.name == "Default Library")
-reel = next(r for r in lib.reels if r.name == "OLD_REEL")
-flame.delete(reel)
+# Delete a clip or sequence by name — direct call is SAFE
+lib = next((l for l in ws.libraries if str(l.name).strip("'") == "Default Library"), None)
+reel = next((r for r in lib.reels if str(r.name).strip("'") == "DAILIES"), None)
+seq = next((s for s in (reel.sequences or []) if str(s.name).strip("'") == "OLD_SEQ"), None)
+if seq is not None:
+    flame.delete(seq)
 
-# Delete multiple reels at once
-targets = {"TEST", "TEST2", "DESKTOP_TEST"}
-to_del  = [r for r in lib.reels if r.name in targets]
-flame.delete(to_del)
-print(f"Deleted: {[r.name for r in to_del]}")
+# Delete a reel / folder / library — NEVER directly. Schedule it:
+def _do_delete():
+    target = next((r for r in lib.reels if str(r.name).strip("'") == "OLD_REEL"), None)
+    if target is not None and not (target.clips or []) and not (target.sequences or []):
+        flame.delete(target)
 
-# Delete a folder by name
-folder = next(f for f in lib.folders if f.name == "OLD_FOLDER")
-flame.delete(folder)
-
-# Delete a library
-old_lib = next(l for l in ws.libraries if l.name == "TEMP_LIB")
-flame.delete(old_lib)
+flame.schedule_idle_event(_do_delete)
+# (production version: write a result file inside the callback and read it
+# in a separate non-bridge step — full pattern in FLAME_API.md)
 
 # Delete all clips inside a reel
 reel = next(r for r in lib.reels if r.name == "DAILIES")

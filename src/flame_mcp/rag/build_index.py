@@ -60,6 +60,11 @@ PRIMARY_DOCS = [
 # docs/ files to skip — not API documentation
 DOCS_EXCLUDE = {
     'ARCHITECTURE.md',          # project metadata, not useful for RAG queries
+    'CHAT_51_PLAN.md',          # phase plan (project metadata)
+    'PHASE_TRACKER.md',         # phase tracker (project metadata)
+    'DEPLOY.md',                # operator install/deploy recipes, not API
+    'session_stats_reset.md',   # design note, not API
+    'wiretap_smoke_report.md',  # test report, not API
 }
 
 # ── Chunking config ────────────────────────────────────────────────────────────

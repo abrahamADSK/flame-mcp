@@ -3459,3 +3459,40 @@ print(f"Done — {position} total frames")
 # Key: seq.overwrite(clip, flame.PyTime(frame_position)) to place each clip
 ```
 
+
+# ── Auto-learned: Delete a reel without deadlocking Flame (idle-event wrapper) ──
+<!-- model:claude-fable-5 date:2026-06-11 promoted-from:rag/candidates.json -->
+Direct `flame.delete(reel)` DEADLOCKS Flame 2027 (main-thread structural op,
+validated in-vivo: bridge timeout + UI freeze + force quit). `flame.delete`
+on a clip/sequence is safe to call directly. Reels, folders and libraries
+must go through `schedule_idle_event`, render/export-style:
+
+```python
+import flame, os
+result_file = os.path.expanduser("~/flame_delete_result.txt")
+
+def _do_delete_reel():
+    try:
+        ws = flame.projects.current_project.current_workspace
+        lib = next((l for l in ws.libraries if str(l.name).strip("'") == 'Default Library'), None)
+        reel = None
+        if lib is not None:
+            reel = next((r for r in lib.reels if str(r.name).strip("'") == 'Reel 1'), None)
+        if reel is None:
+            msg = 'ERROR: target not found'
+        elif (reel.clips or []) or (reel.sequences or []):
+            msg = 'ABORT: reel not empty'
+        else:
+            flame.delete(reel)
+            msg = 'OK: reel deleted via idle event'
+    except Exception as e:
+        msg = 'ERROR: %s' % e
+    with open(result_file, 'w') as f:
+        f.write(msg)
+
+flame.schedule_idle_event(_do_delete_reel)
+print('Reel delete scheduled via idle event ->', result_file)
+# Read result_file in a SEPARATE (non-bridge) step; do not re-enter the
+# bridge until it exists. Validated in-vivo on Flame 2027: result in ~5s,
+# Flame healthy afterwards.
+```
