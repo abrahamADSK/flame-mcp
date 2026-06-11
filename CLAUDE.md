@@ -328,6 +328,18 @@ Then read `~/flame_render_result.txt` in a separate call to confirm.
 **Works:** ❌ — A Substance Noise node connected to Render crashes Flame when rendering (even via schedule_idle_event). The result file is never created.
 **Pending alternative:** use `Colour Source` + `Gradient` or generate frames externally and import them.
 
+### flame.delete() on a reel deadlocks Flame — 2026-06-11
+**Task:** Delete an empty reel (`Reel 1`, last reel of Default Library) after deleting its sequences
+**Works:** ❌ — `flame.delete(reel)` blocks Flame 2027's main thread (bridge timeout at 15s, UI frozen, force quit required) even with the reel verified empty, dry-run done, and ops spaced. `flame.delete(sequence)` seconds earlier worked fine. The "Delete a reel by name" snippet in `flame_reference_guide.md` is WRONG as written for 2027 — reel deletion looks like a GUI-thread structural op.
+**Rule:** NEVER `flame.delete` a PyReel/PyLibrary/PyFolder via the bridge. Sequences and clips are OK. Structural deletes → user does them manually in the Flame UI. Untested hypothesis (only with the user watching, scratch project): wrap in `schedule_idle_event`.
+
+```python
+# FORBIDDEN — deadlocks Flame 2027:
+flame.delete(reel)        # PyReel
+# OK (validated in-vivo same session):
+flame.delete(sequence)    # PySequence inside a reel
+```
+
 ---
 
 ## MANDATORY: Tool pre-approval stays in sync automatically
