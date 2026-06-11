@@ -2,20 +2,34 @@
 test_flame_live.py
 ==================
 Live-Flame regression guards. These tests connect to a REAL Flame bridge
-and exercise the real tool code end-to-end — no mocking. They are skipped
-automatically when no bridge is reachable (CI, fresh clone, Flame closed),
-following the skipif-on-availability pattern recommended after the
-mock-only blindspot lesson: a suite that always mocks `_call_flame` cannot
-catch bugs that only manifest against real Flame (e.g. `str(obj.name)`
-returning quote-wrapped strings).
+and exercise the real tool code end-to-end — no mocking. A suite that
+always mocks `_call_flame` cannot catch bugs that only manifest against
+real Flame (e.g. `str(obj.name)` returning quote-wrapped strings).
 
-Run locally with Flame open to activate these guards.
+OPT-IN ONLY: set ``FLAME_LIVE=1`` to arm this module. Chat 64 incident:
+with a project loaded, a routine ``pytest tests/`` run armed these guards
+as a side effect and queued render/export idle events on Flame's main
+thread → freeze, force quit (second main-thread violation after Chat 63).
+Firing at the real Flame is a user decision, never a side effect of
+running the suite — without the env var this module skips at collection
+time WITHOUT touching the bridge socket (even the reachability probe is
+behind the opt-in).
+
+Run a live pass with:  FLAME_LIVE=1 pytest tests/test_flame_live.py
 """
 
 import os
 import socket
 
 import pytest
+
+if os.environ.get("FLAME_LIVE") != "1":
+    pytest.skip(
+        "Live-Flame harness is opt-in: set FLAME_LIVE=1 to arm it. These "
+        "guards queue main-thread work on a REAL Flame and must never run "
+        "as a side effect of a routine suite run (Chat 64 freeze).",
+        allow_module_level=True,
+    )
 
 
 def _flame_unreachable() -> bool:
