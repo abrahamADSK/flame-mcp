@@ -1060,22 +1060,29 @@ except Exception as e:
         try:
             proc = subprocess.run(
                 [f"{WTAP}/wiretap_get_metadata", "-h", "localhost:IFFFS",
-                 "-n", wtap_id, "-s", "XML"],
+                 "-n", wtap_id, "-m", "XML"],
                 capture_output=True, text=True, timeout=10
             )
             xml = proc.stdout
             def _xml(tag):
                 m = _re.search(rf"<{tag}[^>]*>([^<]+)</{tag}>", xml, _re.IGNORECASE)
                 return m.group(1).strip() if m else "—"
+            # Tag names verified against a real Flame 2027 project node dump
+            # (wiretap_get_metadata -m XML, 2026-06-11). The project XML uses
+            # FrameWidth/FrameHeight/FrameDepth/FieldDominance — NOT the
+            # Width/Height/BitDepth/ScanMode names used by clip nodes.
+            # ColourPolicyName may be legitimately empty (no colour policy set).
             meta_lines = [
                 f"Frame rate: {_xml('FrameRate')}",
-                f"Resolution: {_xml('Width')}x{_xml('Height')}",
-                f"Bit depth: {_xml('BitDepth')}",
-                f"Scan mode: {_xml('ScanMode')}",
-                f"Colour space: {_xml('ColourSpace')}",
+                f"Resolution: {_xml('FrameWidth')}x{_xml('FrameHeight')}",
+                f"Bit depth: {_xml('FrameDepth')}",
+                f"Scan mode: {_xml('FieldDominance')}",
+                f"Colour space: {_xml('ColourPolicyName')}",
             ]
-            # If IFFFS returned all dashes, fall back to .cfg
-            if all(v.endswith("—") for v in meta_lines):
+            # If IFFFS returned no usable value for a required field
+            # (Frame rate, Resolution), fall back to .cfg — a partial
+            # failure must not be displayed as authoritative.
+            if any(v.endswith("—") for v in meta_lines[:2]):
                 meta_lines = _cfg_fallback(project_name_for_cfg)
         except Exception:
             meta_lines = _cfg_fallback(project_name_for_cfg)

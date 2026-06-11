@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`get_project_info` returned empty Resolution / Bit depth / Scan mode
+  (+ SELF-HEAL) on every call** — Chat 64 gotcha, latent since the tool was
+  authored (2026-03-07): the Wiretap XML parser used guessed tag names
+  (`Width`/`Height`/`BitDepth`/`ScanMode`/`ColourSpace`) that do not exist
+  in the PROJECT-node XML. Verified against a real Flame 2027 dump
+  (`wiretap_get_metadata -m XML`): the project node exposes `FrameWidth`/
+  `FrameHeight`/`FrameDepth`/`FieldDominance`/`ColourPolicyName` —
+  `FrameRate` was the only correct guess, which is why frame rate populated
+  while everything else dashed out. Also switched the stream selector to
+  the documented `-m` flag (`-s` is tolerated by the binary but undocumented
+  for this tool), and tightened the `.cfg` fallback guard: a PARTIAL wiretap
+  answer missing a required field (Frame rate, Resolution) now falls back to
+  `.cfg` instead of being displayed as authoritative. Regression tests feed
+  the real captured XML through the parsing path (`tests/test_tools.py::
+  TestGetProjectInfo`), closing the mock-only coverage gap that hid the bug.
+
 ### Changed
 - **Live-Flame harness is now opt-in via `FLAME_LIVE=1`** — Chat 64
   incident: a routine `pytest tests/` run with Flame open armed
