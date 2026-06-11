@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`create_sequence` accepts a `duration` (frames)** — the tool had no
+  duration parameter at all (Chat 63 gotcha: asking for a 50-frame sequence
+  produced Flame's 1-frame default). A `duration > 0` is now forwarded to
+  `PyReel.create_sequence` as `flame.PyTime(frames)`; the success message
+  echoes the resulting `seq.duration.frame` so the created length is visible.
+  Omitting it preserves the previous behaviour. Pending in-vivo validation
+  against Flame 2027.
+
 ## [1.11.0] — 2026-06-11
 
 ### Added
