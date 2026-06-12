@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Bridge log is now size-rotated and mode-restricted** — `_log` in
+  `hooks/flame_mcp_bridge.py` rotates `flame_mcp_bridge.log` at 5 MB (one
+  `.1` backup) so a long Flame session can no longer grow it without bound,
+  and chmods it to `0o640`. Completes the audit log-hardening item whose
+  bridge half was deferred while Flame was open (the server-side
+  `flame_rag.log` rotation already shipped). Also scrubs the `glorfindel`
+  hostname from a bridge code comment (OPSEC parity with the docs).
+
 ### Added
 - **Operation journal is now wired into the execution path** — `_journal_record`
   is invoked from `_execute_python_impl` and from every mutation tool
