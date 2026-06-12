@@ -75,6 +75,7 @@ Doctor implementation — flame-mcp
 Each check returns (status, message) where status is PASS/FAIL/WARN/SKIP.
 Visual format aligned with maya-mcp and fpt-mcp ecosystem.
 """
+import hashlib
 import json
 import os
 import re
@@ -135,11 +136,31 @@ def check_bridge_symlink() -> tuple[str, str]:
                 f"Symlink points to {target} (expected {hook_src}). "
                 f"Run: sudo ln -sf {hook_src} {hook_path}",
             )
-        # Regular file, not a symlink
+        # Regular file, not a symlink — a point-in-time `cp` snapshot that
+        # silently diverges from the repo whenever the bridge is edited (the
+        # recurring stale-bridge incident class). Hash-compare deployed vs repo
+        # and FAIL on drift so doctor actually catches the stale bridge.
+        try:
+            deployed_hash = hashlib.sha256(hook_path.read_bytes()).hexdigest()
+            repo_hash = hashlib.sha256(hook_src.read_bytes()).hexdigest()
+        except OSError as exc:
+            return (
+                "WARN",
+                f"{hook_path} is a regular file; could not hash-compare to "
+                f"{hook_src}: {exc}",
+            )
+        if deployed_hash == repo_hash:
+            return (
+                "WARN",
+                f"{hook_path} is a regular-file copy (content matches the repo "
+                f"now, but will drift on the next edit). Prefer a symlink: "
+                f"sudo ln -sf {hook_src} {hook_path}",
+            )
         return (
-            "WARN",
-            f"{hook_path} exists as a regular file, not a symlink. "
-            f"Consider: sudo ln -sf {hook_src} {hook_path}",
+            "FAIL",
+            f"{hook_path} is a STALE regular-file copy — content differs from "
+            f"{hook_src} (deployed {deployed_hash[:12]} != repo {repo_hash[:12]}). "
+            f"Re-deploy as a symlink: sudo ln -sf {hook_src} {hook_path}",
         )
     if Path("/opt/Autodesk").is_dir():
         return (
@@ -340,20 +361,25 @@ info "Installing Python dependencies..."
 ok "Dependencies installed (mcp, chromadb, sentence-transformers)"
 
 # ── 5. Install Flame hook ─────────────────────────────────────────────────────
+# Deploy as a SYMLINK (not `cp`): a copy is a point-in-time snapshot that
+# silently diverges from the repo whenever the bridge is edited (the recurring
+# stale-bridge incident class) and is exactly what --doctor's check_bridge_symlink
+# expects to PASS. A symlink keeps the deployed bridge identical to the repo by
+# construction; edits take effect after the Flame "MCP Bridge → Reload hook" step.
 HOOK_SRC="$SCRIPT_DIR/hooks/flame_mcp_bridge.py"
 HOOK_DST="/opt/Autodesk/shared/python/flame_mcp_bridge.py"
 
-info "Installing Flame hook to /opt/Autodesk/shared/python/..."
+info "Installing Flame hook (symlink) to /opt/Autodesk/shared/python/..."
 
 if [ ! -d "/opt/Autodesk/shared/python" ]; then
     warn "/opt/Autodesk/shared/python/ not found."
     warn "Is Autodesk Flame installed? Skipping hook installation."
-    warn "To install manually: sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/"
+    warn "To install manually: sudo ln -sf \"$HOOK_SRC\" \"$HOOK_DST\""
 else
-    if sudo cp "$HOOK_SRC" "$HOOK_DST"; then
-        ok "Flame hook installed. Restart Flame to activate the bridge."
+    if sudo ln -sf "$HOOK_SRC" "$HOOK_DST"; then
+        ok "Flame hook symlinked. Restart Flame (or Reload hook) to activate the bridge."
     else
-        err "Failed to copy hook. Try running: sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/"
+        err "Failed to symlink hook. Try running: sudo ln -sf \"$HOOK_SRC\" \"$HOOK_DST\""
     fi
 fi
 
@@ -386,8 +412,12 @@ ok "MCP server 'flame' registered with Claude Code."
 # ── 8. Auto-approve MCP tools in Claude Code ──────────────────────────────────
 # Writes tool permissions to ~/.claude/settings.json (user-level, permissions.allow).
 # Claude Code reads this file globally — works from any project directory.
-# Any future tool added to src/flame_mcp/server.py is auto-approved on next install.
-info "Configuring Claude Code tool auto-approval..."
+# Any future NON-DESTRUCTIVE tool added to src/flame_mcp/server.py is auto-approved
+# on next install. DESTRUCTIVE (_DST) tools are deliberately NOT pre-approved —
+# they require an explicit operator confirmation (Claude Code permission prompt)
+# so a single LLM hallucination cannot delete a populated client library
+# unattended. Mirrors server.py::discover_mcp_tools(include_destructive=False).
+info "Configuring Claude Code tool auto-approval (read-only + non-destructive only)..."
 
 SERVER_SCRIPT="$SERVER_SCRIPT" "$PYTHON_VENV" - <<'PYEOF'
 import ast, json, os
@@ -396,9 +426,18 @@ from pathlib import Path
 server_script = os.environ['SERVER_SCRIPT']
 settings_path = Path.home() / ".claude" / "settings.json"
 
-# Extract all @mcp.tool() decorated function names
+# Extract @mcp.tool() decorated function names, EXCLUDING destructive (_DST)
+# tools so they are never silently pre-approved.
 with open(server_script) as f:
     tree = ast.parse(f.read())
+
+def _is_destructive(dec):
+    return any(
+        kw.arg == 'annotations'
+        and isinstance(kw.value, ast.Name)
+        and kw.value.id == '_DST'
+        for kw in getattr(dec, 'keywords', [])
+    )
 
 new_tools = []
 for node in ast.walk(tree):
@@ -407,6 +446,8 @@ for node in ast.walk(tree):
             if (isinstance(dec, ast.Call)
                     and isinstance(dec.func, ast.Attribute)
                     and dec.func.attr == 'tool'):
+                if _is_destructive(dec):
+                    continue  # destructive: requires explicit confirmation
                 new_tools.append(f'mcp__flame__{node.name}')
 
 # Merge with existing settings (preserves entries from other servers)

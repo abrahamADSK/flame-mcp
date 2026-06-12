@@ -129,54 +129,102 @@ class Journal:
 # The generator receives the regex match and the result string,
 # and returns undo code (str) or None if it cannot produce safe undo code.
 
-def _undo_create_library(match: re.Match, result: str) -> str | None:
-    """Undo ws.create_library('Name') → flame.delete(lib)."""
-    lib_name = match.group("name")
+# Result file written by the scheduled structural delete (read it in a separate
+# step to confirm completion, exactly like render/export).
+_UNDO_RESULT_FILE = "~/flame_undo_result.txt"
+
+
+def _schedule_idle_delete(finder_code: str, label: str) -> str:
+    """Build undo code that deletes a *structural* Flame object safely.
+
+    Direct ``flame.delete()`` on a PyLibrary / PyReel / PyFolder / PyBatchGroup
+    DEADLOCKS Flame 2027's main thread (ecosystem invariant — the bridge times
+    out at ~15 s with the UI frozen and a force-quit required). The only
+    validated-safe form is ``flame.schedule_idle_event`` + a result file, the
+    same pattern render_batch / export_clip use. The delete therefore runs
+    ASYNCHRONOUSLY: ``undo_last_operation`` returns as soon as it is scheduled,
+    and the operator reads ``~/flame_undo_result.txt`` to confirm.
+
+    Names captured from the create-call regex cannot contain quotes (the
+    patterns use ``[^'\"]+``), so direct interpolation into the generated
+    string literals is safe.
+
+    Args:
+        finder_code: Python that locates the object and binds it to ``target``
+                     (or ``target = None`` when not found). May span several
+                     lines; ``ws`` is already defined when it runs.
+        label:       Human-readable description for the messages, e.g.
+                     ``"library VFX_Shots"``.
+    """
     return (
-        "import flame\n"
+        "import flame, os\n"
+        f"result_file = os.path.expanduser({_UNDO_RESULT_FILE!r})\n"
         "ws = flame.projects.current_project.current_workspace\n"
-        f"lib = next((l for l in ws.libraries if str(l.name) == {lib_name!r}), None)\n"
-        "if lib:\n"
-        "    flame.delete(lib)\n"
-        f"    print('Deleted library: {lib_name}')\n"
+        f"{finder_code}\n"
+        "if target is None:\n"
+        f"    print('Undo target not found: {label}')\n"
+        "elif not hasattr(flame, 'schedule_idle_event'):\n"
+        "    print('ERROR: Flame idle-event API unavailable — bring Flame to the "
+        "foreground (active app) and retry.')\n"
         "else:\n"
-        f"    print('Library not found: {lib_name}')"
+        "    def _do_delete():\n"
+        "        try:\n"
+        "            flame.delete(target)\n"
+        f"            msg = 'OK: deleted {label}'\n"
+        "        except Exception as e:\n"
+        "            msg = 'ERROR: ' + str(e)\n"
+        "        with open(result_file, 'w') as f:\n"
+        "            f.write(msg)\n"
+        "    flame.schedule_idle_event(_do_delete)\n"
+        f"    print('Undo (delete {label}) scheduled via idle event.')\n"
     )
 
 
+def _undo_create_library(match: re.Match, result: str) -> str | None:
+    """Undo ws.create_library('Name') → scheduled flame.delete(lib).
+
+    Structural delete: wrapped in schedule_idle_event (see _schedule_idle_delete).
+    """
+    lib_name = match.group("name")
+    finder = (
+        f"target = next((l for l in ws.libraries if str(l.name) == {lib_name!r}), None)"
+    )
+    return _schedule_idle_delete(finder, f"library {lib_name}")
+
+
 def _undo_create_reel(match: re.Match, result: str) -> str | None:
-    """Undo create_reel('Name') → flame.delete(reel)."""
+    """Undo create_reel('Name') → scheduled flame.delete(reel).
+
+    Structural delete: wrapped in schedule_idle_event (see _schedule_idle_delete).
+    """
     reel_name = match.group("name")
-    return (
-        "import flame\n"
-        "ws = flame.projects.current_project.current_workspace\n"
-        "# Search all visible libraries for the reel\n"
+    finder = (
         "HIDDEN = {'Timeline FX', 'Grabbed References'}\n"
+        "target = None\n"
         "for lib in ws.libraries:\n"
         "    if str(lib.name) in HIDDEN:\n"
         "        continue\n"
         "    for reel in lib.reels:\n"
         f"        if str(reel.name) == {reel_name!r}:\n"
-        "            flame.delete(reel)\n"
-        f"            print('Deleted reel: {reel_name}')\n"
-        "            break"
+        "            target = reel\n"
+        "            break\n"
+        "    if target is not None:\n"
+        "        break"
     )
+    return _schedule_idle_delete(finder, f"reel {reel_name}")
 
 
 def _undo_create_batch_group(match: re.Match, result: str) -> str | None:
-    """Undo create_batch_group('Name') → flame.delete(bg)."""
+    """Undo create_batch_group('Name') → scheduled flame.delete(bg).
+
+    Structural delete: wrapped in schedule_idle_event (see _schedule_idle_delete).
+    """
     bg_name = match.group("name")
-    return (
-        "import flame\n"
-        "ws = flame.projects.current_project.current_workspace\n"
+    finder = (
         "desktop = ws.desktop\n"
-        f"bg = next((b for b in desktop.batch_groups if str(b.name) == {bg_name!r}), None)\n"
-        "if bg:\n"
-        "    flame.delete(bg)\n"
-        f"    print('Deleted batch group: {bg_name}')\n"
-        "else:\n"
-        f"    print('Batch group not found: {bg_name}')"
+        f"target = next((b for b in desktop.batch_groups if str(b.name) == {bg_name!r}), None)"
     )
+    return _schedule_idle_delete(finder, f"batch group {bg_name}")
 
 
 def _undo_rename(match: re.Match, result: str) -> str | None:

@@ -1,7 +1,7 @@
 {
   "model": "claude-sonnet-4-6",
   "backend": "anthropic",
-  "ollama_url": "http://glorfindel:11434",
+  "ollama_url": "http://gpu-host.lan:11434",
   "ollama_mac_url": "http://localhost:11434",
 
   "rag_fallback_threshold": 60,

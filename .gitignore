@@ -72,6 +72,11 @@ __MACOSX/
 ._*
 src/flame_mcp/rag/index/
 src/flame_mcp/rag/corpus.json
+# learn_pattern staging files — _CANDIDATES_PATH / _FAILED_PATH in server.py
+# resolve here (NOT to the top-level rag/ paths above). A write-allowed model's
+# staged API patterns + internal asset/project names must never be committable.
+src/flame_mcp/rag/candidates.json
+src/flame_mcp/rag/failed.json
 
 # Coverage artifact from pytest-cov
 .coverage

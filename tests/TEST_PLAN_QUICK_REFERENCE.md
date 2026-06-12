@@ -181,7 +181,7 @@ _DST = ToolAnnotations(readOnlyHint=False, destructiveHint=True)   # 1 tool (exe
 - **Cache**: Within-session identical query cache (A12 pattern)
 
 ### Learned Patterns Flow
-- **Trusted models** (Sonnet, Opus):
+- **Write-trusted models** (Opus, Fable — Sonnet stages to `candidates.json`):
   - Call `learn_pattern(description, code)`
   - → Appends to FLAME_API.md
   - → Rebuilds RAG index in background thread

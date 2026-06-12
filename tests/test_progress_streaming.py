@@ -102,11 +102,26 @@ class TestWrappersPassThrough:
             "render_batch",
             "export_clip",
             "import_clips",
+            # F5b fix: execute_plan can dispatch the 120 s import op, so it too
+            # must offload to a worker thread instead of blocking the loop.
+            "execute_plan",
         ):
             assert asyncio.iscoroutinefunction(getattr(srv, name)), name
             assert not asyncio.iscoroutinefunction(
                 getattr(srv, f"_{name}_impl")
             ), f"_{name}_impl must stay sync"
+
+    @pytest.mark.asyncio
+    async def test_execute_plan_wrapper_passthrough(self, monkeypatch):
+        """execute_plan is async and returns its sync impl's result unchanged."""
+        def fake_impl(plan):
+            return f"PLAN-RESULT:{len(plan.get('ops', []))}"
+
+        monkeypatch.setattr(srv, "_execute_plan_impl", fake_impl)
+
+        out = await srv.execute_plan({"ops": [{"op": "ping", "args": {}}]})
+
+        assert out == "PLAN-RESULT:1"
 
     @pytest.mark.asyncio
     async def test_execute_python_wrapper_passthrough(self, monkeypatch):

@@ -915,6 +915,11 @@ def _execute_python_impl(
     # partial-failure exec can still have side-effected Flame state.
     _workspace_invalidate(_WORKSPACE_PREFIX)
 
+    # Architecture 3.6 — record every execute_python call in the operation
+    # journal (audit trail + undo). Without this the journal stays empty and
+    # operation_history / undo_last_operation are dead.
+    _journal_record(code, result)
+
     return rag_nudge + b4_warning + _fmt(result) + footer
 
 
@@ -2058,7 +2063,7 @@ _plan.register_op(
 
 
 @mcp.tool(annotations=_DST)
-def execute_plan(plan: dict) -> str:
+async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
     """
     Run a structured plan against Flame (F5b / AJUSTE 1).
 
@@ -2118,6 +2123,22 @@ def execute_plan(plan: dict) -> str:
     Args:
         plan: Already-parsed JSON object (FastMCP handles the parse).
     """
+    # F5b fix: the plan may dispatch the heaviest covered op (import_clips, a
+    # 120 s-timeout bridge call). FastMCP runs sync tools inline on the asyncio
+    # event loop, which would freeze the whole MCP server for the duration.
+    # Offload dispatch to a worker thread with progress heartbeats — same
+    # sync-_impl + async-wrapper pattern as execute_python/import_clips/etc.
+    # The per-op registry handlers stay synchronous (Chat 63 design): they run
+    # inside this worker thread, never on the event loop.
+    return await _to_thread_with_heartbeat(
+        lambda: _execute_plan_impl(plan), ctx, "execute_plan",
+    )
+
+
+def _execute_plan_impl(plan: dict) -> str:
+    """Sync body of execute_plan — validates and dispatches the plan against
+    Flame. Kept synchronous so the async wrapper above can offload it to a
+    worker thread; the execute_plan op registry calls only sync handlers."""
     _track_dedicated()
     try:
         output = _plan.dispatch_plan(plan)
@@ -2298,6 +2319,7 @@ def rename_segments(
         f"      print('Renamed: {clip_name} → {new_name}')\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
     return _fmt(result)
 
 
@@ -2336,6 +2358,7 @@ def create_sequence(
         f"    print('Created sequence: ' + str(seq.name).strip(\"'\") + ' (' + str(seq.duration.frame) + ' frames)')\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
     return _fmt(result)
 
 
@@ -2400,6 +2423,7 @@ def _render_batch_impl(
         "    print('Render scheduled via idle event.')\n"
     )
     result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
     out = _fmt(result)
     if result.get("status") == "error":
         return out
@@ -2506,6 +2530,7 @@ else:
         preset=preset_path,
     )
     result = _call_flame(code, timeout=20, dedicated_tool=True)
+    _journal_record(code, result)
     out = _fmt(result)
     if result.get("status") == "error" or "ERROR:" in out:
         return out
@@ -2545,7 +2570,9 @@ def create_library(library_name: str) -> str:
         f"lib = ws.create_library({library_name!r})\n"
         f"print('Created library: ' + str(lib.name).strip(\"'\"))\n"
     )
-    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 @mcp.tool(annotations=_DST)
@@ -2567,7 +2594,9 @@ def create_reel(library_name: str, reel_name: str) -> str:
         f"  reel = lib.create_reel({reel_name!r})\n"
         f"  print('Created reel: ' + str(reel.name).strip(\"'\"))\n"
     )
-    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 @mcp.tool(annotations=_DST)
@@ -2589,7 +2618,9 @@ def create_folder(library_name: str, folder_name: str) -> str:
         f"  folder = lib.create_folder({folder_name!r})\n"
         f"  print('Created folder: ' + str(folder.name).strip(\"'\"))\n"
     )
-    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 @mcp.tool(annotations=_DST)
@@ -2611,7 +2642,9 @@ def create_reel_group(library_name: str, reel_group_name: str) -> str:
         f"  rg = lib.create_reel_group({reel_group_name!r})\n"
         f"  print('Created reel group: ' + str(rg.name).strip(\"'\"))\n"
     )
-    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 _plan.register_op(
@@ -2652,7 +2685,9 @@ def create_batch_group(name: str) -> str:
         f"bg = flame.batch.create_batch_group({name!r})\n"
         f"print('Created batch group: ' + str(bg.name).strip(\"'\"))\n"
     )
-    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 @mcp.tool(annotations=_DST)
@@ -2696,7 +2731,9 @@ def _import_clips_impl(path: str, library_name: str, reel_name: str = "") -> str
         f"else:\n"
         f"{dest_lines}"
     )
-    return _fmt(_call_flame(code, timeout=120, dedicated_tool=True))
+    result = _call_flame(code, timeout=120, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 _plan.register_op(
@@ -2795,7 +2832,9 @@ else:
         src_clip=source_clip,
         to_desktop=to_desktop,
     )
-    return _fmt(_call_flame(code, timeout=30, dedicated_tool=True))
+    result = _call_flame(code, timeout=30, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
 
 
 @mcp.tool(annotations=_DST)
@@ -2931,23 +2970,42 @@ def collect_media_paths(
         reel_name:    Optional reel filter. If omitted, scans all reels.
     """
     _track_dedicated()
-    reel_filter = f"if str(r.name).strip(\"'\") == {reel_name!r}" if reel_name else ""
+
+    # Build the per-clip extraction loop. When a reel filter is active the loop
+    # is nested one level deeper (inside the `if` guarding the reel name), so its
+    # indentation is parameterised. The previous one-liner used an inline ternary
+    # that bound across implicit string concatenation and dropped whole blocks,
+    # producing un-parseable Python on every call — fixed here with an explicit
+    # if/else that assembles the reel body separately, mirroring
+    # _import_clips_impl's dest-block pattern.
+    def _clip_loop(indent: str) -> str:
+        return (
+            f"{indent}for c in r.clips:\n"
+            f"{indent}  try:\n"
+            f"{indent}    v = c.versions[0]\n"
+            f"{indent}    t = v.tracks[0]\n"
+            f"{indent}    s = t.segments[0]\n"
+            f"{indent}    paths.append(str(c.name) + ': ' + str(s.file_path))\n"
+            f"{indent}  except: paths.append(str(c.name) + ': (no path)')\n"
+        )
+
+    if reel_name:
+        reel_body = (
+            f"    if str(r.name).strip(\"'\") == {reel_name!r}:\n"
+            + _clip_loop("      ")
+        )
+    else:
+        reel_body = _clip_loop("    ")
+
     code = (
-        f"import flame\n"
-        f"ws = flame.projects.current_project.current_workspace\n"
+        "import flame\n"
+        "ws = flame.projects.current_project.current_workspace\n"
         f"lib = next((l for l in ws.libraries if str(l.name).strip(\"'\") == {library_name!r}), None)\n"
-        f"if not lib: print('ERROR: library not found')\n"
-        f"else:\n"
-        f"  paths = []\n"
-        f"  for r in lib.reels:\n"
-        f"    {reel_filter}\n" if reel_name else ""
-        "    for c in r.clips:\n"
-        "      try:\n"
-        "        v = c.versions[0]\n"
-        "        t = v.tracks[0]\n"
-        "        s = t.segments[0]\n"
-        "        paths.append(str(c.name) + ': ' + str(s.file_path))\n"
-        "      except: paths.append(str(c.name) + ': (no path)')\n"
+        "if not lib: print('ERROR: library not found')\n"
+        "else:\n"
+        "  paths = []\n"
+        "  for r in lib.reels:\n"
+        f"{reel_body}"
         "  print(chr(10).join(paths) if paths else '(no clips found)')\n"
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
@@ -2957,8 +3015,51 @@ def collect_media_paths(
 # ─── Architecture 3.6: operation journaling + undo ────────────��──────────────
 
 # Singleton journal instance — lives for the server process lifetime
-from flame_mcp.journal import Journal as _Journal  # noqa: E402 — grouped with journaling block below
+from flame_mcp.journal import (  # noqa: E402 — grouped with journaling block below
+    Journal as _Journal,
+    UndoCodeGenerator as _UndoCodeGenerator,
+)
 _journal = _Journal()
+
+
+def _journal_record(code: str, result: dict) -> None:
+    """Record a Flame-mutating operation in the in-memory operation journal.
+
+    Wired into _execute_python_impl and every mutation tool so that
+    operation_history reflects what was actually done this session and
+    undo_last_operation has reversible entries to act on. Previously only
+    undo_last_operation called _journal.record(), so the journal was always
+    empty (dead audit trail).
+
+    Auto-generated undo code is attached only for successful, reversible
+    operations (create/rename/move). Failures and inherently destructive ops
+    are still recorded as non-undoable audit entries.
+
+    Best-effort: a journaling failure must never break the underlying tool, so
+    every exception is swallowed.
+
+    Args:
+        code:   The Python source that was sent to the Flame bridge.
+        result: The raw bridge response dict (output/error/status/_bridge_ms).
+    """
+    try:
+        output = (result.get('output', '') or '') + (result.get('error', '') or '')
+        is_error = (
+            result.get('status') == 'error'
+            or bool(result.get('error'))
+            or output.startswith('ERROR')
+            or output.startswith('Traceback')
+        )
+        undo_code = None
+        if not is_error:
+            undo_code = _UndoCodeGenerator.generate_undo(code, output)
+        _journal.record(
+            code,
+            {'status': 'error' if is_error else 'success', 'output': output},
+            undo_code,
+        )
+    except Exception:
+        pass
 
 
 @mcp.tool(annotations=_RO)
@@ -3009,27 +3110,65 @@ def undo_last_operation() -> str:
 
 # ─── Startup: auto-sync tool permissions ─────────────────────────────────────
 
+def _decorator_is_destructive(dec) -> bool:
+    """True if an @mcp.tool(...) AST decorator carries annotations=_DST."""
+    import ast as _ast
+    return any(
+        kw.arg == 'annotations'
+        and isinstance(kw.value, _ast.Name)
+        and kw.value.id == '_DST'
+        for kw in getattr(dec, 'keywords', [])
+    )
+
+
+def discover_mcp_tools(source: str, include_destructive: bool = True) -> set[str]:
+    """Return the ``mcp__flame__<name>`` ids for every @mcp.tool in ``source``.
+
+    Security gate (audit finding): when ``include_destructive`` is False, tools
+    annotated ``_DST`` (destructive: execute_python, execute_plan, create_*,
+    timeline_*, rename_segments, render_batch, export_clip, undo_last_operation,
+    create_sequence) are EXCLUDED. These must never be silently auto-approved —
+    they require an explicit operator confirmation (the Claude Code permission
+    prompt) so a single LLM hallucination cannot delete a populated client
+    library with no prompt. Only read-only (_RO) and non-destructive write
+    (_RW) tools are pre-approved.
+
+    Pure function over a source string so it can be unit-tested without touching
+    settings files. Used by _sync_tool_permissions (runtime) and mirrored by
+    install.sh step 8 (install time).
+    """
+    import ast as _ast
+    tree = _ast.parse(source)
+    names: set[str] = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                if (isinstance(dec, _ast.Call)
+                        and isinstance(dec.func, _ast.Attribute)
+                        and dec.func.attr == 'tool'):
+                    if not include_destructive and _decorator_is_destructive(dec):
+                        continue
+                    names.add(f'mcp__flame__{node.name}')
+    return names
+
+
 def _sync_tool_permissions() -> None:
     """
-    On every server start, ensure all @mcp.tool functions are listed in
-    .claude/settings.local.json.  This prevents OBS-006 from recurring:
-    any new tool added to src/flame_mcp/server.py is auto-approved the next
-    time the server (re-)starts — no manual settings edit needed.
+    On every server start, ensure all NON-DESTRUCTIVE @mcp.tool functions are
+    listed in .claude/settings.local.json.  This prevents OBS-006 from
+    recurring: any new read-only/write tool added to src/flame_mcp/server.py is
+    auto-approved the next time the server (re-)starts — no manual settings edit
+    needed.
+
+    Destructive (_DST) tools are deliberately NOT auto-approved (audit finding):
+    they fall through to the Claude Code permission prompt so destructive Flame
+    operations always require explicit operator confirmation.
     """
     settings_path = _SERVER_DIR / ".claude" / "settings.local.json"
     try:
-        import ast as _ast
-        # Derive all current tool names from this file's own source
+        # Derive non-destructive tool names from this file's own source
         with open(__file__) as _f:
-            _tree = _ast.parse(_f.read())
-        current_tools = set()
-        for _node in _ast.walk(_tree):
-            if isinstance(_node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                for _dec in _node.decorator_list:
-                    if (isinstance(_dec, _ast.Call)
-                            and isinstance(_dec.func, _ast.Attribute)
-                            and _dec.func.attr == 'tool'):
-                        current_tools.add(f'mcp__flame__{_node.name}')
+            current_tools = discover_mcp_tools(_f.read(), include_destructive=False)
 
         # Load existing settings (or start from empty)
         if settings_path.exists():

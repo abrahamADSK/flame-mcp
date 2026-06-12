@@ -3375,8 +3375,17 @@ for rg in ws.desktop.reel_groups:
 if not seq:
     print("ERROR: sequence not found")
 else:
+    import glob
     output_dir = "/Users/YOUR_USERNAME/Desktop/EXPORTS_MCP"
-    preset_path = "/opt/Autodesk/presets/2026.2.2/export/presets/flame/movie_file/H.264/QuickTime (High 8-bit).xml"
+    # Resolve the H.264 QuickTime export preset for the RUNNING Flame version.
+    # /opt/Autodesk/presets/<version>/ is version-specific, so a hardcoded path
+    # (e.g. 2026.2.2) does not exist on 2027+. Glob the installed presets and
+    # take the newest match instead of pinning a version string.
+    _preset_glob = "/opt/Autodesk/presets/*/export/presets/flame/movie_file/H.264/QuickTime (High 8-bit).xml"
+    _presets = sorted(glob.glob(_preset_glob))
+    preset_path = _presets[-1] if _presets else ""
+    if not preset_path:
+        print("ERROR: no H.264 QuickTime export preset found under /opt/Autodesk/presets/")
     os.makedirs(output_dir, exist_ok=True)
 
     # Step 2: schedule export via idle event — NEVER call .export() directly

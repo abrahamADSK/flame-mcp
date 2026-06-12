@@ -109,8 +109,8 @@
   - `description: str` - Short English label (e.g., "delete folder by name from library")
   - `code: str` - Working Python code that just executed successfully
 - **Behavior**:
-  - Trusted models (Sonnet/Opus): Add pattern directly to FLAME_API.md, rebuild RAG index in background
-  - Read-only models (Haiku): Stage pattern to rag/candidates.json for human review
+  - Write-trusted models (Opus/Fable): Add pattern directly to FLAME_API.md, rebuild RAG index in background
+  - All other models (Sonnet, Haiku, local Qwen/GLM): Stage pattern to rag/candidates.json for human review
 - **Deduplication**: Checks if similar description already documented
 - **Traceability**: Adds model + date metadata to learned patterns
 
@@ -804,8 +804,8 @@ flame (module root)
 - Pre-configured test project with fixtures
 
 ### Model-Specific Behavior
-- Trusted models (Sonnet/Opus): learn_pattern → FLAME_API.md
-- Read-only models (Haiku): learn_pattern → rag/candidates.json
+- Write-trusted models (Opus/Fable): learn_pattern → FLAME_API.md
+- All other models (Sonnet, Haiku, local Qwen/GLM): learn_pattern → rag/candidates.json
 - Requires human promotion for read-only patterns
 
 ---

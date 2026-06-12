@@ -125,9 +125,10 @@ No circular imports.
   the code may be undocumented.
 - **Self-healing**: after a successful `execute_python` whose preceding
   `search_flame_docs` scored below threshold, if the active model is in
-  `WRITE_ALLOWED_MODELS` (Sonnet/Opus substring match), `learn_pattern()`
+  `WRITE_ALLOWED_MODELS` (Opus/Fable substring match), `learn_pattern()`
   appends the code pattern to `FLAME_API.md` and rebuilds the index. For
-  read-only models the pattern is staged in `rag/candidates.json` instead.
+  all other models — including the default Sonnet — the pattern is staged
+  in `rag/candidates.json` for human review instead.
 
 ## 7. Safety & redirect enforcement
 
@@ -680,7 +681,7 @@ flowchart TD
 
     subgraph WG[Model gate — WRITE_ALLOWED_MODELS substring match]
         D --> E{active model in<br/>WRITE_ALLOWED_MODELS?}
-        E -- yes&nbsp;&lpar;Sonnet&nbsp;/&nbsp;Opus&rpar; --> F[append snippet<br/>to FLAME_API.md]
+        E -- yes&nbsp;&lpar;Opus&nbsp;/&nbsp;Fable&rpar; --> F[append snippet<br/>to FLAME_API.md]
         E -- no&nbsp;&lpar;Qwen&nbsp;/&nbsp;GLM&nbsp;/&nbsp;local&rpar; --> G[stage to<br/>rag/candidates.json]
     end
 
@@ -739,7 +740,7 @@ the subset of invariants that can be re-derived from the source-of-truth:
 | Field | Value |
 |---|---|
 | **Trigger** | `execute_python` succeeds AND the preceding `search_flame_docs` returned a top score below `rag_fallback_threshold` (default 60, configurable via `config.json`). |
-| **Behaviour** | The LLM calls `learn_pattern(description, code)`. The server checks whether the **currently active model** is in `WRITE_ALLOWED_MODELS` via substring match (Chat 44 design — substring lets `claude-sonnet-4-5-20250929` match an entry of `sonnet`). If allowed, append a formatted block to `FLAME_API.md` under the next "Learned" sub-header and rebuild the RAG index. If not allowed, append the proposal to `rag/candidates.json` for human review before promotion. |
+| **Behaviour** | The LLM calls `learn_pattern(description, code)`. The server checks whether the **currently active model** is in `WRITE_ALLOWED_MODELS` via substring match (the set holds the prefixes `claude-opus` and `claude-fable`, so any Opus/Fable release ID matches; Sonnet and the local Qwen/GLM models do **not**). If allowed, append a formatted block to `FLAME_API.md` under the next "Learned" sub-header and rebuild the RAG index. If not allowed, append the proposal to `rag/candidates.json` for human review before promotion. |
 | **Why two paths** | Local models (Qwen3.5, GLM, Llama variants) score well on tool-calling benchmarks but have not been validated for writing API reference docs that subsequent Sonnet/Opus sessions will trust as canonical. The candidate queue keeps their suggestions visible without polluting `FLAME_API.md`. |
 | **Code** | `server.py::learn_pattern()` at ~line 1485. Gate helper: `_is_write_allowed_model()` at ~line 109. Index rebuild: `src/flame_mcp/rag/build_index.py`. |
 | **Output** | `FLAME_API.md` (gains a section) and `rag/index/` (regenerated ChromaDB store). Or, in the gated branch, `rag/candidates.json` (append-only). |
