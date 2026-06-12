@@ -7,7 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Operation journal is now wired into the execution path** — `_journal_record`
+  is invoked from `_execute_python_impl` and from every mutation tool
+  (`rename_segments`, `create_sequence`, `_render_batch_impl`, `export_clip`,
+  `create_library`, `create_reel`, `create_folder`, `create_reel_group`,
+  `create_batch_group`, `_import_clips_impl`, timeline insert/overwrite), so
+  `operation_history` and `undo_last_operation` finally return real data
+  instead of the "no operations recorded" / "journal is empty" sentinels.
+  Each entry carries an auto-generated undo snippet. (Previously dead code —
+  there was no audit trail of what the LLM did to the project.)
+- **A2-EXT PyExporter safety rule now has pytest coverage** —
+  `tests/test_safety.py::TestPyExporterIdleEvent` asserts a bare
+  `flame.PyExporter().export(...)` is blocked and the documented
+  `schedule_idle_event` form passes, so a refactor can no longer silently
+  drop the rule and reintroduce the Flame main-thread hang it prevents.
+- **CI hardening** — Python 3.13 (the deployed interpreter and the one inside
+  Flame 2027) added to the test matrix; the pytest step now
+  `--ignore=tests/test_flame_live.py` as defense-in-depth so the live harness
+  can never arm in CI even if a stray `FLAME_LIVE` leaks into the env.
+- **`flame_rag.log` is now size-capped** — `search.py::_log` rotates the file
+  to `flame_rag.log.1` at 5 MB (mirroring the `TELEMETRY_MAX_BYTES` pattern in
+  `_session_stats.persist_timing`), replacing the previous unbounded append.
+- **`cut-release.sh` maintains the CHANGELOG footer compare-links** — it now
+  repoints `[Unreleased]` at the new tag and inserts the per-version compare
+  link on every cut, so the footer can no longer rot (it had drifted to
+  v1.2.1 while the code was at v1.11.1).
+
+### Changed
+- **`execute_plan` is now async** — it offloads `dispatch_plan` through
+  `_to_thread_with_heartbeat`, so the blocking bridge socket (up to the 120 s
+  import timeout for a covered op) no longer freezes the asyncio event loop;
+  it now streams heartbeats and matches the existing
+  `execute_python`/`import_clips`/`render_batch`/`export_clip` wrappers.
+  Per-op registry handlers stay synchronous.
+- **Installer deploys the Flame bridge as a symlink** — `install.sh` step 5
+  now uses `sudo ln -sf` instead of `sudo cp`, eliminating the recurring
+  stale-bridge drift class. `--doctor`'s bridge check additionally
+  sha256-compares the deployed hook against `hooks/flame_mcp_bridge.py` and
+  FAILs on a stale regular-file copy (WARN when it merely matches now).
+- **Only non-destructive tools are pre-approved** — `install.sh` step 8,
+  `scripts/generate_settings.py` and `_sync_tool_permissions` now exclude any
+  `@mcp.tool` carrying `annotations=_DST` (AST-based, covering async tools the
+  old regex missed). `execute_python`, `execute_plan`, the
+  `create_*`/`timeline_*`/render/export/import writers and
+  `undo_last_operation` fall through to the interactive permission prompt
+  instead of being silently auto-allowed.
+- **Documentation accuracy sweep** — write-trust corrected to **Opus/Fable**
+  (Sonnet, the default cloud model, stages to `rag/candidates.json` for human
+  review) across README, `docs/ARCHITECTURE.md` and the test-plan docs; README
+  tool count `18`→`38` and the `--doctor` check labels corrected; the project
+  structure tree now shows `src/flame_mcp/rag/{build_index,search}.py`; the
+  offline-Mac model setup uses `qwen3.5:4b` (a real `AVAILABLE_MODELS` entry)
+  instead of the non-existent `qwen2.5-coder:7b`; the FLAME_API export sample
+  resolves the H.264 QuickTime preset via `glob` of
+  `/opt/Autodesk/presets/*/…` instead of a hardcoded `2026.2.2` path that does
+  not exist on Flame 2027 (RAG corpus rebuilt).
+- **Live-Flame harness is now opt-in via `FLAME_LIVE=1`** — Chat 64
+  incident: a routine `pytest tests/` run with Flame open armed
+  `test_flame_live.py` (its gates probe the bridge at collection time) and
+  queued render/export idle events on the main thread → Flame froze
+  (second main-thread violation after Chat 63). Without the env var the
+  module now skips at collection WITHOUT touching the bridge socket;
+  firing at the real Flame is a user decision, never a suite side effect.
+  Lock tests in `tests/test_live_optin.py`. Run a live pass with
+  `FLAME_LIVE=1 pytest tests/test_flame_live.py`.
+
 ### Fixed
+- **`collect_media_paths` generated un-parseable Python on every call** — the
+  inline ternary `f"    {reel_filter}\n" if reel_name else ""` bound across
+  implicit string concatenation, dropping the clips loop (or the import/outer
+  setup) and raising `SyntaxError`/`IndentationError` on every invocation.
+  Rebuilt with an explicit if/else that assembles the reel body via a
+  `_clip_loop(indent)` helper, mirroring `_import_clips_impl`. Regression test
+  `tests/test_collect_media_paths.py` compiles both branches.
+- **Journal undo of a structural create no longer deadlocks Flame 2027** — the
+  undo generators for `create_library`/`create_reel`/`create_batch_group` now
+  route `flame.delete(target)` through `_schedule_idle_delete` (a `_do_delete`
+  closure dispatched via `flame.schedule_idle_event` plus a result file)
+  instead of a bare `flame.delete`, honoring the invariant that a bare
+  `flame.delete` on a PyReel/PyLibrary deadlocks the Flame main thread.
 - **`get_project_info` returned empty Resolution / Bit depth / Scan mode
   (+ SELF-HEAL) on every call** — Chat 64 gotcha, latent since the tool was
   authored (2026-03-07): the Wiretap XML parser used guessed tag names
@@ -24,16 +103,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the real captured XML through the parsing path (`tests/test_tools.py::
   TestGetProjectInfo`), closing the mock-only coverage gap that hid the bug.
 
-### Changed
-- **Live-Flame harness is now opt-in via `FLAME_LIVE=1`** — Chat 64
-  incident: a routine `pytest tests/` run with Flame open armed
-  `test_flame_live.py` (its gates probe the bridge at collection time) and
-  queued render/export idle events on the main thread → Flame froze
-  (second main-thread violation after Chat 63). Without the env var the
-  module now skips at collection WITHOUT touching the bridge socket;
-  firing at the real Flame is a user decision, never a suite side effect.
-  Lock tests in `tests/test_live_optin.py`. Run a live pass with
-  `FLAME_LIVE=1 pytest tests/test_flame_live.py`.
+### Security
+- **Destructive Flame tools are no longer auto-approved** — combined with the
+  now-live operation journal, an LLM hallucination can no longer delete a
+  populated library of client media without an interactive permission prompt,
+  and every mutation is recorded with an auto-generated undo.
+- **`.gitignore` now covers the real `learn_pattern` staging paths** —
+  `src/flame_mcp/rag/candidates.json` and `src/flame_mcp/rag/failed.json`
+  (the actual `_CANDIDATES_PATH`/`_FAILED_PATH` targets) were outside the
+  top-level `rag/` ignore rules, so a `git add -A` could have committed
+  staged (possibly hallucinated) API patterns and internal asset/project
+  names. Now ignored.
+- **Internal hostname removed from published example/docs** —
+  `config.example.json` and `CLAUDE.md` use a `gpu-host.lan` / "LAN GPU host"
+  placeholder instead of the real hostname, and the retired "Mac M5 Pro"
+  reference was dropped.
 
 ## [1.11.1] — 2026-06-11
 
@@ -939,7 +1023,24 @@ Tests: 462 passed, 113 skipped, 0 failed (was 447/113).
 - Safety validator with crash-prevention patterns
 - Complete reference documentation (README + PDF guide)
 
-[Unreleased]: https://github.com/abrahamADSK/flame-mcp/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/abrahamADSK/flame-mcp/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.11.0...v1.11.1
+[1.11.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.10.0...v1.11.0
+[1.10.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.9.3...v1.10.0
+[1.9.3]: https://github.com/abrahamADSK/flame-mcp/compare/v1.9.2...v1.9.3
+[1.9.2]: https://github.com/abrahamADSK/flame-mcp/compare/v1.9.1...v1.9.2
+[1.9.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.4.3...v1.5.0
+[1.4.3]: https://github.com/abrahamADSK/flame-mcp/compare/v1.4.2...v1.4.3
+[1.4.2]: https://github.com/abrahamADSK/flame-mcp/compare/v1.4.1...v1.4.2
+[1.4.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/abrahamADSK/flame-mcp/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/abrahamADSK/flame-mcp/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/abrahamADSK/flame-mcp/compare/v1.1.1...v1.1.2

@@ -12,7 +12,7 @@ Run once after a fresh clone, or after adding new tools to the server:
 The generated file is gitignored by design — it contains workstation-specific
 settings. This script ensures every install starts with all tools allowed.
 """
-import re
+import ast
 import json
 from pathlib import Path
 
@@ -24,15 +24,35 @@ SETTINGS = ROOT / ".claude" / "settings.local.json"
 
 source = SERVER.read_text()
 
-# Match every function decorated with @mcp.tool(...) immediately above def <name>
-pattern = re.compile(
-    r'@mcp\.tool\([^)]*\)\s*\ndef (\w+)\(',
-    re.MULTILINE
-)
-tool_names = sorted(
-    f"mcp__flame__{m.group(1)}"
-    for m in pattern.finditer(source)
-)
+
+def _is_destructive(dec: ast.Call) -> bool:
+    """True if an @mcp.tool(...) decorator carries annotations=_DST."""
+    return any(
+        kw.arg == "annotations"
+        and isinstance(kw.value, ast.Name)
+        and kw.value.id == "_DST"
+        for kw in getattr(dec, "keywords", [])
+    )
+
+
+# AST walk over every @mcp.tool function (sync OR async — the old regex matched
+# only `def`, silently missing async tools). Destructive (_DST) tools are
+# EXCLUDED from auto-approval: they must require an explicit operator
+# confirmation (Claude Code permission prompt), so a single LLM hallucination
+# cannot delete client media unattended. Mirrors
+# server.py::discover_mcp_tools(include_destructive=False) and install.sh step 8.
+_tree = ast.parse(source)
+_names: set[str] = set()
+for _node in ast.walk(_tree):
+    if isinstance(_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for _dec in _node.decorator_list:
+            if (isinstance(_dec, ast.Call)
+                    and isinstance(_dec.func, ast.Attribute)
+                    and _dec.func.attr == "tool"):
+                if _is_destructive(_dec):
+                    continue
+                _names.add(f"mcp__flame__{_node.name}")
+tool_names = sorted(_names)
 
 print(f"Found {len(tool_names)} MCP tools:")
 for t in tool_names:

@@ -237,14 +237,14 @@ flame-mcp supports multiple LLM backends via the model selector widget in the Fl
   `ollama cp qwen3.5:9b qwen3.5-mcp`. No custom Modelfile is needed — the
   bridge forces `num_ctx=24576` at runtime (pre-flight POST to
   `/api/generate`), because Ollama's Anthropic-compat endpoint ignores
-  Modelfile settings. Available on glorfindel and Mac M5 Pro.
+  Modelfile settings. Available on the LAN GPU host and the Mac.
 - **Mac 24GB fallback**: `qwen3.5:4b` (direct, no alias needed).
 
 ### Available backends
 | Backend | Label in combo | URL | Notes |
 |---|---|---|---|
 | `anthropic` | Claude Sonnet/Opus | Anthropic API | Default, needs internet + API key |
-| `ollama` | 🖥 models | `config.json → ollama_url` | glorfindel RTX 3090, LAN |
+| `ollama` | 🖥 models | `config.json → ollama_url` | LAN GPU host (RTX 3090) |
 | `ollama_mac` | 🍎 models | `config.json → ollama_mac_url` | Mac-local, offline |
 
 ### Prerequisites for local models

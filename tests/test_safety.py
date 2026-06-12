@@ -214,3 +214,65 @@ class TestNextNoneGuardForms:
         assert self._none_check_flagged(code), (
             "An unchecked next(..., None) result must still be flagged"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestPyExporterIdleEvent (A2-EXT — PyExporter hang prevention)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPyExporterIdleEvent:
+    """A2-EXT (safety.py): `PyExporter(...)` outside `schedule_idle_event`
+    hangs Flame's main thread even with `foreground=False`, because the Qt
+    event loop cannot process the export while the Python hook thread is
+    still blocked. The rule blocks a direct `PyExporter()` whenever
+    `schedule_idle_event` is absent, and stays silent when the export is
+    correctly deferred. Without coverage a refactor could silently drop the
+    rule and reintroduce the hang it prevents.
+    """
+
+    _SIGNATURE = "PyExporter"
+
+    def _exporter_hit_present(self, code: str) -> bool:
+        result = _check_dangerous(code)
+        return (
+            result is not None
+            and self._SIGNATURE in result
+            and "schedule_idle_event" in result
+        )
+
+    def test_bare_pyexporter_is_blocked(self):
+        """`flame.PyExporter().export(...)` with no idle event must be blocked."""
+        code = (
+            "exporter = flame.PyExporter()\n"
+            "exporter.foreground = False\n"
+            "exporter.export([seq], preset_path, output_dir)\n"
+        )
+        assert self._exporter_hit_present(code), (
+            "A2-EXT must block a PyExporter export that is not scheduled via "
+            "schedule_idle_event"
+        )
+
+    def test_pyexporter_constructor_alone_is_blocked(self):
+        """The trigger is the `PyExporter(` constructor itself, even without
+        an inline `.export()` on the same expression."""
+        code = "exp = flame.PyExporter()\n"
+        assert self._exporter_hit_present(code)
+
+    def test_pyexporter_inside_idle_event_passes(self):
+        """The documented safe pattern — export wrapped in a function dispatched
+        via `flame.schedule_idle_event` — must NOT trip the A2-EXT rule."""
+        code = (
+            "def _do_export():\n"
+            "    exporter = flame.PyExporter()\n"
+            "    exporter.foreground = False\n"
+            "    exporter.export([seq], preset_path, output_dir)\n"
+            "flame.schedule_idle_event(_do_export)\n"
+        )
+        assert not self._exporter_hit_present(code), (
+            "A correctly idle-scheduled PyExporter export must not be blocked"
+        )
+
+    def test_unrelated_code_does_not_trip_exporter_rule(self):
+        """Code that never mentions PyExporter must not raise the A2-EXT hit."""
+        code = "print('hello')\n"
+        assert not self._exporter_hit_present(code)

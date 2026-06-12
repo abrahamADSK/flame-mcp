@@ -84,7 +84,7 @@ The installer will:
 3. Copy the Flame hook to `/opt/Autodesk/shared/python/` (requires `sudo`)
 4. Register the MCP server with Claude Code
 5. Build the RAG documentation index
-6. Generate `.claude/settings.local.json` with all 18 MCP tools allowed
+6. Generate `.claude/settings.local.json` with the non-destructive MCP tools pre-approved (38 tools total; destructive tools such as `execute_python`, the `create_*`/`timeline_*` writers and `undo_last_operation` are left for an interactive permission prompt)
 
 ### Verify installation
 
@@ -94,7 +94,7 @@ After installing, run the health check to confirm everything is in place:
 ./install.sh --doctor
 ```
 
-This runs a 5-check sweep (venv, dependencies, hook, Claude registration, RAG index) and prints PASS/FAIL/WARN/SKIP with remediation hints for each check. Recommended before first use.
+This runs a 5-check sweep (MCP registration, bridge symlink, `.env` file, venv importability, RAG index) and prints PASS/FAIL/WARN/SKIP with remediation hints for each check. The bridge-symlink check now sha256-compares the deployed hook against `hooks/flame_mcp_bridge.py` and FAILs on a stale regular-file copy. Recommended before first use.
 
 ### Manual
 
@@ -312,7 +312,8 @@ The system maintains a local semantic search index (`rag/index/`) built from all
 2. If **score < 60%**, the pattern is not well-documented — Claude is warned
 3. After a **successful** `execute_python`, Claude calls `learn_pattern(description, code)`
 4. Outcome depends on the active model's trust level:
-   - **Trusted model** (Sonnet / Opus) → appended to `FLAME_API.md`, index rebuilt in background
+   - **Write-trusted model** (Opus / Fable) → appended to `FLAME_API.md`, index rebuilt in background
+   - **Sonnet** (the default cloud model) is **not** write-trusted → its proposals are staged to `rag/candidates.json` for human review, same as the read-only local models
    - **Read-only model** (Qwen, Llama…) → staged in `rag/candidates.json` for human review
 5. On **failed** execution with low RAG score → logged to `rag/failed.json` as a knowledge gap
 6. Next session, verified patterns return >70% relevance instantly
@@ -364,9 +365,11 @@ flame-mcp/
 ├── src/flame_mcp/server.py     # MCP server — runs on macOS, talks to Claude
 ├── hooks/
 │   └── flame_mcp_bridge.py    # Flame hook — Unix socket bridge + Qt chat widget
-├── rag/
+├── src/flame_mcp/rag/
 │   ├── build_index.py         # Build / rebuild the ChromaDB index
-│   ├── search.py              # Semantic search, returns (text, max_score)
+│   └── search.py              # Semantic search, returns (text, max_score)
+├── rag/
+│   ├── corpus.json            # Chunked corpus (BM25 source, git-tracked)
 │   └── index/                 # ChromaDB vector store (git-ignored)
 ├── FLAME_API.md               # Flame Python API reference + patterns (RAG source)
 ├── CLAUDE.md                  # Instructions for Claude Code terminal context
@@ -466,21 +469,23 @@ The Mac daemon forwards the request to ollama.com's servers. Authentication with
 
 Small model stored locally on the Mac. Works with no internet and no gpu-server — useful when working remotely on a laptop.
 
-**On the Mac (one-time setup, ~4 GB download):**
+**On the Mac (one-time setup, ~3 GB download):**
 
 ```bash
 brew install ollama
 ollama serve
-ollama pull qwen2.5-coder:7b
+ollama pull qwen3.5:4b
 ```
 
 **In the Flame widget:**
-1. Select **qwen2.5-coder 7B 🍎** from the model dropdown
+1. Select **Qwen3.5 4B 🍎** from the model dropdown
 2. The combo shows `· localhost` — ready to use offline
+
+> The 4B tag (`qwen3.5:4b`) is pulled directly — no `ollama cp` alias needed. The larger **Qwen3.5 9B 🍎** option (`qwen3.5-mcp`) requires `ollama pull qwen3.5:9b && ollama cp qwen3.5:9b qwen3.5-mcp` first. Both IDs are the offline (`ollama_mac`) entries in the bridge's `AVAILABLE_MODELS`.
 
 Quality is significantly lower than the 30B or 480B models. Runs on Mac CPU (no GPU required); response time is slower than GPU backends.
 
-> ⚠️ **Tool use limitation:** 7B models often fail to invoke MCP tools correctly — they may print raw JSON instead of executing the tool call. This backend is best suited for text queries (API questions, code explanations) rather than live Flame control. For actual Flame operations use `anthropic`, `ollama`, or `ollama_cloud`.
+> ⚠️ **Tool use limitation:** small (4B–9B) models often fail to invoke MCP tools correctly — they may print raw JSON instead of executing the tool call. This backend is best suited for text queries (API questions, code explanations) rather than live Flame control. For actual Flame operations use `anthropic`, `ollama`, or `ollama_cloud`.
 
 ### How the backends work internally
 

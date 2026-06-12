@@ -34,11 +34,35 @@ CORPUS_PATH = os.path.join(ROOT, 'rag', 'corpus.json')
 
 LOG_FILE = os.path.join(ROOT, 'logs', 'flame_rag.log')
 
+# Size cap for flame_rag.log. Mirrors TELEMETRY_MAX_BYTES in _session_stats:
+# when the file reaches the cap it is rotated to `<path>.1` (overwriting any
+# previous `.1`) before the new line is written. This bounds the previously
+# unbounded append at one rollover (~5 MB) of history.
+LOG_MAX_BYTES = 5 * 1024 * 1024
+
 
 def _log(msg: str) -> None:
+    """Append a timestamped line to flame_rag.log (best-effort, size-capped).
+
+    Rotation: when the file reaches ``LOG_MAX_BYTES`` it is renamed to
+    ``<path>.1`` (replacing any previous ``.1``) before the new line is
+    written. Any OSError is swallowed — RAG search must never crash on a
+    logging failure.
+    """
     ts = datetime.datetime.now().strftime('%H:%M:%S')
-    with open(LOG_FILE, 'a') as f:
-        f.write(f"[{ts}] {msg}\n")
+    try:
+        try:
+            if os.path.getsize(LOG_FILE) >= LOG_MAX_BYTES:
+                rotated = LOG_FILE + '.1'
+                if os.path.exists(rotated):
+                    os.remove(rotated)
+                os.replace(LOG_FILE, rotated)
+        except FileNotFoundError:
+            pass
+        with open(LOG_FILE, 'a') as f:
+            f.write(f"[{ts}] {msg}\n")
+    except OSError:
+        pass
 
 
 # ── Lazy singletons ────────────────────────────────────────────────────────────

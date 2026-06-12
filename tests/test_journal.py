@@ -215,6 +215,51 @@ class TestUndoCodeGeneratorCreate:
         assert "Shot_010" in undo
 
 
+class TestUndoCodeGeneratorStructuralDeleteIsIdleScheduled:
+    """Structural-delete undo code must never call flame.delete() directly.
+
+    Direct flame.delete() on a PyLibrary / PyReel / PyBatchGroup deadlocks
+    Flame 2027's main thread (ecosystem invariant). The generated undo code
+    must wrap the delete in schedule_idle_event + a result file, mirroring the
+    render/export tools, and must always parse.
+    """
+
+    _CREATE_CASES = [
+        ("ws.create_library('VFX_Shots')", "Created: VFX_Shots", "VFX_Shots"),
+        ("lib.create_reel('Input')", "Created reel: Input", "Input"),
+        (
+            "desktop.create_batch_group('Shot_010')",
+            "Created: Shot_010",
+            "Shot_010",
+        ),
+    ]
+
+    def test_undo_is_compilable_and_idle_scheduled(self):
+        for code, result, name in self._CREATE_CASES:
+            undo = UndoCodeGenerator.generate_undo(code, result)
+            assert undo is not None, code
+            # Must parse — the snippet runs verbatim inside Flame.
+            compile(undo, "<undo>", "exec")
+            # Must go through the documented-safe idle-event path.
+            assert "schedule_idle_event" in undo, code
+            assert "flame.delete(target)" in undo, code
+            assert name in undo, code
+
+    def test_no_bare_top_level_flame_delete(self):
+        """The flame.delete call must be nested inside the idle callback, never
+        executed at the top level of the snippet (which is what deadlocks)."""
+        for code, result, _name in self._CREATE_CASES:
+            undo = UndoCodeGenerator.generate_undo(code, result)
+            assert undo is not None
+            for line in undo.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("flame.delete("):
+                    # Any flame.delete must be indented (inside _do_delete).
+                    assert line.startswith(" "), (
+                        f"top-level flame.delete in undo for {code!r}:\n{undo}"
+                    )
+
+
 class TestUndoCodeGeneratorRename:
     """Rename operations produce rename-back undo code when old name is available."""
 
