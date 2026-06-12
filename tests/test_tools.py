@@ -12,9 +12,11 @@ TestPing (2 tests):
   1. test_ping_success          -- connected response contains 🟢
   2. test_ping_connection_error -- error response contains 🔴
 
-TestGetProjectInfo (2 tests):
+TestGetProjectInfo (4 tests):
   3. test_returns_formatted_info -- contains project Name
   4. test_bridge_error           -- error dict → ERROR in output
+  4a. test_wiretap_xml_uses_real_project_tags -- real 2027 XML parsed, no SELF-HEAL
+  4b. test_wiretap_partial_result_falls_back_to_cfg -- partial XML → .cfg fallback
 
 TestListLibraries (2 tests):
   5. test_returns_library_list  -- mock output passed through
@@ -92,6 +94,36 @@ from flame_mcp.server import (
 )
 
 
+# Real Flame 2027 PROJECT-node Wiretap XML, captured 2026-06-11 via
+#   wiretap_get_metadata -h localhost:IFFFS -n /projects/FPT202525_basic_test -m XML
+# Ground truth for the get_project_info parser: the project node exposes
+# FrameWidth/FrameHeight/FrameDepth/FieldDominance/ColourPolicyName
+# (NOT the Width/Height/BitDepth/ScanMode names used by clip nodes).
+_REAL_PROJECT_XML = (
+    "<Project><Name>FPT202525_basic_test</Name><Nickname></Nickname>"
+    "<Description></Description>"
+    "<ShotgunProjectName>FPT202525_basic_test</ShotgunProjectName>"
+    "<CreationDate>01/16/26 12:35:19</CreationDate>"
+    "<CatalogDir>/opt/Autodesk/clip/stonefs/FPT202525_basic_test.prj</CatalogDir>"
+    "<SetupDir>FPT202525_basic_test</SetupDir><Partition>stonefs</Partition>"
+    "<Version>2025.2</Version><FrameWidth>1920</FrameWidth>"
+    "<FrameHeight>1080</FrameHeight><FrameDepth>8-bit</FrameDepth>"
+    "<AspectRatio>1.77778</AspectRatio>"
+    "<FieldDominance>PROGRESSIVE</FieldDominance>"
+    "<ProxyWidth>960</ProxyWidth><ProxyWidthHint>0.500000</ProxyWidthHint>"
+    "<ProxyMinFrameSize>720</ProxyMinFrameSize>"
+    "<ProxyQuality>lanczos</ProxyQuality><ProxyDepth>8-bit</ProxyDepth>"
+    "<HdrMode>Dolby Vision 2.9</HdrMode><HdrCmuType>iCMU</HdrCmuType>"
+    "<HdrMasteringId>7</HdrMasteringId>"
+    "<ColourPolicyName></ColourPolicyName>"
+    "<OCIOConfigFile>/opt/Autodesk/project/FPT202525_basic_test/"
+    "colour_mgmt/config.ocio</OCIOConfigFile><ProcessMode>2</ProcessMode>"
+    "<IntermediatesProfile>65541</IntermediatesProfile>"
+    "<FrameRate>23.976 fps</FrameRate>"
+    "<DefaultStartFrame>1</DefaultStartFrame></Project>"
+)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # TestPing
 # ═══════════════════════════════════════════════════════════════════════════
@@ -153,6 +185,77 @@ class TestGetProjectInfo:
         # When bridge is unreachable, get_project_info falls back to cfg parsing.
         # The fallback path returns an IFFFS-unreachable notice or a SELF-HEAL prompt.
         assert "IFFFS" in result or "SELF-HEAL" in result or "unreachable" in result.lower()
+
+    def test_wiretap_xml_uses_real_project_tags(self, mock_bridge):
+        """Real 2027 project XML → resolution/depth/scan parsed, no SELF-HEAL.
+
+        Regression for the Chat 64 gotcha (empty wiretap metadata on fresh
+        sessions): the parser used guessed tag names (Width/BitDepth/
+        ScanMode/ColourSpace) that do not exist in the PROJECT-node XML, so
+        Resolution/Bit depth/Scan mode rendered '—' and SELF-HEAL fired on
+        every call. The fixture below is a real Flame 2027 dump
+        (wiretap_get_metadata -m XML on /projects/FPT202525_basic_test,
+        captured 2026-06-11) — the project node uses FrameWidth/FrameHeight/
+        FrameDepth/FieldDominance, unlike clip nodes.
+        """
+        from flame_mcp import _workspace_snapshot
+        _workspace_snapshot.invalidate()  # defeat the 12s read cache between tests
+        mock_bridge.return_value = {
+            "output": (
+                "Name: FPT202525_basic_test\n"
+                "Description: —\n"
+                "Workspaces: 1\n"
+                "WiretapID: /projects/FPT202525_basic_test\n"
+            ),
+            "error": "",
+            "_bridge_ms": 10,
+        }
+        with patch("flame_mcp.server.subprocess.run") as run:
+            run.return_value = MagicMock(stdout=_REAL_PROJECT_XML, returncode=0)
+            result = get_project_info()
+
+        assert "Frame rate: 23.976 fps" in result
+        assert "Resolution: 1920x1080" in result
+        assert "Bit depth: 8-bit" in result
+        assert "Scan mode: PROGRESSIVE" in result
+        # Complete wiretap data → no SELF-HEAL, no .cfg fallback engaged
+        assert "SELF-HEAL" not in result
+        assert "source: .cfg" not in result
+        # The documented stream selector for wiretap_get_metadata is -m (not -s)
+        argv = run.call_args[0][0]
+        assert "-m" in argv and "XML" in argv and "-s" not in argv
+
+    def test_wiretap_partial_result_falls_back_to_cfg(self, mock_bridge):
+        """FrameRate-only XML (required Resolution missing) → .cfg fallback.
+
+        A partial wiretap answer must not be displayed as authoritative:
+        before the fix the fallback guard required ALL fields to be dashes,
+        so 'Resolution: —x—' leaked through whenever FrameRate matched.
+        """
+        from flame_mcp import _workspace_snapshot
+        _workspace_snapshot.invalidate()  # defeat the 12s read cache between tests
+        mock_bridge.return_value = {
+            "output": (
+                "Name: NoSuchProj_UnitTest\n"
+                "Description: —\n"
+                "Workspaces: 1\n"
+                "WiretapID: /projects/NoSuchProj_UnitTest\n"
+            ),
+            "error": "",
+            "_bridge_ms": 10,
+        }
+        with patch("flame_mcp.server.subprocess.run") as run:
+            run.return_value = MagicMock(
+                stdout="<Project><FrameRate>24 fps</FrameRate></Project>",
+                returncode=0,
+            )
+            result = get_project_info()
+
+        # The bug symptom — a dashed Resolution presented as wiretap truth —
+        # must never appear; the .cfg fallback path takes over instead
+        # (for a nonexistent project that yields the IFFFS/.cfg notice).
+        assert "Resolution: —x—" not in result
+        assert "source: .cfg" in result or "IFFFS" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
