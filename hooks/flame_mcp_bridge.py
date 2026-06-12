@@ -112,7 +112,7 @@ AVAILABLE_MODELS = [
     ("Claude Fable 5",        "claude-fable-5",            "anthropic"),
     ("Claude Opus 4.8",       "claude-opus-4-8",           "anthropic"),
     ("Claude Sonnet 4.6",     "claude-sonnet-4-6",         "anthropic"),
-    # ── Self-hosted Ollama (glorfindel RTX 3090, LAN) ────────────────
+    # ── Self-hosted Ollama (LAN GPU host, RTX 3090) ──────────────────
     ("Qwen3.5 9B 🖥",         "qwen3.5-mcp",               "ollama"),
     ("GLM-4.7 Flash 🖥",      "glm-4.7-flash",             "ollama"),
     # ── Mac-local Ollama (offline, no LAN) ───────────────────────────
@@ -528,15 +528,32 @@ def _handle_connection(conn):
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 LOG_FILE = os.path.join(_PROJECT_ROOT, 'logs', 'flame_mcp_bridge.log')
+_LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate at 5 MB so the log cannot grow unbounded
 
 
 def _log(msg):
-    """Write a timestamped line to the log file and to stdout."""
+    """Write a timestamped line to the log file and to stdout.
+
+    Size-rotates ``LOG_FILE`` at ``_LOG_MAX_BYTES`` (keeps a single ``.1``
+    backup) so a long-running Flame session cannot grow the bridge log
+    without bound, and restricts the file to owner-rw / group-r (0o640)
+    instead of leaving it at the umask default. All file I/O stays wrapped
+    so logging can never raise into the bridge's request path.
+    """
     line = f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}"
     print(line)
     try:
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) >= _LOG_MAX_BYTES:
+            try:
+                os.replace(LOG_FILE, LOG_FILE + '.1')
+            except Exception:
+                pass
         with open(LOG_FILE, 'a') as f:
             f.write(line + '\n')
+        try:
+            os.chmod(LOG_FILE, 0o640)
+        except Exception:
+            pass
     except Exception:
         pass
 
