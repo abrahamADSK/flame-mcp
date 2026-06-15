@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-06-15
+
 ### Added
 - **Shared OPSEC error sanitisation** (`error_scrub.py`) — exception text echoed
   to the model at the bridge boundary is now scrubbed of credential-shaped
