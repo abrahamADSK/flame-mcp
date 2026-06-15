@@ -1,9 +1,8 @@
 name: graphify-pages
 
-# Regenerate the code knowledge graph and publish it to GitHub Pages whenever
-# source that affects it is pushed to main. Deterministic AST build (no LLM);
-# community names use Gemini when the GEMINI_API_KEY secret is set, otherwise
-# fall back to "Community N" placeholders (the site still publishes).
+# Publish the code knowledge graph to GitHub Pages on every push that affects
+# src/. Original graphify force-directed layout (live, unchanged) + deterministic
+# file/symbol-based community names. No LLM / API key needed.
 
 on:
   push:
@@ -32,22 +31,14 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install graphify
-        run: pip install 'graphifyy[gemini]'
+        run: pip install graphifyy
       - name: Build AST code graph
         run: python scripts/graphify/graphify_ast_build.py src
-      - name: Name communities (Gemini if key present, else placeholders)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Name communities (deterministic, file/symbol-based, no LLM)
+        run: python scripts/graphify/graphify_autolabel.py src
+      - name: Export interactive HTML (default graphify layout)
         working-directory: src
-        run: |
-          if [ -n "$GEMINI_API_KEY" ]; then
-            graphify label . --backend=gemini || graphify label .
-          else
-            echo "::warning::No GEMINI_API_KEY secret — communities will be 'Community N'. Add the secret for real names."
-            graphify label .
-          fi
-      - name: Tune layout (fewer edge crossings)
-        run: python scripts/graphify/graphify_relayout.py src/graphify-out/graph.html
+        run: graphify export html
       - name: Assemble site
         run: |
           mkdir -p _site
