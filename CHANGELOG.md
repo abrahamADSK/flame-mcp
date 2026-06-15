@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-06-15
+
 ### Changed
 - **Bridge log is now size-rotated and mode-restricted** — `_log` in
   `hooks/flame_mcp_bridge.py` rotates `flame_mcp_bridge.log` at 5 MB (one
