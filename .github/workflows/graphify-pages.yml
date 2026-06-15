@@ -1,0 +1,68 @@
+name: graphify-pages
+
+# Regenerate the code knowledge graph and publish it to GitHub Pages whenever
+# source that affects it is pushed to main. Deterministic AST build (no LLM);
+# community names use Gemini when the GEMINI_API_KEY secret is set, otherwise
+# fall back to "Community N" placeholders (the site still publishes).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/graphify/**'
+      - '.github/workflows/graphify-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: graphify-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install graphify
+        run: pip install 'graphifyy[gemini]'
+      - name: Build AST code graph
+        run: python scripts/graphify/graphify_ast_build.py src
+      - name: Name communities (Gemini if key present, else placeholders)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        working-directory: src
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            graphify label . --backend=gemini || graphify label .
+          else
+            echo "::warning::No GEMINI_API_KEY secret — communities will be 'Community N'. Add the secret for real names."
+            graphify label .
+          fi
+      - name: Tune layout (fewer edge crossings)
+        run: python scripts/graphify/graphify_relayout.py src/graphify-out/graph.html
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp src/graphify-out/graph.html _site/index.html
+          cp src/graphify-out/GRAPH_REPORT.md _site/GRAPH_REPORT.md || true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
