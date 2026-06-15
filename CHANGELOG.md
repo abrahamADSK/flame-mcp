@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CI: Python 3.13 added to the test matrix.
+
 ## [1.12.0] — 2026-06-15
 
 ### Changed
