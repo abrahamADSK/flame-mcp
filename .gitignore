@@ -80,3 +80,6 @@ src/flame_mcp/rag/failed.json
 
 # Coverage artifact from pytest-cov
 .coverage
+
+# Graphify knowledge-graph output (generated locally via /graphify; not part of the codebase)
+src/graphify-out/
