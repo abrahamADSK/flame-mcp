@@ -33,6 +33,7 @@ from flame_mcp.safety import (
     _SOFT_REDIRECT_PATTERNS,
     _CREATION_INTENT_RE,
 )
+from flame_mcp.error_scrub import safe_error_message, scrub_secrets
 from flame_mcp._session_stats import (
     apply_idle_reset,
     make_empty_stats,
@@ -644,13 +645,18 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
             )
         }
     except Exception as e:
-        return {'status': 'error', 'error': str(e)}
+        # Scrub credential-shaped tokens + length-bound the exception text via
+        # the shared OPSEC helper before it leaves the bridge boundary.
+        return {'status': 'error', 'error': safe_error_message(e)}
 
 
 def _fmt(result: dict) -> str:
     """Format the bridge response for Claude."""
     if result.get('status') == 'error':
-        return f"ERROR:\n{result.get('error', 'Unknown error')}"
+        # Defence in depth: scrub the error string regardless of its origin
+        # (bridge exception OR Flame-side error text) before returning it.
+        msg = scrub_secrets(str(result.get('error', 'Unknown error')))
+        return f"ERROR:\n{msg}"
 
     parts = []
     output = result.get('output', '').strip()

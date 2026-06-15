@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Shared OPSEC error sanitisation** (`error_scrub.py`) — exception text echoed
+  to the model at the bridge boundary is now scrubbed of credential-shaped
+  tokens and length-bounded (300 chars). `_call_flame`'s exception path uses
+  `safe_error_message(e)` (scrub + truncate) and `_fmt`'s error branch scrubs the
+  formatted message regardless of origin (bridge exception OR Flame-side error
+  text); normal (non-error) output is untouched. The helper is byte-identical
+  across the ecosystem (canonical `~/Projects/error_scrub_canonical.py`; same
+  copy in fpt-mcp / maya-mcp) — completing the "port `sg_errors_to_json` as a
+  shared helper" follow-up (the ShotGrid `Fault` *taxonomy* stays fpt-specific;
+  flame raises no `Fault`s, so only the scrub+truncate primitive is shared).
+  +8 tests (`tests/test_error_scrub.py`).
+
+### CI / Docs
+- **Code knowledge graph auto-publishes to GitHub Pages** on push to `src/**`
+  (`.github/workflows/graphify-pages.yml` + `scripts/graphify/`), original
+  force-directed layout + deterministic file-based community names (no LLM key);
+  README links the live graph. `src/graphify-out/` is gitignored.
+
 ## [1.12.1] — 2026-06-15
 
 ### Changed
