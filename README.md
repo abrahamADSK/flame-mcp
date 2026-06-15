@@ -8,6 +8,12 @@
 >
 > Executing AI-generated code inside a live Flame session carries real risks: **unexpected crashes, loss of unsaved work, unintended modifications to projects, sequences, or media.** Always work on a duplicate or test project. Never run this on production material without a full backup. The author(s) accept no responsibility for data loss, corruption, or any other damage resulting from its use.
 
+## 📊 Code knowledge graph
+
+Interactive, auto-published map of this codebase — modules, functions, call/import edges and community clusters — rebuilt by [graphify](https://github.com/safishamsi/graphify) and deployed to GitHub Pages on every push to `src/`:
+
+**[abrahamadsk.github.io/flame-mcp](https://abrahamadsk.github.io/flame-mcp/)** · part of the [MCP ecosystem graph hub](https://abrahamadsk.github.io/mcp-graphs/).
+
 `flame-mcp` connects [Claude](https://claude.ai) to [Autodesk Flame](https://www.autodesk.com/products/flame) via a lightweight Python bridge. Type what you want to do in plain language — Claude translates it into Flame API calls and executes them live.
 
 ```
