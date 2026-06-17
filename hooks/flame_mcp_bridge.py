@@ -109,8 +109,8 @@ MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud (default — needs internet + API key) ─────────
-    ("Claude Fable 5",        "claude-fable-5",            "anthropic"),
     ("Claude Opus 4.8",       "claude-opus-4-8",           "anthropic"),
+    ("Claude Fable 5",        "claude-fable-5",            "anthropic"),
     ("Claude Sonnet 4.6",     "claude-sonnet-4-6",         "anthropic"),
     # ── Self-hosted Ollama (LAN GPU host, RTX 3090) ──────────────────
     ("Qwen3.5 9B 🖥",         "qwen3.5-mcp",               "ollama"),
@@ -119,7 +119,7 @@ AVAILABLE_MODELS = [
     ("Qwen3.5 9B 🍎",         "qwen3.5-mcp",               "ollama_mac"),
     ("Qwen3.5 4B 🍎",         "qwen3.5:4b",                "ollama_mac"),
 ]
-DEFAULT_MODEL    = "claude-sonnet-4-6"
+DEFAULT_MODEL    = "claude-opus-4-8"
 DEFAULT_BACKEND  = "anthropic"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
@@ -875,24 +875,24 @@ class _FlameChat:
                 import flame as _flame
                 for _ in range(n):
                     _flame.execute_shortcut("Undo")
-                label = "acción" if n == 1 else "acciones"
-                msg = f"↩ {n} {label} deshecha{'s' if n > 1 else ''}."
+                label = "action" if n == 1 else "actions"
+                msg = f"↩ {n} {label} undone."
             except Exception as e:
-                msg = f"⚠️ Undo falló: {e}"
+                msg = f"⚠️ Undo failed: {e}"
             self._append_bubble("assistant", msg)
             return
 
-        # ── /wrong [descripción] — feedback: la última respuesta fue incorrecta ──
+        # ── /wrong [reason] — feedback: the last response was incorrect ──
         import re as _re2
         m2 = _re2.match(r'^/?wrong\s*(.*)', text, _re2.IGNORECASE | _re2.DOTALL)
         if m2:
             self._input.clear()
             detail = m2.group(1).strip()
             correction = (
-                "⚠️ FEEDBACK DEL USUARIO: Tu última respuesta fue INCORRECTA. "
-                + (f"Motivo: {detail}. " if detail else "")
-                + "No aprendas el código anterior como patrón correcto (no llames learn_pattern). "
-                "Analiza qué salió mal y vuelve a intentarlo correctamente."
+                "⚠️ USER FEEDBACK: Your last response was INCORRECT. "
+                + (f"Reason: {detail}. " if detail else "")
+                + "Do not learn the previous code as a correct pattern (do not call learn_pattern). "
+                "Analyze what went wrong and try again correctly."
             )
             self._append_bubble("user", f"⚠️ /wrong{(' — ' + detail) if detail else ''}")
             self._messages.append({"role": "user", "content": correction})
@@ -1196,7 +1196,7 @@ class _FlameChat:
             # ── Undo hint — show how many Flame actions were made ─────────────
             n = self._last_exec_count
             if n > 0:
-                hint = f"↩  {n} acción{'es' if n > 1 else ''} en Flame · escribe /undo {n} para revertir"
+                hint = f"↩  {n} action{'s' if n > 1 else ''} in Flame · type /undo {n} to revert"
                 self._ui_queue.append(
                     lambda h=hint: self._append_bubble("tool", h))
 
@@ -1313,9 +1313,9 @@ class _FlameChat:
                         full_text = raw
                 # ── Flame C++ corruption warning ──────────────────────────────
                 if 'possibly_corrupted' in full_text or 'unordered_map::at' in full_text:
-                    warn = ("⚠️  Excepción C++ interna de Flame detectada.\n"
-                            "La interfaz puede estar corrupta.\n"
-                            "Si ves paneles rotos o líneas curvadas → reinicia Flame.")
+                    warn = ("⚠️  Internal Flame C++ exception detected.\n"
+                            "The interface may be corrupted.\n"
+                            "If you see broken panels or curved lines → restart Flame.")
                     self._ui_queue.append(lambda w=warn: self._append_bubble("error", w))
 
                 footer = self._extract_stats_footer(full_text)
@@ -1847,10 +1847,10 @@ class _FlameChat:
         if self._backend == "anthropic":
             if tok >= self._TOKEN_DANGER:
                 return (self._STYLE_DANGER,
-                        f"🔴 {tok // 1000}k tokens esta sesión — considera reiniciar chat")
+                        f"🔴 {tok // 1000}k tokens this session — consider restarting the chat")
             if tok >= self._TOKEN_WARN:
                 return (self._STYLE_WARN,
-                        f"⚠️ {tok // 1000}k tokens esta sesión · Ctrl+Return to send")
+                        f"⚠️ {tok // 1000}k tokens this session · Ctrl+Return to send")
         if tok >= 1000:
             return (self._STYLE_IDLE,
                     f"Ready · {tok // 1000}k tokens  ·  Ctrl+Return to send")
@@ -2050,13 +2050,13 @@ def _action_open_chat(selection):
             code_preview = _last_crash_info.get('code', '').strip()[:600]
             ts = _last_crash_info.get('timestamp', 'unknown time')
             msg = (
-                "💥 Flame crasheó en la sesión anterior\n"
-                f"Hora del crash: {ts}\n\n"
-                "Último código ejecutado antes del crash:\n"
+                "💥 Flame crashed in the previous session\n"
+                f"Crash time: {ts}\n\n"
+                "Last code executed before the crash:\n"
                 "─────────────────────────────────────\n"
                 f"{code_preview}\n"
                 "─────────────────────────────────────\n"
-                "Puedes preguntar: '¿Por qué crasheó este código y cómo lo arreglo?'"
+                "You can ask: 'Why did this code crash and how do I fix it?'"
             )
             _chat_instance._ui_queue.append(
                 lambda m=msg: _chat_instance._append_bubble("error", m))
