@@ -121,6 +121,19 @@ AVAILABLE_MODELS = [
 ]
 DEFAULT_MODEL    = "claude-opus-4-8"
 DEFAULT_BACKEND  = "anthropic"
+
+# Each entry: (display_label, effort_value). "auto" re-enables adaptive
+# thinking (both hardening env vars cleared); fixed levels force that effort
+# with adaptive thinking off. Persisted to config.json like model/backend.
+AVAILABLE_EFFORTS = [
+    ("Auto", "auto"),
+    ("Low", "low"),
+    ("Medium", "medium"),
+    ("High", "high"),
+    ("Max", "max"),
+]
+DEFAULT_EFFORT = "auto"
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434"   # overridden by config.json → ollama_url
 
 # URL for backends that use the Mac's own Ollama daemon (cloud proxy + offline models).
@@ -671,6 +684,7 @@ class _FlameChat:
         self._rate_limited = False   # True if last call hit a rate limit
         self._last_exec_count = 0    # execute_python calls in last agent turn
         self._model, self._backend, self._ollama_url, self._ollama_cloud_key = self._load_model_config()
+        self._effort = self._load_effort_config()
         self._build_ui()
 
     # ── UI ───────────────────────────────────────────────────────────────────
@@ -717,6 +731,29 @@ class _FlameChat:
         model_row.addWidget(self._model_combo)
         model_row.addStretch()
         layout.addLayout(model_row)
+
+        # ── Effort selector ───────────────────────────────────────────────
+        effort_row = Qt.QHBoxLayout()
+        effort_row.setSpacing(6)
+        effort_lbl = Qt.QLabel("Effort:")
+        effort_lbl.setStyleSheet("color:#888;font-size:11px;min-width:42px;")
+        effort_row.addWidget(effort_lbl)
+        self._effort_combo = Qt.QComboBox()
+        for label, _ in AVAILABLE_EFFORTS:
+            self._effort_combo.addItem(label)
+        eff_ids = [e[1] for e in AVAILABLE_EFFORTS]
+        eff_idx = eff_ids.index(self._effort) if self._effort in eff_ids else 0
+        self._effort_combo.setCurrentIndex(eff_idx)
+        self._effort_combo.setStyleSheet(
+            "QComboBox{background:#2a2a2a;color:#e0e0e0;border:1px solid #444;"
+            "border-radius:4px;padding:2px 8px;font-size:11px;}"
+            "QComboBox::drop-down{border:none;}"
+            "QComboBox QAbstractItemView{background:#2a2a2a;color:#e0e0e0;"
+            "selection-background-color:#444;}")
+        self._effort_combo.currentIndexChanged.connect(self._on_effort_changed)
+        effort_row.addWidget(self._effort_combo)
+        effort_row.addStretch()
+        layout.addLayout(effort_row)
 
         # ── Ollama server URL row (visible only when an Ollama model is selected) ──
         # Wrapped in a QWidget so we can show/hide the whole row cleanly.
@@ -963,17 +1000,24 @@ class _FlameChat:
                     "  CLAUDE_PATH=/usr/local/bin/claude"
                 )
 
-            # Harden reasoning quality on every claude subprocess spawned
-            # from the Flame panel: adaptive thinking off, effort level max.
-            # Prevents Anthropic's adaptive-thinking feature from allocating
-            # zero reasoning tokens on turns it judges as simple, which
-            # produces hallucinated API calls when execute_python needs
-            # fresh code paths. Applies unconditionally — Ollama ignores
-            # the vars. The user controls their own top-level claude
-            # session via /effort; these overrides affect the MCP-spawned
-            # subprocess only.
-            env["CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"] = "1"
-            env["CLAUDE_CODE_EFFORT_LEVEL"] = "max"
+            # Reasoning effort for every claude subprocess spawned from the
+            # Flame panel, controlled by the Effort selector (default "auto").
+            # A fixed level (low/medium/high/max) disables adaptive thinking
+            # and forces that effort, preventing Anthropic's adaptive-thinking
+            # feature from allocating zero reasoning tokens on turns it judges
+            # as simple — which produces hallucinated API calls when
+            # execute_python needs fresh code paths. "auto" clears both vars so
+            # the CLI's adaptive-thinking default applies. Ollama ignores the
+            # vars. The user controls their own top-level claude session via
+            # /effort; these overrides affect the MCP-spawned subprocess only.
+            if self._effort and self._effort != "auto":
+                env["CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"] = "1"
+                env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
+            else:
+                # "auto": the child uses the CLI's adaptive-thinking default;
+                # pop both so an inherited os.environ value cannot force them.
+                env.pop("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", None)
+                env.pop("CLAUDE_CODE_EFFORT_LEVEL", None)
 
             # ── Ollama backend routing ────────────────────────────────────────
             # Four backends, two physical paths:
@@ -1439,6 +1483,36 @@ class _FlameChat:
         except Exception as e:
             _log(f"Model config save error: {e}")
 
+    def _load_effort_config(self) -> str:
+        """Read the persisted effort level from config.json (default auto)."""
+        try:
+            if os.path.exists(MODEL_CONFIG_FILE):
+                with open(MODEL_CONFIG_FILE) as f:
+                    cfg = json.load(f)
+                val = cfg.get("effort", DEFAULT_EFFORT)
+                if any(val == e[1] for e in AVAILABLE_EFFORTS):
+                    return val
+        except Exception as e:
+            _log(f"Effort config load error: {e}")
+        return DEFAULT_EFFORT
+
+    def _save_effort_config(self, effort: str) -> None:
+        """Persist effort to config.json, preserving all other keys."""
+        try:
+            cfg = {}
+            if os.path.exists(MODEL_CONFIG_FILE):
+                try:
+                    with open(MODEL_CONFIG_FILE) as f:
+                        cfg = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    cfg = {}
+            cfg["effort"] = effort
+            os.makedirs(os.path.dirname(MODEL_CONFIG_FILE), exist_ok=True)
+            with open(MODEL_CONFIG_FILE, "w") as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            _log(f"Effort config save error: {e}")
+
     def _on_model_changed(self, index: int) -> None:
         """Called when the user picks a different model in the combo."""
         label, model_id, backend = AVAILABLE_MODELS[index]
@@ -1467,6 +1541,13 @@ class _FlameChat:
                 "Puede imprimir JSON en lugar de ejecutar herramientas.\n"
                 "Recomendado solo para consultas de texto. Usa anthropic u ollama para controlar Flame."))
         _log(f"Model changed to: {model_id or 'default'} (backend={backend})")
+
+    def _on_effort_changed(self, index: int) -> None:
+        """Called when the user picks a different effort level."""
+        _, effort_value = AVAILABLE_EFFORTS[index]
+        self._effort = effort_value
+        self._save_effort_config(effort_value)
+        _log(f"Effort changed to: {effort_value}")
 
     def _on_ollama_url_changed(self) -> None:
         """Called when the user edits the Ollama server URL field and presses Enter."""
