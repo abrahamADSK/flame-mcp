@@ -247,6 +247,25 @@ flame-mcp supports multiple LLM backends via the model selector widget in the Fl
 | `ollama` | 🖥 models | `config.json → ollama_url` | LAN GPU host (RTX 3090) |
 | `ollama_mac` | 🍎 models | `config.json → ollama_mac_url` | Mac-local, offline |
 
+### Effort selector
+
+A second combo box in the Flame panel selects the **reasoning effort** of the
+`claude` subprocess spawned for in-Flame turns: **Auto / Low / Medium / High /
+Max**, default **Auto**. Like the model selection, the chosen value is persisted
+to `config.json → effort` and restored on widget init.
+
+- **Auto** — both reasoning-hardening env vars are *cleared* from the child
+  env (`CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` and `CLAUDE_CODE_EFFORT_LEVEL`
+  are popped), so the CLI's adaptive-thinking default applies.
+- **Low / Medium / High / Max** — sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`
+  and `CLAUDE_CODE_EFFORT_LEVEL=<level>`, forcing that fixed effort with
+  adaptive thinking off (prevents zero-token reasoning on turns the model
+  judges as simple, which can produce hallucinated `execute_python` API calls).
+
+These overrides apply to the MCP-spawned subprocess only — never to the
+operator's interactive top-level `claude` session. Ollama backends ignore the
+vars. `max` is no longer forced unconditionally (it was, before the selector).
+
 ### Prerequisites for local models
 
 Operator-only setup. See [`docs/DEPLOY.md`](docs/DEPLOY.md) for

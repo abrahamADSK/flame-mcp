@@ -157,6 +157,15 @@ No circular imports.
   (ollama_mac, local CPU/MPS).
 - **Widget**: a Qt combo box in the Flame panel selects the active entry.
   The selection is persisted in `config.json -> model` + `config.json -> backend`.
+- **`AVAILABLE_EFFORTS`** (`hooks/flame_mcp_bridge.py`) is a list of
+  `(display_label, effort_value)` tuples — `Auto / Low / Medium / High / Max`,
+  default `auto`. A second Qt combo box selects the reasoning effort of the
+  spawned `claude` subprocess; the selection is persisted in
+  `config.json -> effort` (loaded by `_load_effort_config`, written by
+  `_save_effort_config`, mirroring the model-config IO). `auto` clears both
+  reasoning-hardening env vars (CLI adaptive-thinking default); a fixed level
+  sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` +
+  `CLAUDE_CODE_EFFORT_LEVEL=<level>` (see architectural element #18).
 - **Backend environments** (`_get_ollama_env`, lines ~1483–1514):
   - `anthropic`: reads `ANTHROPIC_API_KEY` from the environment.
   - `ollama`: sets `ANTHROPIC_BASE_URL` to `config.json -> ollama_url` and
@@ -887,7 +896,7 @@ The catalogue is intentionally compact: full prose for each item lives in §§ 1
 | 15 | Backend-agnostic LLM (claude / ollama / ollama_mac) | Portability | Same MCP-host code path for all three; backend selected via Qt combo box. Per-backend env recipe: `anthropic` reads `ANTHROPIC_API_KEY`; `ollama*` rewrites `ANTHROPIC_BASE_URL` to the Ollama Anthropic-compat endpoint. | `hooks/flame_mcp_bridge.py` ~lines 1483–1514 | pre-Chat-28 |
 | 16 | Ollama `num_ctx` preflight | Reliability (local LLM) | POST to `/api/generate` with empty prompt + `options.num_ctx=24576` forces Ollama to (re)load the model with the full context window. Without this, Ollama's Anthropic-compat endpoint silently caps at 4096 tokens and truncates mid-conversation. | `hooks/flame_mcp_bridge.py::_preload_ollama_model` lines 1555–1599 | Chat 45 |
 | 17 | Ollama `keep_alive` 30 min | Performance (local LLM) | Bumps the Ollama runner's retention window so a reading-pause between turns doesn't trigger a cold-load on the next call. Configurable per backend. | `src/flame_mcp/_config.py::resolve_keep_alive` | Chat 51 (PR #5, on branch) |
-| 18 | Reasoning-hardening env vars in subprocess | Quality (LLM output) | `_agent_loop` injects `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` and `CLAUDE_CODE_EFFORT_LEVEL=max` into the `claude -p` subprocess environment **only**, never into the user's top-level shell. Forces max reasoning for in-Flame turns without polluting the operator's interactive session. | `hooks/flame_mcp_bridge.py` (immediately after `_find_claude()`) | Chat 49 (ecosystem-wide design) |
+| 18 | Reasoning-effort env vars in subprocess (selectable) | Quality (LLM output) | `_agent_loop` injects reasoning-effort env vars into the `claude -p` subprocess environment **only**, never into the user's top-level shell. The level is chosen by the `AVAILABLE_EFFORTS` Qt combo (Auto/Low/Medium/High/Max, default **auto**, persisted to `config.json -> effort`). A fixed level sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` + `CLAUDE_CODE_EFFORT_LEVEL=<level>`; **auto pops both** so an inherited `os.environ` value cannot force them (CLI adaptive-thinking default). `max` is no longer forced unconditionally. | `hooks/flame_mcp_bridge.py` (`_agent_loop`, after `_find_claude()`; constants `AVAILABLE_EFFORTS`/`DEFAULT_EFFORT`; IO `_load_effort_config`/`_save_effort_config`) | Chat 49 (ecosystem-wide design); selector Chat 69 |
 | 19 | RAG-score-conditioned `learn_pattern` invitation | Self-improvement | When a successful execution had a top RAG score below threshold, the response surfaces a hint suggesting `learn_pattern` for the operation. Closes the gap between *"the LLM solved it once"* and *"the next session will find it in the corpus"*. | `src/flame_mcp/server.py::execute_python` (response-build path) | Chat 42 (paired with hard gate flip) |
 | 20 | Concept-map `tool_count` invariant | Quality gate | The number of `@mcp.tool` decorators in `server.py` is mirrored in `README.md`, `install.sh` (`TOOLS` list), and `.concepts.yml`. Pre-commit verifies the mirrors agree. Catches "added a tool, forgot to update the prompt" at commit time. | `.concepts.yml` (concept `tool_count`) + `verify_concepts.py` | Chat 44 |
 | 21 | Review-expiry concept entries | Maintainability | Concepts that depend on external versions (Flame API, Ollama Anthropic-compat shape) carry a `review_expiry` date; the verifier fails if the date is past. Forces periodic re-audit instead of silent rot. | `.concepts.yml` (concepts with `kind: review_expiry`) | Chat 46 |
