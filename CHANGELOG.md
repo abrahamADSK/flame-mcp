@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Reasoning-effort selector in the Flame panel** — combo
+  (Auto / Low / Medium / High / Max, default **Auto**) controlling the spawned
+  `claude` subprocess effort; persisted to `config.json → effort`. Affects only
+  the MCP-spawned subprocess, never the operator's top-level session. (PR #35)
+
+### Changed
+- **Panel default model → Claude Opus 4.8** (Fable 5 kept as a selectable
+  option); remaining panel UI strings translated to English. (PR #34)
+- **Panel colour scheme → Autodesk palette** — the accent is unified to
+  Autodesk yellow (`#ffff00`, dark `#1c1c1c` text on yellow buttons) and the
+  residual purple/blue accents are retired in favour of the neutral grayscale
+  base. Status colours unchanged.
+
 ## [1.13.0] — 2026-06-15
 
 ### Added
