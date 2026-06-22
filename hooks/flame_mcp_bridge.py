@@ -1019,6 +1019,15 @@ class _FlameChat:
                 env.pop("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", None)
                 env.pop("CLAUDE_CODE_EFFORT_LEVEL", None)
 
+            # The Flame bridge has NO ShotGrid project context (no tk engine in
+            # the bridge). If the spawned claude reaches fpt-mcp (it loads the
+            # ecosystem MCP servers from ~/.claude.json), inject "0" ("no
+            # project") so a project-scoped sg_create FAILS loudly instead of
+            # silently writing to fpt-mcp's stale .env default — fpt-mcp's gate
+            # then asks the user. Zero silent defaults across all consoles
+            # (Chat 69). The bridge itself does no ShotGrid; this is a safety net.
+            env["SHOTGRID_PROJECT_ID"] = "0"
+
             # ── Ollama backend routing ────────────────────────────────────────
             # Four backends, two physical paths:
             #
