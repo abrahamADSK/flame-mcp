@@ -750,6 +750,28 @@ def glob_count(params: dict) -> tuple[bool, str]:
     )
 
 
+def _version_key(s: str) -> tuple:
+    """Best-effort semver sort key (``"1.2.3"`` → ``(1, 2, 3)``).
+
+    Leading numeric components only; a non-numeric / pre-release component stops
+    parsing (``"1.2.3rc1"`` → ``(1, 2)``). An unparseable value yields ``()``
+    which sorts BELOW any real version, so it is never treated as "ahead" and a
+    weird tag still fails loudly rather than being silently dropped.
+    """
+    parts: list = []
+    for comp in s.strip().lstrip("v").split("."):
+        num = ""
+        for ch in comp:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        if not num:
+            break
+        parts.append(int(num))
+    return tuple(parts)
+
+
 def changelog_tag_sync(params: dict) -> tuple[bool, str]:
     """Assert CHANGELOG version headers align with git tags, tolerating a
     single release-in-progress transient state.
@@ -836,6 +858,23 @@ def changelog_tag_sync(params: dict) -> tuple[bool, str]:
                 tolerated_msg = (
                     f" [release-in-progress tag→CHANGELOG: v{anchor_version} "
                     f"({anchor_source} matches)]"
+                )
+
+        # Future-release tolerance (Chat 69): a tag NEWER than the anchor
+        # (pyproject) version belongs to a release this commit predates — its
+        # CHANGELOG section lives in that later commit, not here. Drop such tags
+        # from the tag set so a merge commit's CI does not false-fail with
+        # "in tags but not CHANGELOG" when a release was cut on a descendant
+        # commit. Affects only the b→a direction; a CHANGELOG section with no
+        # tag is still a real drift.
+        if anchor_version:
+            _ak = _version_key(anchor_version)
+            ahead = {t for t in b if _version_key(t) > _ak}
+            if ahead:
+                b = b - ahead
+                tolerated_msg += (
+                    f" [future-release tags ignored (> v{anchor_version}): "
+                    f"{sorted(ahead)}]"
                 )
 
     messages = []
