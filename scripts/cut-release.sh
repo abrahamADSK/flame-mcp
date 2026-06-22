@@ -18,8 +18,8 @@
 #     8. Create a GitHub Release with notes extracted from that CHANGELOG
 #        section.
 #
-# --dry-run: run steps 1–4 in a fresh tmp worktree, show the diff, and
-# exit without touching the real repo. Useful for validating format.
+# --dry-run: apply steps 1–4 to the working tree, show the diff, then revert
+# the edits (git checkout) — nothing is committed, tagged, or pushed.
 #
 # The ecosystem convention is to keep this script byte-identical across
 # fpt-mcp / maya-mcp / flame-mcp / vision3d. Canonical source:
@@ -71,9 +71,14 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 2
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+# Resolve the repo from THIS SCRIPT's location, NOT the caller's cwd, so that
+# invoking it by absolute path from another directory still operates on the
+# script's own repo. Using the cwd here (the old behaviour) silently cut the
+# wrong repo's release when run from a foreign working directory. Chat 69 fix.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$REPO_ROOT" ]]; then
-    echo "error: not inside a git repository" >&2
+    echo "error: cut-release.sh is not inside a git repository" >&2
     exit 2
 fi
 cd "$REPO_ROOT"
