@@ -703,7 +703,7 @@ class _FlameChat:
         layout.setContentsMargins(12, 12, 12, 12)
 
         title = Qt.QLabel("🔥  Claude — Flame Assistant")
-        title.setStyleSheet("color:#f59e0b;font-size:14px;font-weight:bold;padding:4px 0;")
+        title.setStyleSheet("color:#ffff00;font-size:14px;font-weight:bold;padding:4px 0;")
         layout.addWidget(title)
 
         # ── Model selector ────────────────────────────────────────────────────
@@ -776,7 +776,7 @@ class _FlameChat:
         self._ollama_input.setStyleSheet(
             "QLineEdit{background:#2a2a2a;color:#e0e0e0;border:1px solid #555;"
             "border-radius:4px;padding:2px 8px;font-size:11px;}"
-            "QLineEdit:focus{border:1px solid #f59e0b;}")
+            "QLineEdit:focus{border:1px solid #ffff00;}")
         self._ollama_input.editingFinished.connect(self._on_ollama_url_changed)
         ollama_row.addWidget(self._ollama_input, stretch=1)
 
@@ -805,7 +805,7 @@ class _FlameChat:
         self._ollama_cloud_key_input.setStyleSheet(
             "QLineEdit{background:#2a2a2a;color:#e0e0e0;border:1px solid #555;"
             "border-radius:4px;padding:2px 8px;font-size:11px;}"
-            "QLineEdit:focus{border:1px solid #818cf8;}")
+            "QLineEdit:focus{border:1px solid #cccccc;}")
         self._ollama_cloud_key_input.editingFinished.connect(self._on_ollama_cloud_key_changed)
         cloud_key_row.addWidget(self._ollama_cloud_key_input, stretch=1)
 
@@ -851,10 +851,10 @@ class _FlameChat:
         self._send_btn.setFixedSize(72, 40)
         self._send_btn.clicked.connect(self._on_send)
         self._send_btn.setStyleSheet(
-            "QPushButton{background:#d97706;color:white;border:none;"
+            "QPushButton{background:#ffff00;color:#1c1c1c;border:none;"
             "border-radius:5px;font-weight:bold;font-size:13px;}"
-            "QPushButton:hover{background:#f59e0b;}"
-            "QPushButton:disabled{background:#4a3500;color:#7a6030;}")
+            "QPushButton:hover{background:#cccc00;}"
+            "QPushButton:disabled{background:#3a3a00;color:#6a6320;}")
         btns.addWidget(self._send_btn)
 
         clear_btn = Qt.QPushButton("Clear")
@@ -1883,10 +1883,10 @@ class _FlameChat:
 
     def _append_bubble(self, role, content):
         colors = {
-            "user":      ("#60a5fa", "You"),
+            "user":      ("#cccccc", "You"),
             "assistant": ("#34d399", "Claude"),
-            "tool":      ("#a78bfa", ""),
-            "warn":      ("#f59e0b", ""),
+            "tool":      ("#cccccc", ""),
+            "warn":      ("#ffff00", ""),
             "error":     ("#f87171", "Error"),
         }
         color, label = colors.get(role, ("#aaa", ""))
@@ -1910,9 +1910,9 @@ class _FlameChat:
 
     # ── Status-bar styles ─────────────────────────────────────────────────────
     _STYLE_IDLE   = "color:#555;font-size:12px;padding:2px 4px;"
-    _STYLE_BUSY   = ("color:#f59e0b;font-size:13px;font-weight:bold;"
+    _STYLE_BUSY   = ("color:#ffff00;font-size:13px;font-weight:bold;"
                      "padding:2px 4px;")
-    _STYLE_WARN   = "color:#f59e0b;font-size:12px;padding:2px 4px;"
+    _STYLE_WARN   = "color:#ffff00;font-size:12px;padding:2px 4px;"
     _STYLE_DANGER = ("color:#ef4444;font-size:12px;font-weight:bold;"
                      "padding:2px 4px;")
 
