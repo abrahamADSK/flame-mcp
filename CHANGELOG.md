@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-06-22
+
 ### Changed
 - **Bridge injects `SHOTGRID_PROJECT_ID=0` into the spawned `claude` env**
   (Chat 69, safety net). The Flame bridge does no ShotGrid itself, but the
