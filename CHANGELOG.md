@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Bridge injects `SHOTGRID_PROJECT_ID=0` into the spawned `claude` env**
+  (Chat 69, safety net). The Flame bridge does no ShotGrid itself, but the
+  `claude` it spawns loads the ecosystem MCP servers (fpt-mcp included) from
+  `~/.claude.json`, and the bridge has no ShotGrid project context (no tk engine).
+  It now passes `"0"` ("no project") so a project-scoped `sg_create` via fpt-mcp
+  **fails loudly instead of silently writing to fpt-mcp's stale `.env` default**
+  — fpt-mcp's gate then asks the user. Zero silent defaults across all consoles.
+
 ## [1.14.0] — 2026-06-22
 
 ### Added
