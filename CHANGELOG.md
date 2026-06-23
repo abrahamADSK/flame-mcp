@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not by editing `## Learned Patterns`. Covered by
   `tests/test_suggestion_capture.py`.
 
+### Fixed
+- **In-Flame console mirrors the user's language per message** — the bridge's
+  appended system prompt now carries an explicit LANGUAGE directive (previously
+  absent) that overrides the global `CLAUDE.md` "Spanish by default" bias and
+  re-detects the latest message's language every turn.
+
 ## [1.14.1] — 2026-06-22
 
 ### Changed
