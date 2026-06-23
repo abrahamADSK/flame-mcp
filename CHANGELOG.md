@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-06-23
+
 ### Changed
 - **In-Flame bridge runs read-only (recording-safe)** — the spawned `claude`
   subprocess is now launched with `--disallowedTools Edit Write MultiEdit
