@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **In-Flame console request is much lighter — deferred tool loading + MCP
+  scoping.** The bridge's `claude` subprocess now (1) runs with
+  `ENABLE_TOOL_SEARCH=true`, so MCP tool schemas are deferred (only tool names
+  load upfront; the model fetches a schema on demand via `ToolSearch`), and (2)
+  is launched with `--strict-mcp-config --mcp-config` carrying only the servers
+  the Flame console needs — Flame + ShotGrid (`fpt-mcp`), NOT Maya. Maya's tool
+  schemas no longer bloat every request. `flame_mcp._readonly.build_scoped_mcp_config`
+  builds the curated config (fail-soft no-op if it can't); covered by
+  `tests/test_suggestion_capture.py`.
+
 ## [1.15.0] — 2026-06-23
 
 ### Changed

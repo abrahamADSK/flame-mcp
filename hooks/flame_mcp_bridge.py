@@ -67,15 +67,22 @@ except Exception:
     _shared_resolve_keep_alive = None
 
 try:
-    from flame_mcp._readonly import DISALLOWED_TOOLS, capture_suggestions
+    from flame_mcp._readonly import (
+        DISALLOWED_TOOLS,
+        build_scoped_mcp_config,
+        capture_suggestions,
+    )
 except Exception:
     # Fail-soft, but the deny-list is a SECURITY property: keep it hardcoded so
-    # the read-only lockdown holds even if the package import fails. Capture
-    # degrades to a no-op (suggestions are simply not logged).
+    # the read-only lockdown holds even if the package import fails. Capture +
+    # MCP scoping degrade to no-ops (subprocess then uses default discovery).
     DISALLOWED_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]
 
     def capture_suggestions(text, dest):
         return text, 0
+
+    def build_scoped_mcp_config(mcp_json_path, keep_servers):
+        return None
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
@@ -1038,6 +1045,10 @@ class _FlameChat:
             # then asks the user. Zero silent defaults across all consoles
             # (Chat 69). The bridge itself does no ShotGrid; this is a safety net.
             env["SHOTGRID_PROJECT_ID"] = "0"
+            # Defer MCP tool schemas: only tool NAMES load upfront and the model
+            # fetches a schema on demand via ToolSearch, so the request isn't
+            # bloated by every loaded server's full tool definitions.
+            env["ENABLE_TOOL_SEARCH"] = "true"
 
             # ── Ollama backend routing ────────────────────────────────────────
             # Four backends, two physical paths:
@@ -1149,6 +1160,13 @@ class _FlameChat:
             # self-learning is a server-side MCP tool). Improvement ideas are
             # captured via capture_suggestions, not by editing files.
             cmd.extend(['--disallowedTools', *DISALLOWED_TOOLS])
+            # Per-console MCP scoping: the in-Flame console only needs Flame +
+            # ShotGrid (fpt), not Maya's tool schemas. Load only those via strict
+            # config so Maya's tools never enter the request.
+            _scoped_mcp = build_scoped_mcp_config(
+                os.path.join(cwd, '.mcp.json'), {'flame', 'fpt-mcp'})
+            if _scoped_mcp:
+                cmd.extend(['--strict-mcp-config', '--mcp-config', _scoped_mcp])
             cmd.append(prompt)
 
             proc = subprocess.Popen(
