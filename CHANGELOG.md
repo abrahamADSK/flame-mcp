@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-call token-usage to the shared cross-console log.** The bridge already
+  parsed `usage` from the result event for its session counter; it now also
+  appends a per-call line (input context + cache + reasoning output) to
+  `~/Library/Logs/mcp-console-usage.log` via `flame_mcp._readonly.log_usage`, so
+  request weight is objectively visible alongside the fpt/maya consoles. Covered
+  by `tests/test_suggestion_capture.py`.
+
 ### Changed
 - **In-Flame console request is much lighter — deferred tool loading + MCP
   scoping.** The bridge's `claude` subprocess now (1) runs with

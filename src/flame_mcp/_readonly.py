@@ -82,3 +82,31 @@ def build_scoped_mcp_config(mcp_json_path, keep_servers):
         return json.dumps({"mcpServers": servers})
     except Exception:
         return None
+
+
+# Per-call token-usage monitoring: one line per `claude -p` turn, shared across
+# all MCP consoles, so request weight (input context + reasoning output) is
+# objectively visible. Tail: `tail -f ~/Library/Logs/mcp-console-usage.log`.
+_USAGE_LOG = Path("~/Library/Logs/mcp-console-usage.log").expanduser()
+
+
+def log_usage(usage, console, dest=_USAGE_LOG):
+    """Append a per-call token-usage record (best-effort; never raises)."""
+    if not usage:
+        return
+    try:
+        inp = usage.get("input_tokens", 0) or 0
+        cr = usage.get("cache_read_input_tokens", 0) or 0
+        cc = usage.get("cache_creation_input_tokens", 0) or 0
+        out = usage.get("output_tokens", 0) or 0
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = (
+            f"[{stamp}] {console:<5} context~={inp + cr + cc} "
+            f"(input={inp} cache_read={cr} cache_creation={cc}) output={out}\n"
+        )
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception:
+        pass
