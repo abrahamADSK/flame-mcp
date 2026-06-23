@@ -71,11 +71,13 @@ try:
         DISALLOWED_TOOLS,
         build_scoped_mcp_config,
         capture_suggestions,
+        log_usage,
     )
 except Exception:
     # Fail-soft, but the deny-list is a SECURITY property: keep it hardcoded so
     # the read-only lockdown holds even if the package import fails. Capture +
-    # MCP scoping degrade to no-ops (subprocess then uses default discovery).
+    # MCP scoping + usage logging degrade to no-ops (subprocess then uses default
+    # discovery).
     DISALLOWED_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]
 
     def capture_suggestions(text, dest):
@@ -83,6 +85,9 @@ except Exception:
 
     def build_scoped_mcp_config(mcp_json_path, keep_servers):
         return None
+
+    def log_usage(usage, console, dest=None):
+        pass
 
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
@@ -1434,6 +1439,9 @@ class _FlameChat:
             out_tok = usage.get('output_tokens', event.get('output_tokens', 0)) or 0
             if in_tok or out_tok:
                 self._session_tokens += in_tok + out_tok
+            # Per-call usage to the shared cross-console log for objective
+            # monitoring (best-effort; no-op if usage is empty).
+            log_usage(usage, 'flame')
 
             # ── Rate-limit detection in result event ──────────────────────────
             if event.get('is_error') or event.get('subtype') == 'error_during_execution':

@@ -14,7 +14,33 @@ from flame_mcp._readonly import (
     DISALLOWED_TOOLS,
     build_scoped_mcp_config,
     capture_suggestions,
+    log_usage,
 )
+
+
+def test_log_usage_writes_one_line(tmp_path):
+    dest = tmp_path / "usage.log"
+    log_usage(
+        {
+            "input_tokens": 100,
+            "cache_read_input_tokens": 200,
+            "cache_creation_input_tokens": 300,
+            "output_tokens": 50,
+        },
+        "flame",
+        dest=dest,
+    )
+    body = dest.read_text(encoding="utf-8")
+    assert "flame" in body
+    assert "context~=600" in body  # 100 + 200 + 300
+    assert "output=50" in body
+
+
+def test_log_usage_noop_on_empty(tmp_path):
+    dest = tmp_path / "usage.log"
+    log_usage(None, "flame", dest=dest)
+    log_usage({}, "flame", dest=dest)
+    assert not dest.exists()
 
 
 def _write_mcp(tmp_path, servers):
