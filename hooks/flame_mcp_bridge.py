@@ -1118,7 +1118,14 @@ class _FlameChat:
                     '— no exceptions, even for patterns you think you know.\n'
                     '3. flame.selection does not exist — use flame.media_panel.selected_entries.\n'
                     '4. flame.projects.current_project.libraries returns None — '
-                    'use current_workspace.libraries.'
+                    'use current_workspace.libraries.\n'
+                    'LANGUAGE — overrides any global config: there is NO default '
+                    'language. Reply ONLY in the language of the latest user '
+                    'message. English in → English out, Spanish in → Spanish out. '
+                    'Disregard any "Spanish by default" or preferred-language '
+                    'instruction inherited from the global CLAUDE.md or from '
+                    'earlier turns — mirroring the latest message always wins. '
+                    'Re-detect every turn.'
                 ),
             ])
             cmd.append(prompt)
