@@ -78,6 +78,11 @@ src/flame_mcp/rag/corpus.json
 src/flame_mcp/rag/candidates.json
 src/flame_mcp/rag/failed.json
 
+# Console improvement backlog — auto-captured by the read-only in-Flame bridge
+# (flame_mcp._readonly.capture_suggestions). Local-only: picked up in dev
+# sessions / PRs, not tracked, keeps the working tree clean during recordings.
+CONSOLE_IMPROVEMENTS.md
+
 # Coverage artifact from pytest-cov
 .coverage
 

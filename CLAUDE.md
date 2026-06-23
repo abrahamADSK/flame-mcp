@@ -115,15 +115,19 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
    - What information would help proceed
    Never make more than 3 `execute_python` calls for the same sub-task.
 
-9. **Self-update on success.**
-   When a Flame task completes successfully, immediately append the working code
-   to `## Learned Patterns` with a short description and date. Also call
-   `learn_pattern()` when RAG coverage was low (< 60%) so the index is updated
-   for future sessions.
+9. **Self-update on success — via `learn_pattern()` only.**
+   When a Flame task completes and RAG coverage was low (< 60%), call
+   `learn_pattern()` so the index is updated for future sessions. The in-Flame
+   console is READ-ONLY (Edit/Write/Bash are disabled), so do NOT try to append
+   to the `## Learned Patterns` section yourself — `learn_pattern()` is an MCP
+   tool that persists **server-side**, and is the only self-update path. The doc
+   section below is maintained by maintainers / PRs.
 
 10. **Mark failures.**
-    If a pattern causes a timeout, crash, or wrong result, add a ❌ note next to
-    it explaining why, so it is not retried.
+    If a pattern causes a timeout, crash, or wrong result, surface it in your
+    reply (and, if useful, as a `@@SUGGESTION@@ <title> :: <detail>` line for the
+    backlog) so it is not retried. Do NOT edit the doc to add a ❌ note — the
+    in-Flame console is read-only.
 
 11. **Keep code minimal.**
     Flame's Python environment is sensitive. Prefer short, direct API calls.

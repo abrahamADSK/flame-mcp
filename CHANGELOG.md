@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **In-Flame bridge runs read-only (recording-safe)** — the spawned `claude`
+  subprocess is now launched with `--disallowedTools Edit Write MultiEdit
+  NotebookEdit Bash`, so it can no longer modify the repository. MCP tools and
+  Read stay available, so Flame work and RAG self-learning are unaffected
+  (`learn_pattern` is a server-side MCP tool, not an agent file edit). The
+  deny-list is hardcoded in a fail-soft fallback, so the lockdown holds even if
+  `flame_mcp._readonly` cannot be imported. Code-improvement ideas are captured,
+  not applied: the agent emits `@@SUGGESTION@@ <title> :: <detail>` lines that
+  `flame_mcp._readonly.capture_suggestions` appends to the git-ignored
+  `CONSOLE_IMPROVEMENTS.md` backlog (for a later dev session / PR) and strips
+  from the reply. Rules 9/10 reworded: self-update goes through `learn_pattern()`,
+  not by editing `## Learned Patterns`. Covered by
+  `tests/test_suggestion_capture.py`.
+
 ## [1.14.1] — 2026-06-22
 
 ### Changed
