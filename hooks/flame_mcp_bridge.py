@@ -66,6 +66,17 @@ except Exception:
     _shared_load_model_config = None
     _shared_resolve_keep_alive = None
 
+try:
+    from flame_mcp._readonly import DISALLOWED_TOOLS, capture_suggestions
+except Exception:
+    # Fail-soft, but the deny-list is a SECURITY property: keep it hardcoded so
+    # the read-only lockdown holds even if the package import fails. Capture
+    # degrades to a no-op (suggestions are simply not logged).
+    DISALLOWED_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"]
+
+    def capture_suggestions(text, dest):
+        return text, 0
+
 BRIDGE_HOST = '127.0.0.1'
 BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
@@ -1125,9 +1136,19 @@ class _FlameChat:
                     'Disregard any "Spanish by default" or preferred-language '
                     'instruction inherited from the global CLAUDE.md or from '
                     'earlier turns — mirroring the latest message always wins. '
-                    'Re-detect every turn.'
+                    'Re-detect every turn.\n'
+                    'READ-ONLY: you cannot edit/create/delete files (Edit/Write/'
+                    'Bash are disabled). Use the MCP tools only. RAG self-learning '
+                    'still works via learn_pattern (an MCP tool). To propose a '
+                    'code fix, emit one line @@SUGGESTION@@ <title> :: <detail> '
+                    '(the console logs it); never try to edit files.'
                 ),
             ])
+            # Read-only bridge: deny every file-mutation tool so the subprocess
+            # cannot modify the repo. MCP tools + Read stay available (RAG
+            # self-learning is a server-side MCP tool). Improvement ideas are
+            # captured via capture_suggestions, not by editing files.
+            cmd.extend(['--disallowedTools', *DISALLOWED_TOOLS])
             cmd.append(prompt)
 
             proc = subprocess.Popen(
@@ -1225,6 +1246,10 @@ class _FlameChat:
 
             # ── Display main assistant response ──────────────────────────────
             response = self._strip_ansi('\n\n'.join(assistant_parts).strip())
+            # Read-only bridge: log any @@SUGGESTION@@ lines to the backlog and
+            # strip the markers from what the user sees.
+            response, _ = capture_suggestions(
+                response, os.path.join(_PROJECT_ROOT, 'CONSOLE_IMPROVEMENTS.md'))
             if response:
                 # REC-002: log first 200 chars of assistant response for QA audit
                 _log(f"RESPONSE: {response[:200].replace(chr(10), ' ')!r}")
