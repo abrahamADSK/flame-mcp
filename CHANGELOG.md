@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemas no longer bloat every request. `flame_mcp._readonly.build_scoped_mcp_config`
   builds the curated config (fail-soft no-op if it can't); covered by
   `tests/test_suggestion_capture.py`.
+- **CI Python matrix realigned to the real runtimes.** The test matrix now runs
+  `[3.13, 3.14]` (the MCP server runs on system Python — 3.13.9 on the dev box;
+  Flame 2027 ships 3.13) instead of `[3.10, 3.11, 3.12, 3.13]`. `requires-python`
+  raised to `>=3.13`; the ruff/mypy/verify_concepts jobs and the Codecov upload
+  pin moved to 3.13; the README requirement was corrected.
 
 ## [1.15.0] — 2026-06-23
 
