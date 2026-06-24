@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-06-24
+
 ### Added
 - **Per-call token-usage to the shared cross-console log.** The bridge already
   parsed `usage` from the result event for its session counter; it now also
