@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "flame-mcp"
 version = "1.15.0"
 description = "MCP server for Autodesk Flame"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.26.0",
     "chromadb>=0.6.0",

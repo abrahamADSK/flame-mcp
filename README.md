@@ -46,7 +46,7 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** â
 
 - macOS
 - [Autodesk Flame](https://www.autodesk.com/products/flame) 2025 or later
-- Python 3.11 or higher (`python3 --version`)
+- Python 3.13 or higher (`python3 --version`)
 - [Node.js](https://nodejs.org) v22 or higher (required by Claude Code)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) 2.x (`npm install -g @anthropic-ai/claude-code`)
 - A Claude account ([claude.ai](https://claude.ai)) â€” Pro, Max, or API key
@@ -69,7 +69,7 @@ Compatible with **Claude Code** (terminal), **Claude Desktop**, and **Cowork** â
   `num_ctx` for some reason, see the advanced Ollama setup below.
 - See [Ollama setup](#ollama-setup-optional) below for backend options
 
-> **Note on Python versions:** The MCP server runs on your system Python (3.11+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5; Flame 2027 ships Python 3.13.3).
+> **Note on Python versions:** The MCP server runs on your system Python (3.13+). Code executed *inside* Flame uses Flame's bundled Python interpreter (Flame 2026 ships Python 3.11.5; Flame 2027 ships Python 3.13.3).
 
 ---
 
