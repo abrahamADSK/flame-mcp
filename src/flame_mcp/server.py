@@ -2763,12 +2763,17 @@ def _timeline_edit(
     source_reel: str,
     source_clip: str,
     to_desktop: bool = False,
+    record_frame: int | None = None,
 ) -> str:
     """Shared resolver + dispatch for timeline_insert / timeline_overwrite.
 
     Resolves the target PySequence (from a reel's ``sequences``) and the source
     PyClip (from a reel's ``clips``) by name, then calls PySequence.<op>(src)
-    with Flame defaults for the edit time and destination track.
+    with Flame defaults for the edit time and destination track — or, when
+    ``record_frame`` is given, at that explicit sequence frame via
+    ``flame.PyTime(record_frame)`` (API: ``overwrite(source_clip[,
+    (PyTime)overwrite_time])`` / ``insert(source_clip[, (PyTime)insert_time])``).
+    Conform driver (Chat 91): placing CutItem edits at their edit_in positions.
 
     Sequences stored in a library are read-only for timeline edits — Flame
     raises ``RuntimeError: Clip is locked`` (verified in-vivo on Flame 2027:
@@ -2796,6 +2801,8 @@ def _find(lib_name, reel_name, item_name, attr):
 seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
 src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
 to_desktop = {to_desktop}
+record_frame = {record_frame}
+_edit_args = (src,) if record_frame is None else (src, flame.PyTime(record_frame))
 if seq is None:
     print("ERROR: sequence not found (check sequence library/reel/name)")
 elif src is None:
@@ -2808,7 +2815,7 @@ elif to_desktop:
     else:
         moved = flame.media_panel.move(seq, dreel)
         target = moved[0] if (isinstance(moved, list) and moved) else (moved if moved is not None else seq)
-        ok = target.{op}(src)
+        ok = target.{op}(*_edit_args)
         dname = str(dreel.name).strip("'")
         if ok:
             print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
@@ -2816,7 +2823,7 @@ elif to_desktop:
             print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
 else:
     try:
-        ok = seq.{op}(src)
+        ok = seq.{op}(*_edit_args)
         print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
     except RuntimeError as exc:
         if "locked" in str(exc).lower():
@@ -2837,6 +2844,7 @@ else:
         src_reel=source_reel,
         src_clip=source_clip,
         to_desktop=to_desktop,
+        record_frame=record_frame,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
@@ -2852,13 +2860,16 @@ def timeline_insert(
     source_reel: str,
     source_clip: str,
     to_desktop: bool = False,
+    record_frame: int | None = None,
 ) -> str:
     """
     Insert a source clip into a sequence's timeline (PySequence.insert — ripple).
 
     Resolves the target sequence (from its reel's ``sequences``) and the source
     clip (from its reel's ``clips``) by name, then calls insert with Flame
-    defaults for insert_time (start) and destination_track (first video track).
+    defaults for insert_time (start) and destination_track (first video track),
+    or at the explicit sequence frame ``record_frame`` when given (conform use:
+    place each CutItem at its edit_in position).
 
     Library sequences are read-only for timeline edits. If the only blocker is
     that lock, the tool returns a LOCKED message offering ``to_desktop`` — it
@@ -2870,10 +2881,12 @@ def timeline_insert(
         to_desktop: set True ONLY after the user explicitly confirms. Moves the
             sequence to the first desktop reel and edits it there (it then lives
             on the desktop, not the library). Default False = refuse + offer.
+        record_frame: optional explicit sequence frame for the edit point
+            (``flame.PyTime``). Omit for Flame's default position.
     """
     return _timeline_edit(
         "insert", sequence_library, sequence_reel, sequence_name,
-        source_library, source_reel, source_clip, to_desktop,
+        source_library, source_reel, source_clip, to_desktop, record_frame,
     )
 
 
@@ -2886,11 +2899,14 @@ def timeline_overwrite(
     source_reel: str,
     source_clip: str,
     to_desktop: bool = False,
+    record_frame: int | None = None,
 ) -> str:
     """
     Overwrite part of a sequence's timeline with a source clip
     (PySequence.overwrite). Same resolution as timeline_insert; overwrite_time
-    and destination_track use Flame defaults.
+    and destination_track use Flame defaults — or the edit lands at the
+    explicit sequence frame ``record_frame`` when given (conform use: place
+    each CutItem at its edit_in position).
 
     Library sequences are read-only for timeline edits. If the only blocker is
     that lock, the tool returns a LOCKED message offering ``to_desktop`` — it
@@ -2902,10 +2918,12 @@ def timeline_overwrite(
         to_desktop: set True ONLY after the user explicitly confirms. Moves the
             sequence to the first desktop reel and edits it there (it then lives
             on the desktop, not the library). Default False = refuse + offer.
+        record_frame: optional explicit sequence frame for the edit point
+            (``flame.PyTime``). Omit for Flame's default position.
     """
     return _timeline_edit(
         "overwrite", sequence_library, sequence_reel, sequence_name,
-        source_library, source_reel, source_clip, to_desktop,
+        source_library, source_reel, source_clip, to_desktop, record_frame,
     )
 
 
@@ -2918,6 +2936,7 @@ _plan.register_op(
         source_library=args.source_library,
         source_reel=args.source_reel,
         source_clip=args.source_clip,
+        record_frame=args.record_frame,
     ),
 )
 _plan.register_op(
@@ -2929,6 +2948,7 @@ _plan.register_op(
         source_library=args.source_library,
         source_reel=args.source_reel,
         source_clip=args.source_clip,
+        record_frame=args.record_frame,
     ),
 )
 

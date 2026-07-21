@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`record_frame` on `timeline_insert` / `timeline_overwrite`** (also in the
+  `execute_plan` registry): optional explicit sequence frame for the edit
+  point, dispatched as `flame.PyTime(record_frame)` (the API's
+  `insert_time`/`overwrite_time` argument, previously unexposed — edits always
+  landed at Flame's default position). Motivation: scripted conform — placing
+  each ShotGrid CutItem at its `edit_in` position on a master sequence.
+  Backward compatible: omitting it keeps the previous behavior. Needs in-vivo
+  validation on Flame 2027 before release.
+
 ## [1.16.0] — 2026-06-24
 
 ### Added
