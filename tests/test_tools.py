@@ -478,7 +478,8 @@ class TestTimeline:
             source_library="Media", source_reel="R2", source_clip="clipA",
         )
         code = mock_bridge.call_args[0][0]
-        assert "seq.insert(src)" in code
+        assert "seq.insert(*_edit_args)" in code
+        assert "record_frame = None" in code
         assert '"sequences"' in code and '"clips"' in code
         assert mock_bridge.call_args.kwargs.get("dedicated_tool") is True
         assert "OK" in result
@@ -490,7 +491,7 @@ class TestTimeline:
             source_library="Media", source_reel="R2", source_clip="clipA",
         )
         code = mock_bridge.call_args[0][0]
-        assert "seq.overwrite(src)" in code
+        assert "seq.overwrite(*_edit_args)" in code
 
     def test_sequence_not_found(self, mock_bridge):
         mock_bridge.return_value = {"output": "ERROR: sequence not found\n", "error": "", "_bridge_ms": 5}
@@ -517,7 +518,7 @@ class TestTimeline:
         assert "elif to_desktop:" in code
         assert "flame.media_panel.move(seq, dreel)" in code
         # default path still dispatches the plain edit
-        assert "seq.insert(src)" in code
+        assert "seq.insert(*_edit_args)" in code
 
     def test_to_desktop_moves_then_edits(self, mock_bridge):
         # Explicit confirmation: move the sequence to the desktop, then edit it.
@@ -530,7 +531,33 @@ class TestTimeline:
         code = mock_bridge.call_args[0][0]
         assert "to_desktop = True" in code
         assert "flame.media_panel.move(seq, dreel)" in code
-        assert "target.overwrite(src)" in code
+        assert "target.overwrite(*_edit_args)" in code
+
+    def test_record_frame_explicit(self, mock_bridge):
+        # record_frame places the edit at an explicit sequence frame via
+        # flame.PyTime (conform driver: CutItem edit_in positions, Chat 91).
+        mock_bridge.return_value = {"output": "Timeline overwrite: OK\n", "error": "", "_bridge_ms": 9}
+        timeline_overwrite(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+            record_frame=101,
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "record_frame = 101" in code
+        assert "flame.PyTime(record_frame)" in code
+        assert "seq.overwrite(*_edit_args)" in code
+
+    def test_record_frame_defaults_to_none(self, mock_bridge):
+        # Without record_frame the edit uses Flame's default position: the
+        # generated code must carry record_frame = None (1-arg dispatch).
+        mock_bridge.return_value = {"output": "Timeline insert: OK\n", "error": "", "_bridge_ms": 9}
+        timeline_insert(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "record_frame = None" in code
+        assert "_edit_args = (src,) if record_frame is None else" in code
 
 
 # ═══════════════════════════════════════════════════════════════════════════

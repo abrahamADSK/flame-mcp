@@ -235,6 +235,11 @@ class _TimelineEditArgs(BaseModel):
     source_library: str = Field(..., description="Library holding the source clip.")
     source_reel: str = Field(..., description="Reel holding the source clip.")
     source_clip: str = Field(..., description="Source clip name.")
+    record_frame: int | None = Field(
+        None,
+        description="Optional explicit sequence frame for the edit point "
+        "(flame.PyTime). Omit for Flame's default position.",
+    )
 
 
 class TimelineInsertArgs(_TimelineEditArgs):
