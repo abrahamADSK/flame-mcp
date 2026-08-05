@@ -11,6 +11,8 @@ and reusable.  Contains:
   - _REDIRECT_PATTERNS: code patterns that should use a dedicated MCP tool
   - _SOFT_REDIRECT_PATTERNS: subset suppressed when creation intent detected
   - _CREATION_INTENT_RE: regex detecting create/modify intent in code
+  - _BATCH_CONTEXT_RE / _BATCH_DRILL_RE: batch-group content traversal has no
+    dedicated read tool, so soft redirects are suppressed when both match
 """
 
 import re
@@ -277,3 +279,20 @@ _CREATION_INTENT_RE = re.compile(
     r'|create_batch_group\s*\('
     r'|create_clip\s*\('
 )
+
+# Batch-group / desktop drill-down. The library-scoped read tools cannot see
+# inside a batch group (list_reels/list_clips take a library_name;
+# list_batch_groups returns only node/reel counts) and the desktop listing
+# shows clips, not sequence positions — so traversing those containers'
+# contents (bg.reels / bg.shelf_reels / reel.clips / desktop reel sequences)
+# via execute_python is the ONLY way to answer content questions there.
+# Observed in-vivo (Chat 92, twice): the `.reels` soft pattern matched
+# `flame.batch.reels` and dead-ended the model on list_reels(library_name);
+# the `desktop.*reel` pattern then dead-ended a desktop-sequence lookup on
+# list_desktop_reels. Soft redirects are suppressed when the code BOTH
+# references a batch/desktop context AND drills into contents; pure listings
+# with no drill still redirect to the dedicated tools.
+_BATCH_CONTEXT_RE = re.compile(
+    r'flame\.batch\b|batch_group|shelf_reels|\.desktop\b')
+_BATCH_DRILL_RE = re.compile(
+    r'\.reels\b|\.shelf_reels\b|\.clips\b|\.nodes\b|\.sequences\b')
