@@ -8,7 +8,7 @@ version = "1.17.0"
 description = "MCP server for Autodesk Flame"
 requires-python = ">=3.13"
 dependencies = [
-    "mcp>=1.26.0",
+    "mcp>=1.26.0,<2",  # 2.x drops mcp.server.fastmcp (CI drift, Chat 92)
     "chromadb>=0.6.0",
     "sentence-transformers>=2.7.0",
     "rank-bm25>=0.2",

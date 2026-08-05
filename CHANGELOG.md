@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- CI hardening against environment drift: `ruff` pinned (0.15.11) and the
+  `mcp` dependency bounded `<2` (mcp 2.x removes `mcp.server.fastmcp`).
 - Flame chat: repo discovery now includes `~/Projects/flame-mcp` — without it the spawned CLI ran without the project `.mcp.json`, losing the Flame MCP server (session claimed only ShotGrid/Maya tools).
 - Hook import bootstrap resolves the `/opt/Autodesk/shared/python/` symlink via `os.path.realpath` — with `abspath` the repo `src/` was never found, so the `flame_mcp._config`/`_readonly` imports silently degraded to the fail-soft stubs and the chat subprocess lost per-console MCP scoping (`build_scoped_mcp_config` → `None`), usage logging and suggestion capture. Runtime paths (bridge socket, `config.json`) intentionally unchanged.
 - execute_python redirect guard: batch-group content traversal (`flame.batch.reels`, `bg.shelf_reels`, `reel.clips`) is no longer redirected to the library-scoped read tools — no dedicated tool can read inside a batch group, so the `.reels`/`.clips` soft redirects dead-ended the model (in-vivo false positive: "list clips in current batch group"). Soft redirects are now suppressed when batch context AND content drill co-occur (`_BATCH_CONTEXT_RE`/`_BATCH_DRILL_RE` in `safety.py`); pure batch listings still redirect to `list_batch_groups()`. +4 tests (`TestBatchDrillSuppression`).
