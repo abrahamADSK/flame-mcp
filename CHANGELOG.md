@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Release tooling: `commits_since_tag` now tolerates the release-in-progress
+  commit via the `CUT_RELEASE_VERSION` anchor (same mechanism as
+  `version_match`/`changelog_tag_sync`). Without it the check deadlocked the
+  flow once `max_age_days` was exceeded (Chat 92). Engine propagated from
+  `invariant_types_canonical.py`.
 
 ### Added
 - **`record_frame` on `timeline_insert` / `timeline_overwrite`** (also in the

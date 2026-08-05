@@ -696,6 +696,21 @@ def commits_since_tag(params: dict) -> tuple[bool, str]:
     if count == 0:
         return True, f"at tag {latest_tag} (0 commits since)"
 
+    # Release-in-progress tolerance (Chat 92): without it this check
+    # deadlocks the flow once the thresholds are exceeded — the release
+    # commit that RESOLVES the drift is itself blocked by the drift.
+    # CUT_RELEASE_VERSION is set only by scripts/cut-release.sh at commit
+    # time (the same unforgeable anchor version_match / changelog_tag_sync
+    # already rely on), so the tolerance cannot be invoked by ordinary
+    # commits.
+    import os
+    cut = (os.environ.get("CUT_RELEASE_VERSION") or "").strip()
+    if cut:
+        return True, (
+            f"{count} commit(s) past {latest_tag} tolerated — release "
+            f"{cut} in progress (env CUT_RELEASE_VERSION)"
+        )
+
     if max_age_days is not None:
         try:
             tag_ts = int(subprocess.check_output(
