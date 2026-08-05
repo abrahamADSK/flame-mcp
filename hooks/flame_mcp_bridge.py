@@ -38,7 +38,13 @@ import datetime
 # _PROJECT_ROOT is resolved further down, but we already know how to derive
 # it from this file's location (see the dynamic project root detection block
 # below for the authoritative logic — this mini-bootstrap just mirrors it).
-_BOOT_THIS_FILE = os.path.abspath(__file__)
+# realpath (NOT abspath) is required here: the dev-mode install symlinks this
+# file from /opt/Autodesk/shared/python/, and abspath keeps the symlink path,
+# so the repo src/ is never found and the flame_mcp.* imports silently degrade
+# to the fail-soft stubs (losing MCP scoping, usage logging and suggestion
+# capture). The dynamic block below intentionally keeps abspath so installed-
+# mode runtime paths (bridge socket, config.json) stay where they are today.
+_BOOT_THIS_FILE = os.path.realpath(__file__)
 _BOOT_HOOKS_DIR = os.path.dirname(_BOOT_THIS_FILE)
 _BOOT_AUTO_ROOT = os.path.dirname(_BOOT_HOOKS_DIR)
 if (os.path.basename(_BOOT_HOOKS_DIR) == 'hooks' and
@@ -47,7 +53,7 @@ if (os.path.basename(_BOOT_HOOKS_DIR) == 'hooks' and
 else:
     _BOOT_PROJECT_ROOT = os.environ.get(
         'FLAME_MCP_ROOT',
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
     )
 _BOOT_SRC = os.path.join(_BOOT_PROJECT_ROOT, 'src')
 if os.path.isdir(_BOOT_SRC) and _BOOT_SRC not in sys.path:
@@ -1102,6 +1108,12 @@ class _FlameChat:
 
             prompt = self._build_prompt()
             _turn_prompt = prompt  # F0: snapshot for turn-record
+            if not prompt.strip():
+                # UI queue consumes callables, not tuples.
+                self._ui_queue.append(lambda: self._append_bubble(
+                    "assistant", "Mensaje vacío — escribe algo antes de enviar."))
+                self._ui_queue.append(lambda: self._set_busy(False))
+                return
 
             # Resolve cwd to the repo directory that contains .mcp.json so
             # that 'claude -p' discovers the flame MCP server definition.
@@ -1110,6 +1122,7 @@ class _FlameChat:
             # python/, _PROJECT_ROOT is wrong — search known locations.
             _repo_candidates = [
                 _PROJECT_ROOT,
+                os.path.expanduser('~/Projects/flame-mcp'),
                 os.path.expanduser('~/Claude_projects/flame-mcp'),
                 os.path.expanduser('~/flame-mcp'),
                 os.path.expanduser('~/Documents/flame-mcp'),
@@ -1172,10 +1185,15 @@ class _FlameChat:
                 os.path.join(cwd, '.mcp.json'), {'flame', 'fpt-mcp'})
             if _scoped_mcp:
                 cmd.extend(['--strict-mcp-config', '--mcp-config', _scoped_mcp])
-            cmd.append(prompt)
+            # The prompt goes through STDIN, never argv (Chat 91): --mcp-config
+            # is VARIADIC, so a positional prompt right after it is swallowed as
+            # another config path and the CLI aborts with "Input must be
+            # provided either through stdin or as a prompt argument when using
+            # --print". stdin is also immune to dash-prefixed messages.
 
             proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1183,6 +1201,13 @@ class _FlameChat:
                 cwd=cwd if os.path.isdir(cwd) else None,
                 bufsize=1,
             )
+
+            # Feed the prompt and close stdin so the CLI knows input is done.
+            try:
+                proc.stdin.write(prompt)
+                proc.stdin.close()
+            except Exception:
+                pass
 
             # Drain stderr in background thread to prevent pipe deadlock
             stderr_lines = []

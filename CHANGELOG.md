@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- Flame chat: repo discovery now includes `~/Projects/flame-mcp` — without it the spawned CLI ran without the project `.mcp.json`, losing the Flame MCP server (session claimed only ShotGrid/Maya tools).
+- Hook import bootstrap resolves the `/opt/Autodesk/shared/python/` symlink via `os.path.realpath` — with `abspath` the repo `src/` was never found, so the `flame_mcp._config`/`_readonly` imports silently degraded to the fail-soft stubs and the chat subprocess lost per-console MCP scoping (`build_scoped_mcp_config` → `None`), usage logging and suggestion capture. Runtime paths (bridge socket, `config.json`) intentionally unchanged.
 ## [1.17.0] — 2026-08-05
 - Release tooling: `commits_since_tag` now tolerates the release-in-progress
   commit via the `CUT_RELEASE_VERSION` anchor (same mechanism as
