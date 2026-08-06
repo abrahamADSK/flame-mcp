@@ -32,6 +32,8 @@ from flame_mcp.safety import (
     _REDIRECT_PATTERNS,
     _SOFT_REDIRECT_PATTERNS,
     _CREATION_INTENT_RE,
+    _BATCH_CONTEXT_RE,
+    _BATCH_DRILL_RE,
 )
 from flame_mcp.error_scrub import safe_error_message, scrub_secrets
 from flame_mcp._session_stats import (
@@ -765,11 +767,15 @@ def _execute_python_impl(
     import re as _re
     import sys as _sys2
     _has_creation = bool(_CREATION_INTENT_RE.search(code))
+    # Batch drill-down: no dedicated tool reads inside a batch group, so the
+    # structural soft redirects must not dead-end the traversal (see safety.py).
+    _has_batch_drill = bool(
+        _BATCH_CONTEXT_RE.search(code) and _BATCH_DRILL_RE.search(code))
     print(
         f"[flame-mcp] execute_python called — "
         f"redirect_check=active  patterns={len(_REDIRECT_PATTERNS)}  "
         f"rag_called={_rag_called_this_session}  creation_intent={_has_creation}"
-        f"  dry_run={dry_run}",
+        f"  batch_drill={_has_batch_drill}  dry_run={dry_run}",
         file=_sys2.stderr, flush=True
     )
 
@@ -777,9 +783,10 @@ def _execute_python_impl(
     redirect_match = None
     for _pattern, _msg in _REDIRECT_PATTERNS:
         if _re.search(_pattern, code):
-            if _has_creation and _pattern in _SOFT_REDIRECT_PATTERNS:
+            if (_has_creation or _has_batch_drill) and _pattern in _SOFT_REDIRECT_PATTERNS:
+                _why = "creation intent" if _has_creation else "batch drill"
                 print(
-                    f"[flame-mcp] REDIRECT suppressed (creation intent): {_pattern}",
+                    f"[flame-mcp] REDIRECT suppressed ({_why}): {_pattern}",
                     file=_sys2.stderr, flush=True
                 )
                 continue
@@ -966,6 +973,30 @@ def _track_timing(entry: dict) -> None:
     _persist_timing(_TIMINGS_LOG, enriched)
 
 
+def _wiretap_tools_dir() -> str:
+    """Resolve the Wiretap CLI tools dir.
+
+    ``$FLAME_WIRETAP_TOOLS`` overrides; else ``…/tools/current`` (Linux
+    installs); else the newest versioned dir — macOS installs ship NO
+    ``current`` symlink (Chat 92: the hardcoded path made the wiretap
+    metadata route fail silently, so get_project_info always fell back to
+    the project ``.cfg``, whose legacy ``Framerate`` default misreported a
+    25 fps project as 23.976).
+    """
+    import glob as _glob
+
+    env = os.environ.get("FLAME_WIRETAP_TOOLS")
+    if env and os.path.isdir(env):
+        return env
+    base = "/opt/Autodesk/wiretap/tools"
+    cur = os.path.join(base, "current")
+    if os.path.isdir(cur):
+        return cur
+    vers = sorted(d for d in _glob.glob(os.path.join(base, "*"))
+                  if os.path.isdir(d))
+    return vers[-1] if vers else cur
+
+
 @mcp.tool(annotations=_RO)
 @_cache_workspace_read()
 def get_project_info() -> str:
@@ -980,10 +1011,12 @@ def get_project_info() -> str:
 
     NOTE: PyProject does NOT expose frame_rate, width, height, or bit_depth
     as Python attributes — they are only available via Wiretap XML metadata.
-    This tool retrieves them correctly via wiretap_get_metadata.
+    This tool retrieves them correctly via wiretap_get_metadata; the project
+    ``.cfg`` is only a LAST-RESORT fallback (its ``Framerate`` key is a
+    creation-time default that may not match the real project setting).
     Do NOT use execute_python to read these values; it will return None.
     """
-    WTAP = "/opt/Autodesk/wiretap/tools/current"
+    WTAP = _wiretap_tools_dir()
 
     # Step 1 — get name + workspace count from Python API (always works)
     result = _call_flame("""
@@ -1287,10 +1320,11 @@ for lib in ws.libraries:
 @_cache_workspace_read()
 def list_desktop_reels() -> str:
     """
-    List the full desktop structure: reel groups, reels, and clip names.
-    Use this for ANY request about desktop contents, clips in desktop, or
-    'what's on the desktop' — it returns everything in one call.
-    Includes clip names so no follow-up execute_python call is needed.
+    List the full desktop structure: reel groups, reels, clip names AND
+    sequences (tagged [SEQ] with duration in frames — desktop sequences were
+    previously invisible to this tool, Chat 92). Use this for ANY request
+    about desktop contents, clips or sequences in desktop, or 'what's on the
+    desktop' — it returns everything in one call.
     """
     code = """
 ws = flame.projects.current_project.current_workspace
@@ -1299,9 +1333,16 @@ for rg in desktop.reel_groups:
     print(f"[{str(rg.name)}]")
     for reel in rg.reels:
         clips = list(reel.clips)
-        print(f"  {str(reel.name)}  ({len(clips)} clips)")
+        seqs = list(getattr(reel, "sequences", None) or [])
+        print(f"  {str(reel.name)}  ({len(clips)} clips, {len(seqs)} sequences)")
         for c in clips:
             print(f"    {str(c.name)}")
+        for s in seqs:
+            try:
+                dur = s.duration.frame
+            except Exception:
+                dur = "?"
+            print(f"    [SEQ] {str(s.name)}  ({dur} frames)")
 """
     result = _call_flame(code)
     output = result.get('output', '') + result.get('error', '')
@@ -1521,7 +1562,7 @@ async def flame_wiretap_tree(path: str = "/", ctx: Context | None = None) -> str
 def _flame_wiretap_tree_impl(path: str = "/") -> str:
     """Sync body of flame_wiretap_tree — called by the execute_plan registry and
     tests; the async MCP tool above wraps it with progress heartbeats."""
-    wt_tool = "/opt/Autodesk/wiretap/tools/current/wiretap_print_tree"
+    wt_tool = os.path.join(_wiretap_tools_dir(), "wiretap_print_tree")
     host    = "localhost:IFFFS"
     try:
         proc = subprocess.run(
@@ -1887,7 +1928,21 @@ def _timings_summary() -> str:
 
 # ─── Flame log reader ─────────────────────────────────────────────────────────
 
-_LOGS_DIR = Path("/opt/Autodesk/logs")
+def _logs_dir() -> Path:
+    """Resolve the Flame log directory.
+
+    ``$FLAME_LOG_DIR`` overrides; else the first existing of
+    ``/opt/Autodesk/logs`` (Linux) and ``/opt/Autodesk/log`` (macOS —
+    Chat 92: the singular name is what this Mac ships, so the hardcoded
+    plural made both log tools fail with "directory not found").
+    """
+    env = os.environ.get("FLAME_LOG_DIR")
+    if env:
+        return Path(env)
+    for cand in (Path("/opt/Autodesk/logs"), Path("/opt/Autodesk/log")):
+        if cand.is_dir():
+            return cand
+    return Path("/opt/Autodesk/logs")
 
 
 @mcp.tool(annotations=_RO)
@@ -1904,16 +1959,16 @@ def list_flame_logs() -> str:
     - Python hook logs        (python*.log)
     """
     from flame_mcp.suggestions import maybe_annotate_with_suggestions
-    if not _LOGS_DIR.exists():
-        return f"❌ Log directory not found: {_LOGS_DIR}"
+    if not _logs_dir().exists():
+        return f"❌ Log directory not found: {_logs_dir()}"
 
     try:
-        entries = sorted(_LOGS_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+        entries = sorted(_logs_dir().iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
         logs = [e for e in entries if e.is_file()]
         if not logs:
-            return f"No log files found in {_LOGS_DIR}"
+            return f"No log files found in {_logs_dir()}"
 
-        lines = [f"📁 {_LOGS_DIR}  ({len(logs)} files)\n"]
+        lines = [f"📁 {_logs_dir()}  ({len(logs)} files)\n"]
         for p in logs:
             stat = p.stat()
             size  = stat.st_size
@@ -1964,11 +2019,11 @@ def read_flame_log(
     # A9 — Explicit path traversal guard: Pydantic blocks '/' and '\' but '..' passes through.
     if '..' in log_name or log_name.startswith('.'):
         return "❌ Error: invalid log name (path traversal not allowed)"
-    log_path = _LOGS_DIR / log_name
+    log_path = _logs_dir() / log_name
     if not log_path.exists():
         # Suggest close matches
         try:
-            candidates = [p.name for p in _LOGS_DIR.iterdir()
+            candidates = [p.name for p in _logs_dir().iterdir()
                           if p.is_file() and log_name.lower().split('.')[0] in p.name.lower()]
         except Exception:
             candidates = []
@@ -2716,6 +2771,14 @@ def _import_clips_impl(path: str, library_name: str, reel_name: str = "") -> str
     """Sync body of import_clips — called by the execute_plan registry and
     tests; the async MCP tool above wraps it with progress heartbeats."""
     _track_dedicated()
+    # A 0-clip import is a SILENT Flame rejection (unsupported/malformed file
+    # or unresolvable media — e.g. a .clip XML Flame drops without logging any
+    # error, Chat 92); surface it as a warning instead of a quiet success.
+    warn_zero = (
+        "print('WARNING: Flame accepted the call but imported 0 clips - "
+        "silent rejection (unsupported/malformed file or unresolvable "
+        "media). The app log typically shows no error.')\n"
+    )
     if reel_name:
         dest_lines = (
             f"  reel = next((r for r in lib.reels if str(r.name).strip(\"'\") == {reel_name!r}), None)\n"
@@ -2723,11 +2786,15 @@ def _import_clips_impl(path: str, library_name: str, reel_name: str = "") -> str
             f"  else:\n"
             f"    clips = flame.import_clips({path!r}, reel)\n"
             f"    print('Imported ' + str(len(clips)) + ' clip(s) into reel ' + {reel_name!r})\n"
+            f"    if not clips:\n"
+            f"      {warn_zero}"
         )
     else:
         dest_lines = (
             f"  clips = flame.import_clips({path!r}, lib)\n"
             f"  print('Imported ' + str(len(clips)) + ' clip(s) into ' + str(lib.name).strip(\"'\"))\n"
+            f"  if not clips:\n"
+            f"    {warn_zero}"
         )
     code = (
         f"import flame\n"
@@ -2799,14 +2866,28 @@ def _find(lib_name, reel_name, item_name, attr):
     coll = getattr(reel, attr, []) or []
     return next((x for x in coll if str(x.name).strip("'") == item_name), None)
 seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
+# Conform flows edit the same sequence repeatedly: after a to_desktop move the
+# sequence is NO LONGER in the library, so also resolve it from the desktop
+# reels (where it is directly editable — no library lock).
+seq_on_desktop = False
+if seq is None:
+    for _rg in ws.desktop.reel_groups:
+        for _r in _rg.reels:
+            for _s in (getattr(_r, "sequences", None) or []):
+                if str(_s.name).strip("'") == {seq_name!r}:
+                    seq = _s
+                    seq_on_desktop = True
 src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
 to_desktop = {to_desktop}
 record_frame = {record_frame}
 _edit_args = (src,) if record_frame is None else (src, flame.PyTime(record_frame))
 if seq is None:
-    print("ERROR: sequence not found (check sequence library/reel/name)")
+    print("ERROR: sequence not found (checked sequence library/reel/name and the desktop reels)")
 elif src is None:
     print("ERROR: source clip not found (check source library/reel/clip)")
+elif seq_on_desktop:
+    ok = seq.{op}(*_edit_args)
+    print("Timeline {op}: " + ("OK - sequence resolved on the desktop and edited there" if ok else "failed (Flame returned False)"))
 elif to_desktop:
     rgs = ws.desktop.reel_groups
     dreel = rgs[0].reels[0] if (rgs and rgs[0].reels) else None
@@ -2882,7 +2963,11 @@ def timeline_insert(
             sequence to the first desktop reel and edits it there (it then lives
             on the desktop, not the library). Default False = refuse + offer.
         record_frame: optional explicit sequence frame for the edit point
-            (``flame.PyTime``). Omit for Flame's default position.
+            (``flame.PyTime``). ONE-BASED: record_frame=1 is the first frame
+            of the sequence (validated in-vivo, Chat 92 — note that
+            ``segment.record_in.frame`` reads back ZERO-based, so an edit at
+            record_frame=N lands at record_in.frame N-1). Omit for Flame's
+            default position.
     """
     return _timeline_edit(
         "insert", sequence_library, sequence_reel, sequence_name,
@@ -2919,7 +3004,11 @@ def timeline_overwrite(
             sequence to the first desktop reel and edits it there (it then lives
             on the desktop, not the library). Default False = refuse + offer.
         record_frame: optional explicit sequence frame for the edit point
-            (``flame.PyTime``). Omit for Flame's default position.
+            (``flame.PyTime``). ONE-BASED: record_frame=1 is the first frame
+            of the sequence (validated in-vivo, Chat 92 — note that
+            ``segment.record_in.frame`` reads back ZERO-based, so an edit at
+            record_frame=N lands at record_in.frame N-1). Omit for Flame's
+            default position.
     """
     return _timeline_edit(
         "overwrite", sequence_library, sequence_reel, sequence_name,

@@ -533,6 +533,26 @@ class TestTimeline:
         assert "flame.media_panel.move(seq, dreel)" in code
         assert "target.overwrite(*_edit_args)" in code
 
+    def test_resolves_sequence_from_desktop_after_move(self, mock_bridge):
+        # After a to_desktop move the sequence is no longer in any library:
+        # the template must also resolve it from the desktop reels and edit
+        # it there directly (desktop sequences carry no library lock) —
+        # Chat 92 conform: events 2..N of a multi-event conform hit this.
+        mock_bridge.return_value = {
+            "output": "Timeline overwrite: OK - sequence resolved on the desktop and edited there\n",
+            "error": "", "_bridge_ms": 9}
+        result = timeline_overwrite(
+            sequence_library="Shots", sequence_reel="R1", sequence_name="SEQ",
+            source_library="Media", source_reel="R2", source_clip="clipA",
+            record_frame=201,
+        )
+        code = mock_bridge.call_args[0][0]
+        assert "seq_on_desktop" in code
+        assert 'getattr(_r, "sequences", None)' in code
+        assert "elif seq_on_desktop:" in code
+        assert "checked sequence library/reel/name and the desktop reels" in code
+        assert "OK" in result
+
     def test_record_frame_explicit(self, mock_bridge):
         # record_frame places the edit at an explicit sequence frame via
         # flame.PyTime (conform driver: CutItem edit_in positions, Chat 91).

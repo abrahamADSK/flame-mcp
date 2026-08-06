@@ -27,6 +27,11 @@ TestSoftRedirectSuppression (3 tests):
   6. test_soft_redirect_with_creation_intent  -- ws.libraries + create_sequence → NOT redirected
   7. test_hard_redirect_with_creation_intent  -- flame.selection + create_sequence → IS redirected
   8. test_no_creation_intent                  -- ws.libraries without intent → IS redirected
+
+TestBatchDrillSuppression (4 tests):
+  batch-group content traversal has no dedicated read tool, so soft
+  redirects are suppressed when batch context + content drill co-occur;
+  a pure batch listing (no drill) and library traversal still redirect.
 """
 
 
@@ -218,3 +223,98 @@ class TestModificationIntentSuppression:
         assert "REDIRECT" not in result, (
             f"insert intent should suppress the soft redirect, got: {result!r}"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TestBatchDrillSuppression (Chat 92 in-vivo false positive)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestBatchDrillSuppression:
+    """Reading INSIDE a batch group must stay reachable via execute_python.
+
+    list_reels/list_clips are library-scoped and list_batch_groups returns
+    only node/reel counts, so no dedicated tool can answer "which clips are
+    in this batch group?".  In-vivo the `.reels` soft pattern matched
+    `flame.batch.reels` and redirected to list_reels(library_name) — a
+    dead end.  Soft redirects are suppressed when batch context AND content
+    drill co-occur; pure listings and library traversal are unaffected.
+    """
+
+    def test_current_batch_reels_drill_not_redirected(self, mock_bridge):
+        """Iterating flame.batch.reels → clips is allowed (no dedicated tool)."""
+        code = (
+            "for r in flame.batch.reels:\n"
+            "    for c in r.clips:\n"
+            "        print(str(c.name))\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"batch drill should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_batch_group_traversal_drill_not_redirected(self, mock_bridge):
+        """Finding a batch group, then drilling into its reels, is allowed."""
+        code = (
+            "bg = [b for b in desktop.batch_groups if str(b.name) == 'Batch'][0]\n"
+            "for r in bg.reels:\n"
+            "    print(str(r.name), len(r.clips))\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"batch-group drill should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_shelf_reels_drill_not_redirected(self, mock_bridge):
+        """Shelf reels only exist on batch groups — drilling them is allowed."""
+        code = (
+            "for r in flame.batch.shelf_reels:\n"
+            "    print(str(r.name), [str(c.name) for c in r.clips])\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"shelf_reels drill should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_pure_batch_listing_still_redirected(self, mock_bridge):
+        """Batch-group listing with NO content drill → list_batch_groups() covers it."""
+        code = "for bg in desktop.batch_groups:\n    print(str(bg.name))"
+        result = execute_python(code)
+
+        assert "REDIRECT" in result, (
+            f"pure batch listing should still redirect, got: {result!r}"
+        )
+        mock_bridge.assert_not_called()
+
+    def test_desktop_sequence_drill_not_redirected(self, mock_bridge):
+        """Desktop reel sequences have no dedicated position/listing tool —
+        drilling them via execute_python must stay reachable (Chat 92:
+        verifying a conform sequence's location was dead-ended twice)."""
+        code = (
+            "dsk = ws.desktop\n"
+            "for rg in dsk.reel_groups:\n"
+            "    for r in rg.reels:\n"
+            "        for s in (r.sequences or []):\n"
+            "            print(str(s.name))\n"
+        )
+        result = execute_python(code)
+
+        mock_bridge.assert_called_once()
+        assert "REDIRECT" not in result, (
+            f"desktop drill should suppress the soft redirect, got: {result!r}"
+        )
+
+    def test_pure_desktop_reel_listing_still_redirected(self, mock_bridge):
+        """Desktop reel listing with NO content drill → list_desktop_reels()."""
+        code = "for rg in ws.desktop.reel_groups:\n    print(str(rg.name))"
+        result = execute_python(code)
+
+        assert "REDIRECT" in result, (
+            f"pure desktop listing should still redirect, got: {result!r}"
+        )
+        mock_bridge.assert_not_called()

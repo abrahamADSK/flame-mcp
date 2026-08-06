@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- CI hardening against environment drift: `ruff` pinned (0.15.11) and the
+  `mcp` dependency bounded `<2` (mcp 2.x removes `mcp.server.fastmcp`).
+- Flame chat: repo discovery now includes `~/Projects/flame-mcp` — without it the spawned CLI ran without the project `.mcp.json`, losing the Flame MCP server (session claimed only ShotGrid/Maya tools).
+- Hook import bootstrap resolves the `/opt/Autodesk/shared/python/` symlink via `os.path.realpath` — with `abspath` the repo `src/` was never found, so the `flame_mcp._config`/`_readonly` imports silently degraded to the fail-soft stubs and the chat subprocess lost per-console MCP scoping (`build_scoped_mcp_config` → `None`), usage logging and suggestion capture. Runtime paths (bridge socket, `config.json`) intentionally unchanged.
+- execute_python redirect guard: batch-group content traversal (`flame.batch.reels`, `bg.shelf_reels`, `reel.clips`) is no longer redirected to the library-scoped read tools — no dedicated tool can read inside a batch group, so the `.reels`/`.clips` soft redirects dead-ended the model (in-vivo false positive: "list clips in current batch group"). Soft redirects are now suppressed when batch context AND content drill co-occur (`_BATCH_CONTEXT_RE`/`_BATCH_DRILL_RE` in `safety.py`); pure batch listings still redirect to `list_batch_groups()`. +4 tests (`TestBatchDrillSuppression`).
+- **Timeline ops resolve the sequence from the desktop too** (in-vivo Chat 92): after a `to_desktop` move the sequence is no longer in any library, so events 2..N of a multi-event conform could not resolve it ("sequence not found") and had to fall back to raw `execute_python`. The generated template now also searches the desktop reels' sequences and edits there directly (desktop sequences carry no library lock). +1 test.
+- **`record_frame` documented as ONE-based** (measured in-vivo: `PyTime(1)` = first sequence frame, while `segment.record_in.frame` reads back zero-based — mixing the two cost one overwritten frame during the Chat 92 conform).
+- **Wiretap tools dir resolved dynamically** (`_wiretap_tools_dir`: `$FLAME_WIRETAP_TOOLS` → `tools/current` → newest versioned dir): macOS installs ship no `current` symlink, so `get_project_info`'s authoritative wiretap route always failed silently and the `.cfg` fallback misreported a 25 fps project as 23.976 (the cfg `Framerate` key is a creation-time default, not the live setting). Same resolver now feeds `flame_wiretap_tree`.
+- **Flame log dir resolved dynamically** (`_logs_dir()`: `$FLAME_LOG_DIR` → `/opt/Autodesk/logs` → `/opt/Autodesk/log`): this Mac ships the singular name, so `list_flame_logs`/`read_flame_log` always failed with "directory not found".
+- **`import_clips` warns on 0-clip imports** — a zero-length result is a silent Flame rejection (e.g. a malformed `.clip` XML dropped with no logged error), not a success.
+- **`list_desktop_reels` now lists desktop sequences** (tagged `[SEQ]` with frame duration) — they were invisible, which made the tool a dead-end target for the `desktop.*reel` redirect; the redirect guard also suppresses soft redirects for desktop content drills (same mechanism as batch, +2 tests).
+- execute_python redirect guard: desktop content drills (`.sequences` et al. under a desktop context) suppress soft redirects — covered by `TestBatchDrillSuppression`.
+- Flame chat (_FlameChat): prompt fed to the claude CLI via stdin — a positional prompt after the variadic `--mcp-config` was swallowed as a config path ("Input must be provided either through stdin..."), and dash-prefixed messages parsed as options; empty messages now get a friendly bubble.
 
 ## [1.17.0] — 2026-08-05
 - Release tooling: `commits_since_tag` now tolerates the release-in-progress
