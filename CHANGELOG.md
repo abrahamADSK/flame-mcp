@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **New tool `fpt_link`** (Chat 93): read/set/break the NATIVE Flame↔FPT
+  project link — the `shotgun_project_name` ProjectEntry attribute, the same
+  one Flame's shipped FPT plugin (`presets/<ver>/shotgun`) reads and writes
+  (mechanism reverse-engineered from the shipped plugin + session logs; the
+  attribute persists in the project's framestore metadata and is only
+  reachable with the project loaded). `set` guards overwriting a different
+  existing link behind `confirm=true`; `break` refuses without `confirm=true`
+  and an express user request. Drives the manual-native linking workflow for
+  the FPT console (open Flame → verify/set link → conform). +8 tests.
 - CI hardening against environment drift: `ruff` pinned (0.15.11) and the
   `mcp` dependency bounded `<2` (mcp 2.x removes `mcp.server.fastmcp`).
 - Flame chat: repo discovery now includes `~/Projects/flame-mcp` — without it the spawned CLI ran without the project `.mcp.json`, losing the Flame MCP server (session claimed only ShotGrid/Maya tools).

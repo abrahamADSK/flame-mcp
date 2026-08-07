@@ -2385,6 +2385,82 @@ def rename_segments(
 
 
 @mcp.tool(annotations=_DST)
+def fpt_link(
+    action: str,
+    fpt_project_name: str = "",
+    confirm: bool = False,
+) -> str:
+    """
+    Read, set or break the NATIVE link between the loaded Flame project and a
+    Flow Production Tracking project — the ``shotgun_project_name`` attribute,
+    the exact attribute Flame's own FPT integration reads/writes (persisted in
+    the project's framestore metadata, Chat 93 investigation).
+
+    Actions:
+      get   — report the current link ('' = not linked). Read-only.
+      set   — link to ``fpt_project_name``. Overwriting a DIFFERENT existing
+              link requires confirm=true (the current link is reported first).
+      break — clear the link. Requires confirm=true AND an EXPRESS user
+              request — never break a link on your own initiative.
+
+    The link is stored by project NAME (Flame keeps the string, not an id) and
+    is only reachable while a project is loaded — with Flame closed there is
+    nothing to read (binary framestore metadata; no wiretap server on macOS).
+    """
+    _track_dedicated()
+    action = action.strip().lower()
+    if action not in ("get", "set", "break"):
+        return "ERROR: action must be one of: get, set, break"
+    if action == "set" and not fpt_project_name:
+        return "ERROR: fpt_project_name is required for action='set'"
+    if action == "break" and not confirm:
+        return (
+            "ERROR: breaking the FPT link requires confirm=true — ask the "
+            "user for express confirmation first"
+        )
+
+    # ProjectEntry attribute access mirrors Flame's own FPT plugin
+    # (presets/<ver>/shotgun/python/tk_flame_basic/bootstrap.py): read via
+    # get_value() when the attribute object exposes it, write by assignment.
+    read_current = (
+        "import flame\n"
+        "from flame import project\n"
+        "prj = project.current_project\n"
+        "v = prj.shotgun_project_name\n"
+        "cur = v.get_value() if hasattr(v, 'get_value') else str(v).strip(\"'\")\n"
+        "name = str(flame.projects.current_project.name).strip(\"'\")\n"
+    )
+    if action == "get":
+        code = read_current + (
+            "print('flame_project=' + name)\n"
+            "print('fpt_link=' + repr(cur))\n"
+        )
+        return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
+
+    if action == "set":
+        code = read_current + (
+            f"target = {fpt_project_name!r}\n"
+            f"confirm = {bool(confirm)!r}\n"
+            "if cur and cur != target and not confirm:\n"
+            "    print('ERROR: ' + name + ' is already linked to ' + repr(cur)\n"
+            "          + ' — overwriting requires confirm=true')\n"
+            "else:\n"
+            "    prj.shotgun_project_name = target\n"
+            "    v2 = prj.shotgun_project_name\n"
+            "    new = v2.get_value() if hasattr(v2, 'get_value') else str(v2).strip(\"'\")\n"
+            "    print('fpt_link on ' + name + ': ' + repr(cur) + ' -> ' + repr(new))\n"
+        )
+    else:  # break
+        code = read_current + (
+            "prj.shotgun_project_name = ''\n"
+            "print('fpt_link on ' + name + ' BROKEN (was ' + repr(cur) + ')')\n"
+        )
+    result = _call_flame(code, timeout=15, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
+
+
+@mcp.tool(annotations=_DST)
 def create_sequence(
     library_name: str,
     reel_name: str,
