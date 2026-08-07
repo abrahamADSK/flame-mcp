@@ -31,6 +31,7 @@ _DESTRUCTIVE = {
     "mcp__flame__create_batch_group",
     "mcp__flame__create_sequence",
     "mcp__flame__rename_segments",
+    "mcp__flame__fpt_link",
     "mcp__flame__import_clips",
     "mcp__flame__timeline_insert",
     "mcp__flame__timeline_overwrite",

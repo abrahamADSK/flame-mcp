@@ -90,7 +90,7 @@ The installer will:
 3. Copy the Flame hook to `/opt/Autodesk/shared/python/` (requires `sudo`)
 4. Register the MCP server with Claude Code
 5. Build the RAG documentation index
-6. Generate `.claude/settings.local.json` with the non-destructive MCP tools pre-approved (38 tools total; destructive tools such as `execute_python`, the `create_*`/`timeline_*` writers and `undo_last_operation` are left for an interactive permission prompt)
+6. Generate `.claude/settings.local.json` with the non-destructive MCP tools pre-approved (39 tools total; destructive tools such as `execute_python`, the `create_*`/`timeline_*` writers and `undo_last_operation` are left for an interactive permission prompt)
 
 ### Verify installation
 
@@ -218,7 +218,7 @@ Then talk naturally:
 ---
 
 <!-- concept:mcp_tool_count start -->
-## MCP Tools (38)
+## MCP Tools (39)
 <!-- concept:mcp_tool_count end -->
 
 <!-- concept:mcp_tool_table start -->
@@ -260,6 +260,7 @@ Then talk naturally:
 | `timeline_insert` | Ripple-insert a source clip into a sequence's timeline |
 | `timeline_overwrite` | Overwrite part of a sequence's timeline with a source clip |
 | `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
+| `fpt_link` | Read/set/break the native Flame↔FPT project link (shotgun_project_name attribute; set/break gated by confirm, break only on express user request) |
 | `operation_history` | Show the last N execute_python operations recorded this session |
 | `undo_last_operation` | Undo the last undoable execute_python operation |
 <!-- concept:mcp_tool_table end -->
