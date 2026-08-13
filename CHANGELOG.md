@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Timeline to_desktop: a landed edit can no longer be reported as a
+  failure** (Chat 98, in-vivo): moving the sequence to the desktop makes
+  Flame resync the workspace, which can invalidate the Python wrappers the
+  generated code still holds. Reading `dreel.name` AFTER the move raised a
+  C++ `unordered_map::at: key not found` exception — the overwrite had
+  already landed (clip placed, sequence on the desktop, verified by the
+  panel listings) but the tool returned an error, the console stopped the
+  conform at 1 of 6 shots, and the operator was told the UI might be
+  corrupted. The reel name is now captured BEFORE the move, and the
+  post-edit reporting is guarded so a stale-wrapper hiccup degrades the
+  message, never the result. +2 tests.
 - **Import settle: media imports wait for Flame's database writes** (Chat
   98, measured in-vivo BOTH ways the same night): the Python API returns
   from `create_library`/`create_reel` before Flame finishes writing its

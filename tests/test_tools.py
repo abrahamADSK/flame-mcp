@@ -943,3 +943,42 @@ class TestReadFlameLog:
 
         assert isinstance(result, str)
         assert "path traversal" in result.lower() or "invalid" in result.lower() or "❌" in result
+
+
+class TestTimelineStaleWrapperGuard:
+    """A successful edit must never be reported as a failure (Chat 98).
+
+    Moving the sequence to the desktop makes Flame resync the workspace,
+    which can invalidate the Python wrappers the template still holds.
+    In-vivo, reading dreel.name AFTER the move raised a C++
+    unordered_map::at exception — the overwrite had already landed (clip
+    placed, sequence on the desktop), but the tool returned an error and
+    the conform stopped at 1 of 6 shots.
+    """
+
+    def _desktop_code(self):
+        from unittest.mock import patch
+        with patch("flame_mcp.server._call_flame") as mock_bridge:
+            mock_bridge.return_value = {
+                "output": "Timeline overwrite: OK\n", "error": "", "_bridge_ms": 9}
+            timeline_overwrite(
+                sequence_library="Shots", sequence_reel="R1",
+                sequence_name="SEQ", source_library="Media", source_reel="R2",
+                source_clip="clipA", to_desktop=True,
+            )
+            return mock_bridge.call_args[0][0]
+
+    def test_reel_name_is_captured_before_the_move(self):
+        code = self._desktop_code()
+        branch = code.split("elif to_desktop:", 1)[1]
+        assert branch.index("dname = str(dreel.name)") < branch.index(
+            "flame.media_panel.move(seq, dreel)")
+
+    def test_reporting_cannot_fail_the_landed_edit(self):
+        code = self._desktop_code()
+        branch = code.split("elif to_desktop:", 1)[1]
+        # The success/failure prints are inside a try, and the fallback still
+        # says OK — the edit has landed by then.
+        assert branch.index("target.overwrite(*_edit_args)") < branch.index("try:")
+        assert "post-edit" in branch
+        assert "report degraded" in branch

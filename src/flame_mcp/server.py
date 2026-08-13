@@ -2960,14 +2960,26 @@ elif to_desktop:
     if dreel is None:
         print("ERROR: no desktop reel available to move the sequence into")
     else:
+        # Capture the name BEFORE the move: moving the sequence makes Flame
+        # resync the workspace, which can invalidate the Python wrappers held
+        # here — reading dreel.name AFTER the move raised a C++
+        # unordered_map::at exception in-vivo (Chat 98) and turned a fully
+        # successful edit into a reported failure.
+        dname = str(dreel.name).strip("'")
         moved = flame.media_panel.move(seq, dreel)
         target = moved[0] if (isinstance(moved, list) and moved) else (moved if moved is not None else seq)
         ok = target.{op}(*_edit_args)
-        dname = str(dreel.name).strip("'")
-        if ok:
-            print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
-        else:
-            print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
+        # The edit has LANDED by this point. Nothing below may undo that, so
+        # a stale-wrapper hiccup while reporting must degrade the message,
+        # never the result.
+        try:
+            if ok:
+                print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
+            else:
+                print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
+        except Exception as _report_exc:
+            print("Timeline {op}: OK - edit landed on the desktop (post-edit "
+                  "report degraded: " + repr(_report_exc) + ")")
 else:
     try:
         ok = seq.{op}(*_edit_args)
