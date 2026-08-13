@@ -1,0 +1,122 @@
+"""
+test_session_continuity.py
+==========================
+The in-Flame console keeps ONE CLI conversation across turns (Chat 98).
+
+Every turn spawns a fresh ``claude -p``. Before this, the child started from
+zero each time and only saw the digest ``_build_prompt`` injected: the last 4
+messages truncated to 500 characters. Measured in-vivo on a conform, that made
+the model re-discover the FPT link, the project id, the Cut and its CutItems
+FIVE times, and re-fetch the workflow recipe on every turn because it fell
+outside the digest. Five round-trips to place six clips.
+
+The fix captures the CLI's ``session_id`` from the stream events and passes
+``--resume`` on the next turn.
+
+Why these tests read the source
+-------------------------------
+The wiring lives in methods of the chat-widget class, whose ``__init__`` calls
+``_import_qt()`` and needs a live Qt display / Flame host. Same constraint as
+``test_effort_config.py``: the suite stays 100% offline, so the structural
+contract is asserted against the source, and the prompt-selection logic is
+replicated (it is four lines) and exercised directly.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+_HOOK = Path(__file__).resolve().parents[1] / "hooks" / "flame_mcp_bridge.py"
+
+
+@pytest.fixture(scope="module")
+def source() -> str:
+    return _HOOK.read_text(encoding="utf-8")
+
+
+class TestResumeWiring:
+    """The four points that make session continuity work."""
+
+    def test_resume_is_passed_when_a_session_exists(self, source):
+        assert "cmd.extend(['--resume', self._session_id])" in source, (
+            "the console must continue its CLI conversation across turns"
+        )
+
+    def test_session_id_is_captured_from_stream_events(self, source):
+        # Without the capture there is never an id to resume from.
+        assert "sid = event.get('session_id')" in source
+        assert "self._session_id = sid" in source
+
+    def test_clear_drops_the_session(self, source):
+        """Clear must be a real fresh start, not a blank transcript in front
+        of a conversation that still remembers."""
+        clear = source.split("def _on_clear(self):", 1)[1].split("def ", 1)[0]
+        assert "self._session_id = None" in clear
+
+    def test_a_dead_session_does_not_wedge_the_console(self, source):
+        """A pruned transcript makes --resume abort. The id must be dropped so
+        the next send starts fresh instead of failing forever."""
+        assert "if self._session_id and 'session' in err.lower():" in source
+        wedge = source.split("if self._session_id and 'session' in err.lower():", 1)[1]
+        assert "self._session_id = None" in wedge.split("raise", 1)[0]
+
+
+class TestPromptSelection:
+    """Replicates _build_prompt's branch (the method needs Qt to instantiate).
+
+    With a live session the message goes alone — re-injecting the digest would
+    duplicate what the child already remembers, in a truncated copy.
+    """
+
+    @staticmethod
+    def _build_prompt(session_id, messages):
+        history = messages[:-1]
+        user_msg = messages[-1]["content"]
+        if session_id or not history:
+            return user_msg
+        lines = ["<recent_conversation>"]
+        for msg in history[-4:]:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            content = msg["content"]
+            if len(content) > 500:
+                content = content[:500] + "…"
+            lines.append(f"{role}: {content}")
+        lines.append("</recent_conversation>")
+        lines.append(f"\n{user_msg}")
+        return "\n".join(lines)
+
+    def _convo(self):
+        return [
+            {"role": "user", "content": "conform the main cut"},
+            {"role": "assistant", "content": "here is the plan"},
+            {"role": "user", "content": "go ahead"},
+        ]
+
+    def test_live_session_sends_the_message_alone(self):
+        prompt = self._build_prompt("abc-123", self._convo())
+        assert prompt == "go ahead"
+        assert "<recent_conversation>" not in prompt
+
+    def test_first_turn_of_a_session_sends_the_message_alone(self):
+        prompt = self._build_prompt(None, [{"role": "user", "content": "hola"}])
+        assert prompt == "hola"
+
+    def test_digest_is_the_fallback_without_a_session(self):
+        """Still the behaviour after a resume failure — degraded, not absent."""
+        prompt = self._build_prompt(None, self._convo())
+        assert "<recent_conversation>" in prompt
+        assert "conform the main cut" in prompt
+        assert prompt.endswith("go ahead")
+
+    def test_digest_truncates_long_messages(self):
+        long_answer = "x" * 900
+        messages = [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": long_answer},
+            {"role": "user", "content": "go ahead"},
+        ]
+        prompt = self._build_prompt(None, messages)
+        assert "…" in prompt
+        assert long_answer not in prompt  # this is exactly what --resume avoids

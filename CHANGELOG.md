@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The in-Flame console keeps ONE conversation across turns** (Chat 98):
+  every turn spawns a fresh `claude -p`, and until now the child started from
+  zero each time — all it saw was a digest of the last 4 messages truncated to
+  500 characters. Measured in-vivo on a conform: the model re-discovered the
+  FPT link, the project id, the Cut and its CutItems **five times**, and
+  re-fetched the workflow recipe on every turn because it fell outside the
+  digest (once resolving the wrong concept in the process). The console now
+  captures the CLI's `session_id` from the stream events and passes `--resume`
+  on the next turn; with a live session the message is sent alone (re-injecting
+  the digest would duplicate, in truncated form, what the child already
+  remembers). **Clear** drops the session too, and a `--resume` against a
+  session the CLI can no longer find drops the id and says so instead of
+  wedging the console. +8 tests. Requires **MCP Bridge → Reload hook**.
+- **Conform recipe hardened against needless questions** (Chat 98, same
+  in-vivo run): ask at most ONCE, batching every genuine data ambiguity into a
+  single message. Specifically — probe `openclip_create` WITHOUT a selector
+  first and propose the Task its `upstream_tasks` suggestion returns instead of
+  opening with "which step?"; `to_desktop=true` on the first timeline edit is
+  the decided behaviour, not a question; ONE master sequence for the Cut (the
+  per-Sequence libraries are staging — the console read them as one timeline
+  each and asked); and when the project has no PipelineConfiguration and the
+  `flame_shot_clip` template cannot resolve, build the path the template itself
+  defines (`…/finishing/clip/<Shot>.clip`) rather than inventing a directory or
+  stalling. +5 tests, one per question removed.
 - **Pipeline recipes in `resolve_concept`** (Chat 98): two new concepts —
   `conform cut` and `fpt link` — carry a step-by-step `recipe` spanning both
   MCP servers, so the procedure lives in data instead of in whatever the

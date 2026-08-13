@@ -382,3 +382,40 @@ class TestPipelineRecipes:
     def test_fpt_link_recipe_forbids_the_mismatch_claim(self):
         recipe = self._entry("fpt link")["recipe"].lower()
         assert "different" in recipe and "mismatch" in recipe
+
+
+class TestConformRecipeHardening:
+    """Chat 98 in-vivo: the recipe let the console ask five separate times.
+
+    Each assertion below pins one question it must NOT ask again.
+    """
+
+    def _recipe(self):
+        return next(
+            e for e in CONCEPT_MAP if e["concept"] == "conform cut"
+        )["recipe"].lower()
+
+    def test_probes_the_task_graph_before_asking_for_a_step(self):
+        """openclip_create already suggests a Task from upstream_tasks."""
+        recipe = self._recipe()
+        assert "upstream_tasks" in recipe
+        assert "suggested" in recipe
+
+    def test_questions_are_batched_into_one(self):
+        assert "at most once" in self._recipe()
+
+    def test_desktop_is_decided_not_asked(self):
+        recipe = self._recipe()
+        assert "to_desktop=true" in recipe
+        assert "not a question" in recipe
+
+    def test_one_master_sequence_not_one_per_sequence(self):
+        """The console read 'a library per Sequence' as 'a timeline per
+        Sequence' and asked which one was meant."""
+        assert "not one per sequence" in self._recipe()
+
+    def test_names_the_clip_path_when_the_template_cannot_resolve(self):
+        """A project with no PipelineConfiguration broke the whole run."""
+        recipe = self._recipe()
+        assert "pipelineconfiguration" in recipe
+        assert "finishing/clip/" in recipe
