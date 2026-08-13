@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Operator prompts render in Autodesk yellow** (Chat 98): the in-Flame
+  console painted only the small `You:` label and left every message body at
+  a fixed `#ddd`, so the operator's input was indistinguishable from the
+  assistant's output. The bubble palette now carries a per-role body colour
+  and the user role uses `#ffff00` — the same accent the FPT console applies
+  to its user bubbles. Assistant, tool, warn and error rows are unchanged.
+  +3 tests. Requires **MCP Bridge → Reload hook**.
 - **The in-Flame console keeps ONE conversation across turns** (Chat 98):
   every turn spawns a fresh `claude -p`, and until now the child started from
   zero each time — all it saw was a digest of the last 4 messages truncated to
