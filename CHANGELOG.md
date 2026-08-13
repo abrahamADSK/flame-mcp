@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Import settle: media imports wait for Flame's database writes** (Chat
+  98, measured in-vivo BOTH ways the same night): the Python API returns
+  from `create_library`/`create_reel` before Flame finishes writing its
+  project database (the app log shows `Committing history…`/`Syncing…`
+  continuing after the call). Six imports on an IDLE Flame succeeded
+  back-to-back through this same bridge — and the SAME six `.clip` files
+  imported perfectly by hand through the UI — while one import arriving 2 s
+  after eight spaced creates killed Flame inside `importClips` at the
+  Wiretap gateway, with the gateway logging its client vanishing one second
+  after connect. `import_clips` now requires 10 s of quiet since the last
+  structural write of any kind (imports included — they write framestore
+  metadata too); other structural writes keep the validated 2 s gap. Same
+  handler-thread wait as the burst guard: Flame's main thread is never
+  touched. +4 tests.
 - **Burst guard: the bridge spaces structural writes** (Chat 98 — CRASH):
   the hardened conform recipe fired eight structural creates (4 libraries +
   4 reels) in 1.5 s; Flame raised its error report one second after the
