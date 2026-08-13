@@ -241,6 +241,9 @@ _BRIDGE_SOFT_REDIRECTS = {
 _BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(
     r'create_sequence\s*\('
     r'|\.overwrite\s*\('
+    # PySequence.insert — timeline_insert's generated code. Absent until
+    # Chat 98, which meant ripple-inserts were never write-throttled at all.
+    r'|\.insert\s*\('
     r'|import_clips\s*\('
     r'|flame\.delete\s*\('
     r'|schedule_idle_event'
@@ -267,19 +270,30 @@ _BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(
 
 _WRITE_GAP_SECS = 2.0
 
-# Media imports need a longer runway (Chat 98, measured in-vivo). The Python
-# API returns from create_library/create_reel BEFORE Flame finishes writing
-# its project database — the app log shows 'Committing history…', 'Syncing…'
-# and 'saving Library list… DONE' continuing after the call. Six imports on an
-# IDLE Flame succeeded back-to-back through this same bridge; one import
-# arriving 2 s after eight spaced creates killed Flame inside importClips at
-# the Wiretap gateway. The UI never hits this because a human does not import
-# two seconds after creating four libraries. So an import must let the
-# catalog flushes land first: it requires this much quiet since the LAST
-# structural write of any kind (imports included — they write the framestore
-# metadata too).
+# Media-heavy writes need a longer runway (Chat 98, measured in-vivo). The
+# Python API returns from create_library/create_reel BEFORE Flame finishes
+# writing its project database — the app log shows 'Committing history…',
+# 'Syncing…' and 'saving Library list… DONE' continuing after the call. The
+# UI never hits this because a human does not chain these operations seconds
+# apart. Evidence ladder, all from the same night:
+#
+#   creates    at 2 s gaps: 8-in-a-row committed cleanly, twice.       → 2 s
+#   imports    at 2 s after creates: Flame died inside importClips;
+#              at 10 s: 6-in-a-row clean (and the same .clip files
+#              imported by hand were clean too).                       → 10 s
+#   overwrites at 3-5 s apart: five placed, the SIXTH segfaulted at
+#              address 0x0 inside PySequence.overwrite.                → 10 s
+#
+# The 10 s figure is MEASURED for imports and extrapolated for timeline
+# edits — if an edit still dies at this spacing, the next step is a Flame
+# bug report (rapid API overwrites on a desktop sequence → SEGV), not more
+# throttling. The settle counts from the LAST structural write of any kind.
 _IMPORT_SETTLE_SECS = 10.0
-_BRIDGE_IMPORT_RE = _re_bridge.compile(r'import_clips\s*\(')
+_BRIDGE_SETTLE_RE = _re_bridge.compile(
+    r'import_clips\s*\('
+    r'|\.overwrite\s*\('
+    r'|\.insert\s*\('
+)
 
 _write_gap_lock = threading.Lock()
 _last_structural_write = [0.0]
@@ -552,11 +566,11 @@ def _handle_connection(conn):
         # thread, never on Flame's main thread.
         if _BRIDGE_CREATION_INTENT_RE.search(code):
             # Imports get the long runway; everything else the standard gap.
-            _is_import = bool(_BRIDGE_IMPORT_RE.search(code))
-            _gap = _IMPORT_SETTLE_SECS if _is_import else _WRITE_GAP_SECS
+            _is_settle = bool(_BRIDGE_SETTLE_RE.search(code))
+            _gap = _IMPORT_SETTLE_SECS if _is_settle else _WRITE_GAP_SECS
             _waited = _throttle_structural_write(_gap)
             if _waited:
-                _kind = "import settle" if _is_import else "burst guard"
+                _kind = "media settle" if _is_settle else "burst guard"
                 _log(f"  ⏳ structural write spaced {_waited:.1f}s ({_kind})")
 
         local_ns = {'flame': flame}

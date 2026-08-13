@@ -285,24 +285,37 @@ class TestBurstGuard:
 
 
 class TestImportSettle:
-    """Imports wait for Flame's database writes to land (Chat 98, in-vivo).
+    """Media-heavy writes wait for Flame's database writes to land (Chat 98).
 
     The Python API returns from create_library/create_reel BEFORE Flame
     finishes writing its project database (the app log shows committing/
-    syncing continuing after the call). Measured both ways the same night:
-    six imports on an idle Flame succeeded back-to-back through this bridge;
-    one import arriving 2 s after eight spaced creates killed Flame inside
-    importClips at the Wiretap gateway.
+    syncing continuing after the call). The evidence ladder, all in-vivo the
+    same night: creates at 2 s survived eight-in-a-row twice; an import 2 s
+    after creates killed Flame while six at 10 s were clean; and five
+    overwrites at 3-5 s placed fine until the SIXTH segfaulted at address
+    0x0 inside PySequence.overwrite — so timeline edits joined the settle
+    tier (measured for imports, extrapolated for edits).
     """
 
-    def test_import_pattern_and_settle_exist(self, source):
+    def test_settle_pattern_covers_imports_and_timeline_edits(self, source):
         assert "_IMPORT_SETTLE_SECS = 10.0" in source
-        assert r"_BRIDGE_IMPORT_RE = _re_bridge.compile(r'import_clips\s*\(')" in source
+        settle = source.split("_BRIDGE_SETTLE_RE = _re_bridge.compile(", 1)[1]
+        settle = settle.split(")", 1)[0]
+        assert r"import_clips\s*\(" in settle
+        assert r"\.overwrite\s*\(" in settle
+        assert r"\.insert\s*\(" in settle
 
-    def test_imports_get_the_long_runway(self, source):
+    def test_inserts_are_creation_intent_too(self, source):
+        """timeline_insert's generated code was never write-throttled at all:
+        PySequence.insert matched neither regex until Chat 98."""
+        creation = source.split("_BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(", 1)[1]
+        creation = creation.split(")", 1)[0]
+        assert r"\.insert\s*\(" in creation
+
+    def test_settle_ops_get_the_long_runway(self, source):
         guard = source.split("Burst guard", 1)[1].split(
             "local_ns = {'flame': flame}", 1)[0]
-        assert "_IMPORT_SETTLE_SECS if _is_import else _WRITE_GAP_SECS" in guard
+        assert "_IMPORT_SETTLE_SECS if _is_settle else _WRITE_GAP_SECS" in guard
         assert "_throttle_structural_write(_gap)" in guard
 
     def test_throttle_takes_the_gap_as_a_parameter(self, source):

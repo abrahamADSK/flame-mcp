@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Timeline edits join the 10 s settle tier** (Chat 98, in-vivo SIGSEGV):
+  five overwrites placed cleanly at 3-5 s spacing and the SIXTH segfaulted
+  at address 0x0 inside `PySequence.overwrite` — the same delayed-burst
+  profile the imports showed, and timeline edits only had the 2 s gap. The
+  settle pattern now covers `import_clips`, `.overwrite(` and `.insert(`;
+  `.insert(` also joins the creation-intent pattern, where its absence
+  meant ripple-inserts were never write-throttled at all. The 10 s figure
+  is measured for imports and extrapolated for edits: if an edit still
+  dies at this spacing the next step is a Flame bug report (rapid API
+  overwrites on a desktop sequence → SEGV), not more throttling. Creates
+  stay at 2 s — eight-in-a-row committed cleanly twice at that gap.
+  Requires **MCP Bridge → Reload hook**.
 - **Crash-recovery warning shows once, not forever** (Chat 98): the warning
   stayed armed in a module global with the file still saying `running`, so
   every console open for the rest of the Flame session reopened with last
