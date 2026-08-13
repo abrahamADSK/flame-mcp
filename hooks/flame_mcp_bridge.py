@@ -266,11 +266,26 @@ _BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(
 # thread — so pacing here does not touch the Chat 63 main-thread invariant.
 
 _WRITE_GAP_SECS = 2.0
+
+# Media imports need a longer runway (Chat 98, measured in-vivo). The Python
+# API returns from create_library/create_reel BEFORE Flame finishes writing
+# its project database — the app log shows 'Committing history…', 'Syncing…'
+# and 'saving Library list… DONE' continuing after the call. Six imports on an
+# IDLE Flame succeeded back-to-back through this same bridge; one import
+# arriving 2 s after eight spaced creates killed Flame inside importClips at
+# the Wiretap gateway. The UI never hits this because a human does not import
+# two seconds after creating four libraries. So an import must let the
+# catalog flushes land first: it requires this much quiet since the LAST
+# structural write of any kind (imports included — they write the framestore
+# metadata too).
+_IMPORT_SETTLE_SECS = 10.0
+_BRIDGE_IMPORT_RE = _re_bridge.compile(r'import_clips\s*\(')
+
 _write_gap_lock = threading.Lock()
 _last_structural_write = [0.0]
 
 
-def _throttle_structural_write():
+def _throttle_structural_write(required_gap=_WRITE_GAP_SECS):
     """Enforce a minimum gap since the previous structural write.
 
     Returns the seconds actually waited (0.0 when the gap had already
@@ -279,7 +294,7 @@ def _throttle_structural_write():
     it, each landing a full gap after the previous one.
     """
     with _write_gap_lock:
-        wait = _WRITE_GAP_SECS - (time.monotonic() - _last_structural_write[0])
+        wait = required_gap - (time.monotonic() - _last_structural_write[0])
         if wait > 0:
             time.sleep(wait)
         else:
@@ -536,9 +551,13 @@ def _handle_connection(conn):
         # eight writes in 1.5 s and crashed Flame. Runs on this handler
         # thread, never on Flame's main thread.
         if _BRIDGE_CREATION_INTENT_RE.search(code):
-            _waited = _throttle_structural_write()
+            # Imports get the long runway; everything else the standard gap.
+            _is_import = bool(_BRIDGE_IMPORT_RE.search(code))
+            _gap = _IMPORT_SETTLE_SECS if _is_import else _WRITE_GAP_SECS
+            _waited = _throttle_structural_write(_gap)
             if _waited:
-                _log(f"  ⏳ structural write spaced {_waited:.1f}s (burst guard)")
+                _kind = "import settle" if _is_import else "burst guard"
+                _log(f"  ⏳ structural write spaced {_waited:.1f}s ({_kind})")
 
         local_ns = {'flame': flame}
         result   = {}

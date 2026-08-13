@@ -230,7 +230,7 @@ class TestBurstGuard:
         handler = source.split("local_ns = {'flame': flame}", 1)[0]
         guard = handler.rsplit("Burst guard", 1)[1]
         assert "_BRIDGE_CREATION_INTENT_RE.search(code)" in guard
-        assert "_throttle_structural_write()" in guard
+        assert "_throttle_structural_write(_gap)" in guard
         # And the guard sits AFTER the marker strip, on the shared path —
         # not inside the `if not _is_dt:` redirect branch.
         redirect_branch = source.split("if not _is_dt:", 1)[1].split(
@@ -244,7 +244,7 @@ class TestBurstGuard:
         throttle is called in _handle_connection, before the exec thread."""
         handler = source.split("def _handle_connection(conn):", 1)[1]
         before_exec = handler.split("def _exec_target():", 1)[0]
-        assert "_throttle_structural_write()" in before_exec
+        assert "_throttle_structural_write(_gap)" in before_exec
 
     def test_gap_logic_enforces_spacing(self):
         """Replicates the throttle body against a fake clock — the real one
@@ -282,3 +282,52 @@ class TestBurstGuard:
         assert "EXIST on disk" in gate
         assert "full stop" in gate
         assert gate.index("EXIST") < recipe.split("GATE", 1)[1].index("librar")
+
+
+class TestImportSettle:
+    """Imports wait for Flame's database writes to land (Chat 98, in-vivo).
+
+    The Python API returns from create_library/create_reel BEFORE Flame
+    finishes writing its project database (the app log shows committing/
+    syncing continuing after the call). Measured both ways the same night:
+    six imports on an idle Flame succeeded back-to-back through this bridge;
+    one import arriving 2 s after eight spaced creates killed Flame inside
+    importClips at the Wiretap gateway.
+    """
+
+    def test_import_pattern_and_settle_exist(self, source):
+        assert "_IMPORT_SETTLE_SECS = 10.0" in source
+        assert r"_BRIDGE_IMPORT_RE = _re_bridge.compile(r'import_clips\s*\(')" in source
+
+    def test_imports_get_the_long_runway(self, source):
+        guard = source.split("Burst guard", 1)[1].split(
+            "local_ns = {'flame': flame}", 1)[0]
+        assert "_IMPORT_SETTLE_SECS if _is_import else _WRITE_GAP_SECS" in guard
+        assert "_throttle_structural_write(_gap)" in guard
+
+    def test_throttle_takes_the_gap_as_a_parameter(self, source):
+        assert "def _throttle_structural_write(required_gap=_WRITE_GAP_SECS):" in source
+
+    def test_two_tier_gap_logic(self):
+        """Fake-clock replica: creates space 2 s; an import tops up to 10 s
+        since the LAST structural write of any kind."""
+        WRITE_GAP, SETTLE = 2.0, 10.0
+        last = [0.0]
+        clock = [100.0]
+
+        def throttle(gap):
+            wait = gap - (clock[0] - last[0])
+            if wait > 0:
+                clock[0] += wait
+            else:
+                wait = 0.0
+            last[0] = clock[0]
+            return wait
+
+        assert throttle(WRITE_GAP) == 0.0            # first create: cold
+        assert throttle(WRITE_GAP) == 2.0            # second create: 2 s
+        assert throttle(SETTLE) == pytest.approx(10.0)  # import right after
+        clock[0] += 4.0
+        assert throttle(SETTLE) == pytest.approx(6.0)   # next import tops up
+        clock[0] += 60.0
+        assert throttle(SETTLE) == 0.0               # calm project: no wait
