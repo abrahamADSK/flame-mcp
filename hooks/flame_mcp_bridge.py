@@ -250,6 +250,43 @@ _BRIDGE_CREATION_INTENT_RE = _re_bridge.compile(
     r'|create_clip\s*\('
 )
 
+# ── Burst guard for structural writes (Chat 55 / Chat 98) ─────────────────────
+#
+# A burst of chained Flame write operations freezes the UI and ends in a crash
+# with delay — first observed in Chat 55 (manual pacing became the rule), and
+# reproduced VIOLENTLY in Chat 98: the hardened conform recipe fired eight
+# structural creates (4 libraries + 4 reels) in 1.5 s, Flame raised its error
+# report one second after the burst and crashed. The same tools, humanly paced
+# across conversation turns, completed the Chat 92 conform without incident —
+# the spacing was the differentiator, so the bridge now enforces it for every
+# caller (dedicated tool or raw payload alike; the '# DT' marker skips the
+# redirect check but must never skip this).
+#
+# The sleep runs on the per-connection handler thread — NOT Flame's main
+# thread — so pacing here does not touch the Chat 63 main-thread invariant.
+
+_WRITE_GAP_SECS = 2.0
+_write_gap_lock = threading.Lock()
+_last_structural_write = [0.0]
+
+
+def _throttle_structural_write():
+    """Enforce a minimum gap since the previous structural write.
+
+    Returns the seconds actually waited (0.0 when the gap had already
+    passed), so the caller can log real throttling events only. Holding the
+    lock across the sleep is deliberate: concurrent writers must queue behind
+    it, each landing a full gap after the previous one.
+    """
+    with _write_gap_lock:
+        wait = _WRITE_GAP_SECS - (time.monotonic() - _last_structural_write[0])
+        if wait > 0:
+            time.sleep(wait)
+        else:
+            wait = 0.0
+        _last_structural_write[0] = time.monotonic()
+        return wait
+
 
 # ── Flame initialisation hook ─────────────────────────────────────────────────
 
@@ -492,6 +529,16 @@ def _handle_connection(conn):
                     }) + "\n").encode('utf-8'))
                     conn.close()
                     return
+
+        # Burst guard (Chat 55 / Chat 98): every structural write is spaced,
+        # REGARDLESS of the '# DT' marker — the marker only skips the redirect
+        # check, and it was precisely the dedicated create_* tools that fired
+        # eight writes in 1.5 s and crashed Flame. Runs on this handler
+        # thread, never on Flame's main thread.
+        if _BRIDGE_CREATION_INTENT_RE.search(code):
+            _waited = _throttle_structural_write()
+            if _waited:
+                _log(f"  ⏳ structural write spaced {_waited:.1f}s (burst guard)")
 
         local_ns = {'flame': flame}
         result   = {}
