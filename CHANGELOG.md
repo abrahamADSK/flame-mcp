@@ -6,15 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- **New tool `fpt_link`** (Chat 93): read/set/break the NATIVE Flame↔FPT
-  project link — the `shotgun_project_name` ProjectEntry attribute, the same
-  one Flame's shipped FPT plugin (`presets/<ver>/shotgun`) reads and writes
-  (mechanism reverse-engineered from the shipped plugin + session logs; the
-  attribute persists in the project's framestore metadata and is only
-  reachable with the project loaded). `set` guards overwriting a different
-  existing link behind `confirm=true`; `break` refuses without `confirm=true`
-  and an express user request. Drives the manual-native linking workflow for
-  the FPT console (open Flame → verify/set link → conform). +8 tests.
+- **New tool `fpt_link`** (Chat 93, narrowed to READ-ONLY in Chat 98): reports
+  the NATIVE Flame↔FPT project link — the `shotgun_project_name` ProjectEntry
+  attribute, the same one Flame's shipped FPT plugin
+  (`presets/<ver>/shotgun`) reads and writes (mechanism reverse-engineered
+  from the shipped plugin + session logs; the attribute persists in the
+  project's framestore metadata and is only reachable with the project
+  loaded). `get` is the only action; the tool is annotated read-only and
+  auto-approved.
+- **`fpt_link` set/break REMOVED before ever shipping** (Chat 98, in-vivo):
+  both write attempts ended with Flame raising its error report, from the
+  native Toolkit dialog and from this tool alike. Root difference found in
+  the code: writing the attribute is not an assignment — Flame saves the
+  WHOLE project through it (the app log shows `Saving Project ... DONE`,
+  `Connected to DLmpd`, a 2 GB metadata streaming buffer, all *inside*
+  `setShotgunProjectName`) — and the bridge executes tool code on a worker
+  thread (`flame_exec`, `hooks/flame_mcp_bridge.py`), never on Flame's main
+  thread, whereas the native plugin performs the same write from the MAIN
+  thread (`tk_flame_basic/bootstrap.py`). Neither validation layer covers
+  that axis: they check symbols and patterns, not the executing thread, and
+  dedicated tools bypass the bridge-side check via the `# DT` marker.
+  Creating and breaking links is now done only from Flame's own FPT menu;
+  the removed actions fail loudly and never reach Flame. Doing it safely
+  would require `schedule_idle_event` (main thread) plus an asynchronous
+  result contract — deliberately not attempted here.
 - CI hardening against environment drift: `ruff` pinned (0.15.11) and the
   `mcp` dependency bounded `<2` (mcp 2.x removes `mcp.server.fastmcp`).
 - Flame chat: repo discovery now includes `~/Projects/flame-mcp` — without it the spawned CLI ran without the project `.mcp.json`, losing the Flame MCP server (session claimed only ShotGrid/Maya tools).

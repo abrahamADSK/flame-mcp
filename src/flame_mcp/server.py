@@ -2384,44 +2384,51 @@ def rename_segments(
     return _fmt(result)
 
 
-@mcp.tool(annotations=_DST)
-def fpt_link(
-    action: str,
-    fpt_project_name: str = "",
-    confirm: bool = False,
-) -> str:
+@mcp.tool(annotations=_RO)
+def fpt_link(action: str = "get") -> str:
     """
-    Read, set or break the NATIVE link between the loaded Flame project and a
-    Flow Production Tracking project — the ``shotgun_project_name`` attribute,
-    the exact attribute Flame's own FPT integration reads/writes (persisted in
-    the project's framestore metadata, Chat 93 investigation).
+    Report the NATIVE link between the loaded Flame project and a Flow
+    Production Tracking project — the ``shotgun_project_name`` attribute, the
+    one Flame's own FPT integration reads and writes (persisted in the
+    project's framestore metadata, Chat 93 investigation).
 
-    Actions:
-      get   — report the current link ('' = not linked). Read-only.
-      set   — link to ``fpt_project_name``. Overwriting a DIFFERENT existing
-              link requires confirm=true (the current link is reported first).
-      break — clear the link. Requires confirm=true AND an EXPRESS user
-              request — never break a link on your own initiative.
+    READ-ONLY: ``action='get'`` is the only action. It reports the current
+    link ('' = not linked).
+
+    Setting and breaking the link were REMOVED in Chat 98, after two in-vivo
+    attempts left Flame raising its error report. Writing that attribute is
+    not an assignment: Flame saves the WHOLE project through it (catalogue +
+    framestore — the app log shows ``Saving Project ... DONE`` *inside*
+    ``setShotgunProjectName``), and the bridge runs tool code on a worker
+    thread (``flame_exec``), never on Flame's main thread. The native Toolkit
+    plugin performs the same write from the MAIN thread
+    (``tk_flame_basic/bootstrap.py``), which this transport cannot do today.
+    Until it can, links are created and broken ONLY from Flame's own Flow
+    Production Tracking menu.
 
     The link is stored by project NAME (Flame keeps the string, not an id) and
     is only reachable while a project is loaded — with Flame closed there is
     nothing to read (binary framestore metadata; no wiretap server on macOS).
+    To read links WITHOUT Flame running, fpt-mcp's ``fpt_launch_app`` parses
+    each local project's metadata clib on disk.
     """
     _track_dedicated()
     action = action.strip().lower()
-    if action not in ("get", "set", "break"):
-        return "ERROR: action must be one of: get, set, break"
-    if action == "set" and not fpt_project_name:
-        return "ERROR: fpt_project_name is required for action='set'"
-    if action == "break" and not confirm:
+    if action in ("set", "break"):
         return (
-            "ERROR: breaking the FPT link requires confirm=true — ask the "
-            "user for express confirmation first"
+            f"ERROR: fpt_link no longer supports action={action!r} — the tool "
+            "is READ-ONLY since Chat 98. Writing shotgun_project_name saves "
+            "the whole project, and the bridge executes on a worker thread, "
+            "not Flame's main thread; both in-vivo attempts triggered Flame's "
+            "error report. Create or break the link from Flame's own Flow "
+            "Production Tracking menu instead."
         )
+    if action != "get":
+        return "ERROR: action must be 'get' — fpt_link is read-only"
 
     # ProjectEntry attribute access mirrors Flame's own FPT plugin
     # (presets/<ver>/shotgun/python/tk_flame_basic/bootstrap.py): read via
-    # get_value() when the attribute object exposes it, write by assignment.
+    # get_value() when the attribute object exposes it.
     read_current = (
         "import flame\n"
         "from flame import project\n"
@@ -2430,34 +2437,11 @@ def fpt_link(
         "cur = v.get_value() if hasattr(v, 'get_value') else str(v).strip(\"'\")\n"
         "name = str(flame.projects.current_project.name).strip(\"'\")\n"
     )
-    if action == "get":
-        code = read_current + (
-            "print('flame_project=' + name)\n"
-            "print('fpt_link=' + repr(cur))\n"
-        )
-        return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
-
-    if action == "set":
-        code = read_current + (
-            f"target = {fpt_project_name!r}\n"
-            f"confirm = {bool(confirm)!r}\n"
-            "if cur and cur != target and not confirm:\n"
-            "    print('ERROR: ' + name + ' is already linked to ' + repr(cur)\n"
-            "          + ' — overwriting requires confirm=true')\n"
-            "else:\n"
-            "    prj.shotgun_project_name = target\n"
-            "    v2 = prj.shotgun_project_name\n"
-            "    new = v2.get_value() if hasattr(v2, 'get_value') else str(v2).strip(\"'\")\n"
-            "    print('fpt_link on ' + name + ': ' + repr(cur) + ' -> ' + repr(new))\n"
-        )
-    else:  # break
-        code = read_current + (
-            "prj.shotgun_project_name = ''\n"
-            "print('fpt_link on ' + name + ' BROKEN (was ' + repr(cur) + ')')\n"
-        )
-    result = _call_flame(code, timeout=15, dedicated_tool=True)
-    _journal_record(code, result)
-    return _fmt(result)
+    code = read_current + (
+        "print('flame_project=' + name)\n"
+        "print('fpt_link=' + repr(cur))\n"
+    )
+    return _fmt(_call_flame(code, timeout=15, dedicated_tool=True))
 
 
 @mcp.tool(annotations=_DST)
