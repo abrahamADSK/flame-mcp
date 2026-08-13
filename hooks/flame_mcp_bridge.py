@@ -1425,28 +1425,55 @@ class _FlameChat:
             stderr_t = threading.Thread(target=_read_stderr, daemon=True)
             stderr_t.start()
 
-            # Watchdog — kill process after timeout.
+            # Watchdog — kills the process after SILENCE, not after duration
+            # (Chat 98). It used to cap total wall-clock, which was fine while
+            # every turn was a question-and-answer exchange. A pipeline
+            # workflow is one long turn: a conform runs ~30 tool calls, and it
+            # was being killed at 180 s mid-run even though it was working
+            # perfectly and streaming events the whole time.
+            #
+            # What actually signals a hang is a MUTE process. Each stream event
+            # refreshes the deadline, so a healthy 10-minute conform survives
+            # while a subprocess that stops emitting still dies.
+            #
             # ollama       (LAN GPU): 600 s — first load of a 30B model can take minutes
             # ollama_cloud (Mac→☁):   300 s — 480B inference on ollama.com
             # ollama_mac   (Mac CPU): 240 s — small 7B model, slower without GPU
             # anthropic:              180 s
             if self._backend == "ollama":
-                _watchdog_secs = 600
+                _idle_secs = 600
             elif self._backend == "ollama_cloud":
-                _watchdog_secs = 300
+                _idle_secs = 300
             elif self._backend == "ollama_mac":
-                _watchdog_secs = 240
+                _idle_secs = 240
             else:
-                _watchdog_secs = 180
-            _turn_watchdog = _watchdog_secs  # F0: snapshot for turn-record
+                _idle_secs = 180
+            # Absolute ceiling so a pathological loop cannot run forever.
+            _hard_secs = 1800
+            _watchdog_secs = _idle_secs  # F0: turn-record keeps the idle budget
+            _turn_watchdog = _watchdog_secs
             _timed_out = [False]
-            def _kill():
-                _timed_out[0] = True
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            watchdog = threading.Timer(_watchdog_secs, _kill)
+            _hard_stop = [False]
+            _last_event = [time.monotonic()]
+            _started_at = time.monotonic()
+            _finished = threading.Event()
+
+            def _watch():
+                while not _finished.wait(2):
+                    now = time.monotonic()
+                    if now - _started_at > _hard_secs:
+                        _hard_stop[0] = True
+                    elif now - _last_event[0] <= _idle_secs:
+                        continue
+                    _timed_out[0] = True
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    return
+
+            watchdog = threading.Thread(target=_watch, daemon=True,
+                                        name="flame_chat_watchdog")
             watchdog.start()
 
             assistant_parts = []    # text blocks from assistant messages
@@ -1455,6 +1482,9 @@ class _FlameChat:
 
             try:
                 for raw_line in proc.stdout:
+                    # Any output at all counts as a sign of life — including a
+                    # line we cannot parse. Only silence means a hang.
+                    _last_event[0] = time.monotonic()
                     line = raw_line.strip()
                     if not line:
                         continue
@@ -1464,7 +1494,7 @@ class _FlameChat:
                         continue
                     self._handle_stream_event(event, assistant_parts, tool_summaries)
             finally:
-                watchdog.cancel()
+                _finished.set()
                 try:
                     proc.wait(timeout=10)
                 except Exception:
@@ -1477,10 +1507,24 @@ class _FlameChat:
                 _turn_stderr_lines = list(stderr_lines)
 
             if _timed_out[0]:
+                if _hard_stop[0]:
+                    raise RuntimeError(
+                        f"Stopped after {_hard_secs // 60} minutes. The request "
+                        "was still producing output, so nothing was hung — it "
+                        "simply ran past the ceiling. Anything already created "
+                        "in Flame is there; ask for the remaining steps."
+                    )
+                _hint = (
+                    "check that the Ollama server is not overloaded "
+                    "(nvidia-smi on the Linux machine)"
+                    if str(getattr(self, '_backend', '')).startswith("ollama")
+                    else "check the bridge is alive (MCP Bridge -> Reload hook) "
+                         "and that Flame is not showing a modal dialog"
+                )
                 raise RuntimeError(
-                    f"Request timed out ({_watchdog_secs} s). "
-                    "Try a simpler request, or check that the Ollama server "
-                    "is not overloaded (nvidia-smi on the Linux machine)."
+                    f"No output for {_idle_secs} s — the request looks stuck. "
+                    f"Long jobs are fine as long as they keep reporting, so "
+                    f"this is silence, not slowness: {_hint}."
                 )
 
             # ── Rate-limit detection ──────────────────────────────────────────

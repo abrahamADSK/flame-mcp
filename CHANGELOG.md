@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Chat watchdog measures silence, not duration** (Chat 98): it capped total
+  wall-clock, which was fine while every turn was a question-and-answer
+  exchange. Once the conform recipe stopped asking needless questions the
+  whole workflow became ONE long turn — around 30 tool calls — and died at
+  180 s mid-run while streaming events perfectly: the fix for the questions
+  walked straight into the timeout. What signals a hang is a MUTE process, so
+  every line of output now refreshes the deadline (before the JSON parse, or a
+  burst of malformed lines would read as silence). A healthy 10-minute conform
+  survives; a subprocess that stops emitting still dies. An absolute 30-minute
+  ceiling remains so a pathological loop cannot run forever, and it reports
+  differently — hitting the ceiling is not a hang. The timeout hint no longer
+  blames the Ollama server when the backend is Anthropic. +10 tests.
 - **The chat panel renders the assistant's markdown** (Chat 98): answers came
   out literal — `## Conform plan`, `**confirm**`, and table rows spelled as
   `|---|---|` — because the panel escaped the text and only converted

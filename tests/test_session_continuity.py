@@ -148,3 +148,67 @@ class TestBubblePalette:
         """Only the user role changes — the assistant keeps its grey body."""
         palette = self._palette(source)
         assert '"assistant": ("#34d399", "Claude", "#ddd")' in palette
+
+
+class TestIdleWatchdog:
+    """The watchdog measures SILENCE, not duration (Chat 98).
+
+    It used to cap total wall-clock, which was fine while every turn was a
+    question-and-answer exchange. Once the conform recipe stopped asking
+    needless questions, the whole workflow became ONE long turn — ~30 tool
+    calls — and was killed at 180 s mid-run while streaming events perfectly.
+    """
+
+    def _watch(self, source):
+        return source.split("def _watch():", 1)[1].split("\n            watchdog", 1)[0]
+
+    def test_deadline_is_refreshed_by_output(self, source):
+        loop = source.split("for raw_line in proc.stdout:", 1)[1][:400]
+        assert "_last_event[0] = time.monotonic()" in loop
+
+    def test_unparseable_output_still_counts_as_alive(self, source):
+        """The refresh must happen BEFORE the json parse, or a burst of
+        malformed lines would read as silence."""
+        loop = source.split("for raw_line in proc.stdout:", 1)[1][:600]
+        assert loop.index("_last_event[0]") < loop.index("json.loads")
+
+    def test_silence_kills_the_process(self, source):
+        watch = self._watch(source)
+        assert "_idle_secs" in watch
+        assert "proc.kill()" in watch
+
+    def test_there_is_an_absolute_ceiling(self, source):
+        """Idle-only would let a pathological loop run forever."""
+        watch = self._watch(source)
+        assert "_hard_secs" in watch
+        assert "_hard_stop[0] = True" in watch
+
+    def test_the_two_stops_report_differently(self, source):
+        """A ceiling stop is not a hang, and must not be reported as one."""
+        assert "if _hard_stop[0]:" in source
+        assert "nothing was hung" in source
+
+    def test_hint_is_not_about_ollama_on_anthropic(self, source):
+        """The old message always blamed the Ollama server, even on Anthropic."""
+        assert 'startswith("ollama")' in source
+        assert "Reload hook" in source
+
+    @pytest.mark.parametrize(
+        "since_event,elapsed,expected",
+        [
+            (10, 30, "run"),      # busy conform, well inside both budgets
+            (10, 3000, "hard"),   # still streaming, but past the ceiling
+            (200, 300, "idle"),   # gone quiet — a real hang
+            (179, 400, "run"),    # just inside the silence budget
+        ],
+    )
+    def test_decision_table(self, since_event, elapsed, expected):
+        """Replicates the branch inside _watch (idle 180 s, ceiling 1800 s)."""
+        idle_secs, hard_secs = 180, 1800
+        if elapsed > hard_secs:
+            got = "hard"
+        elif since_event <= idle_secs:
+            got = "run"
+        else:
+            got = "idle"
+        assert got == expected
