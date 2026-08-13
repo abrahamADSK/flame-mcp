@@ -712,6 +712,14 @@ class _FlameChat:
         self._session_tokens = 0     # cumulative tokens this widget session
         self._rate_limited = False   # True if last call hit a rate limit
         self._last_exec_count = 0    # execute_python calls in last agent turn
+        # Session continuity (Chat 98). Every turn spawns a fresh `claude -p`,
+        # so without this the CLI starts from zero each time and only sees the
+        # 4-message digest _build_prompt used to inject — measured in-vivo on a
+        # conform: the model re-discovered the FPT link, the project id, the
+        # Cut and its CutItems FIVE times, and re-fetched the workflow recipe
+        # on every turn because it fell outside the digest. Capturing the
+        # CLI's session_id and passing --resume keeps one real conversation.
+        self._session_id = None
         self._model, self._backend, self._ollama_url, self._ollama_cloud_key = self._load_model_config()
         self._effort = self._load_effort_config()
         self._build_ui()
@@ -979,6 +987,9 @@ class _FlameChat:
         self._chat.clear()
         self._session_tokens = 0
         self._rate_limited = False
+        # Drop the CLI session too — Clear must mean a genuinely fresh start,
+        # not a cleared transcript in front of a conversation that remembers.
+        self._session_id = None
         self._ui_queue.append(lambda: self._set_busy(False))
 
     # ── Agent loop (background thread) ───────────────────────────────────────
@@ -1134,6 +1145,12 @@ class _FlameChat:
             )
 
             cmd = [claude_path, '-p', '--verbose', '--output-format', 'stream-json']
+            # Continue the same CLI conversation across turns (Chat 98). The id
+            # is captured from the stream events of the previous turn; a stale
+            # one (transcript pruned, cleanup window elapsed) makes the CLI
+            # abort, so the retry below drops it and starts fresh once.
+            if self._session_id:
+                cmd.extend(['--resume', self._session_id])
             if self._model:
                 cmd.extend(['--model', self._model])
             # Cap agentic turns for Ollama models.  Qwen3 in thinking mode tends
@@ -1299,6 +1316,21 @@ class _FlameChat:
 
             if not assistant_parts and proc.returncode != 0:
                 err = self._strip_ansi(''.join(stderr_lines).strip())
+                # A --resume against a session the CLI can no longer find (its
+                # transcript was pruned, or Flame outlived the retention
+                # window) aborts before producing anything. Drop the id so the
+                # NEXT send starts a fresh conversation instead of failing
+                # forever, and say so — silently losing the thread mid-conform
+                # would be worse than the error.
+                if self._session_id and 'session' in err.lower():
+                    _log(f"Chat: resume failed for session {self._session_id} — starting fresh")
+                    self._session_id = None
+                    raise RuntimeError(
+                        "The previous conversation could no longer be resumed, "
+                        "so it has been dropped. Send your message again — it "
+                        "will start a new conversation, and this one keeps "
+                        "its context from here on.\n\n" + err
+                    )
                 raise RuntimeError(err or f"Claude exited with code {proc.returncode}")
 
             # ── Display main assistant response ──────────────────────────────
@@ -1390,7 +1422,15 @@ class _FlameChat:
           assistant  → content blocks: text (response) or tool_use (show status)
           user       → tool_result blocks: extract stats footers
           result     → fallback: use result.result if no assistant text collected
+
+        Every event carries the CLI's session_id at the top level; capturing it
+        is what lets the NEXT turn pass --resume and continue the same
+        conversation instead of starting from zero (Chat 98).
         """
+        sid = event.get('session_id')
+        if sid and sid != self._session_id:
+            self._session_id = sid
+
         etype = event.get('type', '')
 
         if etype == 'assistant':
@@ -1945,13 +1985,22 @@ class _FlameChat:
 
     def _build_prompt(self):
         """
-        Build the prompt for 'claude -p', injecting recent conversation history
-        so Claude Code has context for follow-up requests.
+        Build the prompt for 'claude -p'.
+
+        With a live CLI session (--resume, Chat 98) the conversation is already
+        in the child's context, so the message goes through alone: re-injecting
+        the digest would duplicate it, and a truncated copy of what the model
+        already remembers is worse than nothing.
+
+        The digest below is the FALLBACK for the first turn of a session and
+        for any turn after a resume failure. It carries the last 4 messages
+        truncated to 500 chars — enough for a follow-up question, never enough
+        for a multi-step workflow (that gap is what --resume fixes).
         """
         history = self._messages[:-1]   # everything except the latest user message
         user_msg = self._messages[-1]['content']
 
-        if not history:
+        if self._session_id or not history:
             return user_msg
 
         # Include last 4 messages (2 exchanges) as context
