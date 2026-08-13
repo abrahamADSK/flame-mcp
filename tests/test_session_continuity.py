@@ -120,3 +120,31 @@ class TestPromptSelection:
         prompt = self._build_prompt(None, messages)
         assert "…" in prompt
         assert long_answer not in prompt  # this is exactly what --resume avoids
+
+
+class TestBubblePalette:
+    """The operator's own prompts render in Autodesk yellow (Chat 98).
+
+    Same accent the FPT console uses for the user role. Before this, only the
+    small "You:" label carried colour and both bodies were #ddd, so the
+    operator's input blended into the assistant's output.
+    """
+
+    def _palette(self, source):
+        return source.split("def _append_bubble", 1)[1].split("\n    def ", 1)[0]
+
+    def test_user_body_is_autodesk_yellow(self, source):
+        palette = self._palette(source)
+        assert '"user":      ("#ffff00", "You", "#ffff00")' in palette
+
+    def test_body_colour_is_per_role_not_hardcoded(self, source):
+        """The body used to be a fixed #ddd, which is why the colour never
+        reached the operator's text."""
+        palette = self._palette(source)
+        assert "color:{body};" in palette
+        assert "color:#ddd;" not in palette
+
+    def test_assistant_body_is_unchanged(self, source):
+        """Only the user role changes — the assistant keeps its grey body."""
+        palette = self._palette(source)
+        assert '"assistant": ("#34d399", "Claude", "#ddd")' in palette

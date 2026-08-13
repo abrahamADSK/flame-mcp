@@ -2032,14 +2032,19 @@ class _FlameChat:
                 pass
 
     def _append_bubble(self, role, content):
+        # (label colour, label, BODY colour). The operator's own prompts render
+        # in Autodesk yellow — the same accent the FPT console uses for the
+        # user role — so his input reads apart from the assistant's output
+        # instead of blending into it: both bodies used to be #ddd, and only
+        # the small "You:" label carried any colour at all.
         colors = {
-            "user":      ("#cccccc", "You"),
-            "assistant": ("#34d399", "Claude"),
-            "tool":      ("#cccccc", ""),
-            "warn":      ("#ffff00", ""),
-            "error":     ("#f87171", "Error"),
+            "user":      ("#ffff00", "You", "#ffff00"),
+            "assistant": ("#34d399", "Claude", "#ddd"),
+            "tool":      ("#cccccc", "", "#ddd"),
+            "warn":      ("#ffff00", "", "#ddd"),
+            "error":     ("#f87171", "Error", "#ddd"),
         }
-        color, label = colors.get(role, ("#aaa", ""))
+        color, label, body = colors.get(role, ("#aaa", "", "#ddd"))
         escaped = (content
                    .replace('&', '&amp;')
                    .replace('<', '&lt;')
@@ -2047,7 +2052,7 @@ class _FlameChat:
                    .replace('\n', '<br>'))
         if label:
             html = (f'<p><b style="color:{color};">{label}:</b> '
-                    f'<span style="color:#ddd;">{escaped}</span></p>')
+                    f'<span style="color:{body};">{escaped}</span></p>')
         else:
             html = f'<p style="color:{color};margin-left:12px;">{escaped}</p>'
         self._chat.append(html)
