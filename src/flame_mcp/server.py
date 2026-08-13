@@ -2262,6 +2262,12 @@ def resolve_concept(query: str) -> str:
     ])
     if match.get('notes'):
         lines.append(f"   Notes     : {match['notes']}")
+    # Multi-step workflows carry a recipe (not scored by the matcher — see
+    # concept_map._score_entry). Print it verbatim: it is the procedure the
+    # caller is expected to follow, gates included.
+    if match.get('recipe'):
+        lines.append("   Recipe    :")
+        lines.extend(f"     {ln}" for ln in match['recipe'].splitlines())
 
     # Surface critical API behaviors relevant to this entity type
     entity_type = match.get('entity_type')

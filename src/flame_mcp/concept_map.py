@@ -608,6 +608,68 @@ CONCEPT_MAP: list[dict[str, str]] = [
             "PyProjectSelector is NOT iterable. Use the list_all_projects dedicated tool."
         ),
     },
+    # ── Pipeline workflows (span flame-mcp AND fpt-mcp) ──────────────────────
+    #
+    # These two entries carry a multi-step ``recipe``. That field is
+    # DELIBERATELY not scored (see _score_entry): a long procedure mentions
+    # many tool names, and scoring it would let a workflow entry outrank the
+    # single-operation concepts those names belong to. Keep concept/tool/
+    # api_path/notes short and distinctive here; put the procedure in recipe.
+    {
+        "concept": "fpt link",
+        "api_layer": "dedicated_tool",
+        "tool": "fpt_link",
+        "api_path": "fpt_link(action='get')",
+        "notes": (
+            "Resolve this BEFORE any ShotGrid query. Never fall back to a "
+            "configured default."
+        ),
+        "recipe": (
+            "This console launches with NO ShotGrid project scope, on purpose "
+            "(zero silent defaults), so ShotGrid queries span the whole site "
+            "until you supply a project filter yourself.\n"
+            "1) fpt_link(action='get') returns the linked FPT project NAME "
+            "(read from the loaded Flame project; '' means not linked).\n"
+            "2) Resolve that name to an id: sg_find on 'Project' filtered by "
+            "name, with add_project_filter=false.\n"
+            "3) Put that project explicitly in EVERY later ShotGrid query.\n"
+            "The Flame and FPT project names are routinely DIFFERENT — that is "
+            "not a mismatch, the native link is what pairs them. Never report "
+            "one as a problem."
+        ),
+    },
+    {
+        "concept": "conform cut",
+        "api_layer": "dedicated_tool",
+        "tool": "conform recipe (spans fpt-mcp and flame-mcp)",
+        "api_path": "see recipe",
+        "notes": (
+            "Present the whole plan and wait for confirmation before building "
+            "anything in Flame."
+        ),
+        "recipe": (
+            "0) Resolve the FPT project first — see the 'fpt link' concept.\n"
+            "1) Find the Cut with the highest revision_number, and its CutItems "
+            "ordered by cut_order, each carrying its shot and edit_in.\n"
+            "2) One open clip per shot with openclip_create. task_id or step is "
+            "REQUIRED: with neither it returns choice_required listing the "
+            "shot's candidate Tasks — ask the user, never guess. Resolve the "
+            "output path with the Toolkit template 'flame_shot_clip'.\n"
+            "3) Organise by Sequence: a library per Sequence with a reel, import "
+            "each shot's .clip into it, and rename the clip to its shot name "
+            "BEFORE it enters any timeline (renaming only works on a clip inside "
+            "a reel).\n"
+            "4) Create the sequence with the Cut's full duration, then place "
+            "each shot at its CutItem position. The sequence frame is ONE-based "
+            "while CutItem edit_in is ZERO-based: pass edit_in + 1. Mixing them "
+            "cost one frame in-vivo.\n"
+            "GOTCHAS: no tool imports an EDL into Flame — never plan a native "
+            "EDL conform; cut_to_edl produces an EDL as a deliverable, not as "
+            "the conform driver. A sequence stored in a library is read-only for "
+            "timeline edits: the tool refuses and offers to_desktop, which needs "
+            "explicit user confirmation."
+        ),
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -666,6 +728,11 @@ def _score_entry(query_tokens: set[str], entry: dict) -> float:
       - api_path field: weight 1.5
       - notes field:    weight 1.0
       - tool field:     weight 2.0
+
+    The optional ``recipe`` field is NOT scored. A multi-step procedure names
+    many tools, and scoring it would let a workflow entry outrank the
+    single-operation concepts those names belong to (measured: the conform
+    recipe stole "import clips" from its own entry).
 
     Includes a precision bonus for the concept field: when the query
     covers a higher fraction of the concept's tokens, the entry is

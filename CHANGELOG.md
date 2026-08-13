@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Pipeline recipes in `resolve_concept`** (Chat 98): two new concepts —
+  `conform cut` and `fpt link` — carry a step-by-step `recipe` spanning both
+  MCP servers, so the procedure lives in data instead of in whatever the
+  caller remembers to type. In-vivo, "Conform the main cut" produced a plan
+  built on importing an EDL into Flame (no tool does that) and reported the
+  Flame and FPT project names as a "mismatch" (they are linked; different
+  names are the normal case). The recipes state the real order, the gates
+  (`choice_required` on the Task selector, `to_desktop` on library
+  sequences) and the traps (one-based sequence frame vs zero-based
+  `edit_in`; no EDL import). The `recipe` field is deliberately NOT scored by
+  the matcher: a procedure names many tools, and scoring it let the conform
+  entry steal "import clips into a reel" from its own concept. +6 tests.
+- **Console rules: workflows resolve their recipe first** (Chat 98): the
+  in-Flame system prompt now requires `resolve_concept` before planning a
+  conform/publish/link, and states that this session has no ShotGrid project
+  scope by design — the project is resolved with `fpt_link(action='get')` and
+  passed explicitly, and differing Flame/FPT project names are never reported
+  as a mismatch. Requires **MCP Bridge → Reload hook** in Flame to take
+  effect.
 - **New tool `fpt_link`** (Chat 93, narrowed to READ-ONLY in Chat 98): reports
   the NATIVE Flame↔FPT project link — the `shotgun_project_name` ProjectEntry
   attribute, the same one Flame's shipped FPT plugin
