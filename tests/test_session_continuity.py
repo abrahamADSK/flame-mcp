@@ -331,3 +331,20 @@ class TestImportSettle:
         assert throttle(SETTLE) == pytest.approx(6.0)   # next import tops up
         clock[0] += 60.0
         assert throttle(SETTLE) == 0.0               # calm project: no wait
+
+
+class TestCrashWarningConsumedOnDisplay:
+    """The crash-recovery warning shows ONCE (Chat 98).
+
+    It used to stay armed in the module global with the file still saying
+    'running', so every console open for the rest of the session reopened
+    with last night's crash. Consumed on display: global reset + file
+    cleared.
+    """
+
+    def test_display_consumes_the_warning(self, source):
+        block = source.split("def _action_open_chat", 1)[1].split("\ndef ", 1)[0]
+        assert "global _last_crash_info" in block
+        shown = block.split("_append_bubble(\"error\", m))", 1)[1]
+        assert "_last_crash_info = None" in shown
+        assert "_clear_crash_recovery()" in shown
