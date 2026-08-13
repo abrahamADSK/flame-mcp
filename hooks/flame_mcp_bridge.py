@@ -2581,7 +2581,14 @@ def _action_open_chat(selection):
             _chat_instance = _FlameChat()
         _chat_instance.show()
         _log("Chat widget opened")
-        # If a crash was detected at startup, show recovery info in chat
+        # If a crash was detected at startup, show recovery info in chat —
+        # ONCE. The warning is consumed on display (Chat 98): it used to stay
+        # armed in the module global with the file still saying 'running', so
+        # every console open for the rest of the Flame session (and of every
+        # later session, until some exec happened to clear the file) reopened
+        # with last night's crash. An old crash is information the first time
+        # and noise every time after.
+        global _last_crash_info
         if _last_crash_info:
             code_preview = _last_crash_info.get('code', '').strip()[:600]
             ts = _last_crash_info.get('timestamp', 'unknown time')
@@ -2596,6 +2603,8 @@ def _action_open_chat(selection):
             )
             _chat_instance._ui_queue.append(
                 lambda m=msg: _chat_instance._append_bubble("error", m))
+            _last_crash_info = None
+            _clear_crash_recovery()
     except Exception as e:
         _log(f"Chat widget error: {e}\n{traceback.format_exc()}")
         _osascript_alert("MCP Bridge — Chat Error", str(e))

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Crash-recovery warning shows once, not forever** (Chat 98): the warning
+  stayed armed in a module global with the file still saying `running`, so
+  every console open for the rest of the Flame session reopened with last
+  night's crash. It is now consumed on display — global reset + file
+  cleared. An old crash is information the first time and noise every time
+  after. +1 test. Requires **MCP Bridge → Reload hook**.
 - **Timeline to_desktop: a landed edit can no longer be reported as a
   failure** (Chat 98, in-vivo): moving the sequence to the desktop makes
   Flame resync the workspace, which can invalidate the Python wrappers the
