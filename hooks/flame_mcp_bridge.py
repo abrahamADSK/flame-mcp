@@ -567,6 +567,185 @@ def _handle_connection(conn):
         conn.close()
 
 
+# ── Markdown rendering for the chat panel ─────────────────────────────────────
+#
+# Claude answers in markdown — headings, bold, bullet lists, tables, fenced
+# code. The panel used to escape the text and convert newlines, so all of that
+# landed on screen literally: '## Conform plan', '**confirm**', and table rows
+# spelled out as '|---|---|'. Unreadable, and on a recorded demo it reads as a
+# tool that cannot format its own output.
+#
+# Deliberately hand-rolled rather than QTextDocument.setMarkdown(): Qt's
+# converter emits a full document with its own font stack and colours, which
+# would fight the panel's palette. This targets exactly what the assistant
+# emits and keeps every colour under our control.
+#
+# Qt's rich-text engine supports a SUBSET of HTML/CSS: plain tags, inline
+# style="color/background-color", and <table> with border/cellpadding
+# attributes. No flexbox, no CSS classes — hence the inline styles below.
+
+_MD_BODY = '#ddd'        # default body text
+_MD_STRONG = '#ffffff'   # **bold** and headings
+_MD_CODE = '#ffd479'     # inline code and code blocks (amber, readable on dark)
+_MD_CODE_BG = '#1e1e1e'
+_MD_RULE = '#444'        # table borders
+_MD_MUTED = '#888'
+
+
+def _md_inline(text):
+    """Inline markdown → HTML, on ALREADY HTML-escaped text.
+
+    Order matters: code spans are extracted FIRST and restored last, so
+    ``**`` inside `like this` is never treated as emphasis.
+    """
+    import re as _re
+
+    spans = []
+
+    def _stash(m):
+        spans.append(m.group(1))
+        return f"\x00{len(spans) - 1}\x00"
+
+    text = _re.sub(r'`([^`]+)`', _stash, text)
+    # Links: [label](url) → label + dim url (the panel is not a browser)
+    text = _re.sub(
+        r'\[([^\]]+)\]\(([^)]+)\)',
+        rf'\1 <span style="color:{_MD_MUTED};">(\2)</span>',
+        text,
+    )
+    text = _re.sub(r'\*\*([^*]+)\*\*',
+                   rf'<b style="color:{_MD_STRONG};">\1</b>', text)
+    text = _re.sub(r'(?<![*\w])\*([^*\n]+)\*(?!\*)', r'<i>\1</i>', text)
+    # Restore code spans with their own styling
+    for i, code in enumerate(spans):
+        text = text.replace(
+            f"\x00{i}\x00",
+            f'<span style="background-color:{_MD_CODE_BG};color:{_MD_CODE};">'
+            f'&nbsp;{code}&nbsp;</span>',
+        )
+    return text
+
+
+def _md_to_html(text):
+    """Render the assistant's markdown as Qt-compatible rich text.
+
+    Handles what Claude actually emits: fenced code blocks, tables, headings,
+    bullet and numbered lists, blockquotes, horizontal rules, and the inline
+    forms above. Anything unrecognised falls through as a plain line, so a
+    malformed table degrades to readable text rather than disappearing.
+    """
+    import re as _re
+
+    def esc(s):
+        return (s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+    if not text.strip():
+        return ''
+
+    lines = text.split('\n')
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Fenced code block — consumed verbatim, never markdown-parsed.
+        if stripped.startswith('```'):
+            i += 1
+            block = []
+            while i < len(lines) and not lines[i].strip().startswith('```'):
+                block.append(esc(lines[i]))
+                i += 1
+            i += 1  # closing fence
+            body = '<br>'.join(block) or '&nbsp;'
+            out.append(
+                f'<div style="background-color:{_MD_CODE_BG};color:{_MD_CODE};'
+                f'padding:6px;"><code>{body}</code></div>'
+            )
+            continue
+
+        # Table: a header row followed by a |---|---| separator.
+        if (stripped.startswith('|') and i + 1 < len(lines)
+                and _re.match(r'^\s*\|[\s:|-]+\|\s*$', lines[i + 1])):
+            def cells(row):
+                return [c.strip() for c in row.strip().strip('|').split('|')]
+
+            header = cells(stripped)
+            i += 2
+            rows = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                rows.append(cells(lines[i].strip()))
+                i += 1
+            html = [f'<table border="1" cellspacing="0" cellpadding="4" '
+                    f'style="border-color:{_MD_RULE};">']
+            html.append('<tr>' + ''.join(
+                f'<td><b style="color:{_MD_STRONG};">{_md_inline(esc(c))}</b></td>'
+                for c in header) + '</tr>')
+            for row in rows:
+                html.append('<tr>' + ''.join(
+                    f'<td style="color:{_MD_BODY};">{_md_inline(esc(c))}</td>'
+                    for c in row) + '</tr>')
+            html.append('</table>')
+            out.append(''.join(html))
+            continue
+
+        # Horizontal rule
+        if _re.match(r'^\s*([-*_])\1{2,}\s*$', line):
+            out.append(f'<hr style="border-color:{_MD_RULE};">')
+            i += 1
+            continue
+
+        # Heading — rendered as bold, sized down by level.
+        m = _re.match(r'^(#{1,6})\s+(.*)$', stripped)
+        if m:
+            level = len(m.group(1))
+            size = {1: '15px', 2: '14px', 3: '13px'}.get(level, '12px')
+            out.append(
+                f'<p style="margin-top:8px;margin-bottom:2px;"><b '
+                f'style="color:{_MD_STRONG};font-size:{size};">'
+                f'{_md_inline(esc(m.group(2)))}</b></p>'
+            )
+            i += 1
+            continue
+
+        # Blockquote
+        m = _re.match(r'^\s*>\s?(.*)$', line)
+        if m:
+            out.append(
+                f'<p style="color:{_MD_MUTED};margin-left:12px;">'
+                f'{_md_inline(esc(m.group(1)))}</p>'
+            )
+            i += 1
+            continue
+
+        # Bullet / numbered list item (nesting shown by indent)
+        m = _re.match(r'^(\s*)([-*+]|\d+[.)])\s+(.*)$', line)
+        if m:
+            indent = 12 + (len(m.group(1)) // 2) * 14
+            marker = m.group(2)
+            bullet = '•' if marker in ('-', '*', '+') else marker
+            out.append(
+                f'<p style="margin-left:{indent}px;margin-top:0;'
+                f'margin-bottom:0;color:{_MD_BODY};">'
+                f'<span style="color:{_MD_MUTED};">{bullet}</span> '
+                f'{_md_inline(esc(m.group(3)))}</p>'
+            )
+            i += 1
+            continue
+
+        # Blank line → paragraph break
+        if not stripped:
+            out.append('<br>')
+            i += 1
+            continue
+
+        out.append(f'<p style="margin:0;color:{_MD_BODY};">'
+                   f'{_md_inline(esc(line))}</p>')
+        i += 1
+
+    return ''.join(out)
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 LOG_FILE = os.path.join(_PROJECT_ROOT, 'logs', 'flame_mcp_bridge.log')
@@ -2045,6 +2224,17 @@ class _FlameChat:
             "error":     ("#f87171", "Error", "#ddd"),
         }
         color, label, body = colors.get(role, ("#aaa", "", "#ddd"))
+        # The assistant answers in markdown, so it gets rendered. Everything
+        # else stays literal: the operator's own text must appear exactly as
+        # typed (a prompt containing '**' or '#' is not formatting), and tool
+        # footers and errors are already plain.
+        if role == "assistant":
+            html = (f'<p><b style="color:{color};">{label}:</b></p>'
+                    + _md_to_html(content))
+            self._chat.append(html)
+            sb = self._chat.verticalScrollBar()
+            sb.setValue(sb.maximum())
+            return
         escaped = (content
                    .replace('&', '&amp;')
                    .replace('<', '&lt;')

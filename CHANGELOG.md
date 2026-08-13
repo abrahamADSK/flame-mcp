@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The chat panel renders the assistant's markdown** (Chat 98): answers came
+  out literal — `## Conform plan`, `**confirm**`, and table rows spelled as
+  `|---|---|` — because the panel escaped the text and only converted
+  newlines. On a recorded demo that reads as a tool that cannot format its
+  own output. `_md_to_html` now renders headings, bold, italics, inline code,
+  fenced blocks, bullet/numbered lists (nesting by indent), blockquotes,
+  rules, links and tables, into the HTML/CSS subset Qt's rich-text engine
+  accepts. Hand-rolled rather than `QTextDocument.setMarkdown()`, whose
+  output carries Qt's own font stack and colours and would fight the panel
+  palette. Only the assistant role is rendered: the operator's text stays
+  literal (a prompt containing `**` is not formatting), content is escaped
+  before any tag is added, code spans are extracted first so `**` inside
+  backticks survives, and an unrecognised construct degrades to plain text
+  instead of vanishing. +24 tests. Requires **MCP Bridge → Reload hook**.
 - **Operator prompts render in Autodesk yellow** (Chat 98): the in-Flame
   console painted only the small `You:` label and left every message body at
   a fixed `#ddd`, so the operator's input was indistinguishable from the
