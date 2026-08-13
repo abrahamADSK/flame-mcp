@@ -419,3 +419,27 @@ class TestConformRecipeHardening:
         recipe = self._recipe()
         assert "pipelineconfiguration" in recipe
         assert "finishing/clip/" in recipe
+
+
+class TestConformNaming:
+    """Reel names carry information, not echoes (Chat 98 user report).
+
+    The unhardened recipe said 'a library per Sequence with a reel', so the
+    console named each reel after its library — SEQ001/SEQ001, a duplicated
+    hierarchy with no information. The names are now explicit.
+    """
+
+    def _recipe(self):
+        return next(
+            e for e in CONCEPT_MAP if e["concept"] == "conform cut"
+        )["recipe"]
+
+    def test_sequence_reels_are_named_sources(self):
+        assert "'sources'" in self._recipe()
+        assert "never name the reel after its library" in self._recipe()
+
+    def test_master_lives_in_conform_library(self):
+        recipe = self._recipe()
+        assert "'Conform'" in recipe
+        assert "'master'" in recipe
+        assert "the SEQUENCE carries the Cut's name" in recipe

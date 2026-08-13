@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Burst guard: the bridge spaces structural writes** (Chat 98 — CRASH):
+  the hardened conform recipe fired eight structural creates (4 libraries +
+  4 reels) in 1.5 s; Flame raised its error report one second after the
+  burst and crashed violently. The same tools, humanly paced across
+  conversation turns, completed the Chat 92 conform without incident — a
+  burst of chained writes is a crash mode known since Chat 55, where
+  'space them out' became the manual rule. The bridge now enforces a 2 s
+  minimum gap between operations matching the creation-intent pattern, for
+  EVERY caller — the `# DT` marker skips the redirect check only, and it was
+  precisely the dedicated `create_*` tools that produced the burst. The wait
+  runs on the connection-handler thread, never Flame's main thread (Chat 63
+  invariant untouched).
+- **Conform recipe: clips gate + explicit naming** (Chat 98): the crashed
+  run had built 4 libraries with ZERO `.clip` files on disk — structure that
+  must be deleted by hand, since structural deletes from the console
+  deadlock Flame 2027. The recipe now treats a missing/failed `.clip` as a
+  FULL STOP before anything is created in Flame. It also names the
+  containers: reel `sources` in each sequence library (naming the reel after
+  its library read as a duplicated hierarchy — user report), master timeline
+  in library `Conform`, reel `master`, the sequence carrying the Cut's name.
+  +7 tests.
 - **Chat watchdog measures silence, not duration** (Chat 98): it capped total
   wall-clock, which was fine while every turn was a question-and-answer
   exchange. Once the conform recipe stopped asking needless questions the

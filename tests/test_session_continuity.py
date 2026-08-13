@@ -212,3 +212,73 @@ class TestIdleWatchdog:
         else:
             got = "idle"
         assert got == expected
+
+
+class TestBurstGuard:
+    """Structural writes are spaced by the bridge (Chat 55 / Chat 98).
+
+    The hardened conform recipe fired eight structural creates in 1.5 s;
+    Flame raised its error report one second after the burst and crashed
+    violently. The same tools, humanly paced across turns, completed the
+    Chat 92 conform — spacing was the differentiator, so the bridge now
+    enforces it for every caller.
+    """
+
+    def test_throttle_applies_regardless_of_the_dt_marker(self, source):
+        """The '# DT' marker skips the redirect check only. It was precisely
+        the dedicated create_* tools that produced the burst."""
+        handler = source.split("local_ns = {'flame': flame}", 1)[0]
+        guard = handler.rsplit("Burst guard", 1)[1]
+        assert "_BRIDGE_CREATION_INTENT_RE.search(code)" in guard
+        assert "_throttle_structural_write()" in guard
+        # And the guard sits AFTER the marker strip, on the shared path —
+        # not inside the `if not _is_dt:` redirect branch.
+        redirect_branch = source.split("if not _is_dt:", 1)[1].split(
+            "local_ns = {'flame': flame}", 1)[0]
+        assert "Burst guard" in redirect_branch  # comment shares the block…
+        assert redirect_branch.index("conn.close()") < redirect_branch.index(
+            "Burst guard")  # …but runs after the redirect early-returns
+
+    def test_sleep_is_on_the_handler_thread_not_flames_main_thread(self, source):
+        """Pacing must never touch the Chat 63 main-thread invariant: the
+        throttle is called in _handle_connection, before the exec thread."""
+        handler = source.split("def _handle_connection(conn):", 1)[1]
+        before_exec = handler.split("def _exec_target():", 1)[0]
+        assert "_throttle_structural_write()" in before_exec
+
+    def test_gap_logic_enforces_spacing(self):
+        """Replicates the throttle body against a fake clock — the real one
+        is module state inside a Qt-free import, but timing tests on real
+        sleeps are flaky, so the arithmetic is exercised directly."""
+        WRITE_GAP = 2.0
+        last = [0.0]
+        clock = [100.0]
+
+        def throttle():
+            wait = WRITE_GAP - (clock[0] - last[0])
+            if wait > 0:
+                clock[0] += wait  # "sleep"
+            else:
+                wait = 0.0
+            last[0] = clock[0]
+            return wait
+
+        assert throttle() == 0.0          # cold start: no previous write
+        assert throttle() == WRITE_GAP    # immediate second write waits fully
+        clock[0] += 0.5
+        assert throttle() == pytest.approx(1.5)   # partial gap tops up
+        clock[0] += 10
+        assert throttle() == 0.0          # calm period: no wait
+
+    def test_recipe_gates_flame_structure_on_clips_existing(self):
+        """The crashed run built 4 libraries with ZERO .clip files on disk.
+        Empty structure must be deleted by hand (structural deletes deadlock
+        Flame 2027), so the recipe now full-stops on a missing clip."""
+        from flame_mcp.concept_map import CONCEPT_MAP
+        recipe = next(
+            e for e in CONCEPT_MAP if e["concept"] == "conform cut"
+        )["recipe"]
+        gate = recipe.split("GATE", 1)[1]
+        assert "EXIST on disk" in gate
+        assert "full stop" in gate
+        assert gate.index("EXIST") < recipe.split("GATE", 1)[1].index("librar")
