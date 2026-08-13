@@ -260,7 +260,7 @@ Then talk naturally:
 | `timeline_insert` | Ripple-insert a source clip into a sequence's timeline |
 | `timeline_overwrite` | Overwrite part of a sequence's timeline with a source clip |
 | `rename_segments` | Rename a clip (all its segments) in a Flame library/reel |
-| `fpt_link` | Read/set/break the native Flame↔FPT project link (shotgun_project_name attribute; set/break gated by confirm, break only on express user request) |
+| `fpt_link` | Report the native Flame↔FPT project link (shotgun_project_name attribute). READ-ONLY — set/break were removed in Chat 98 after both in-vivo writes triggered Flame's error report; links are created and broken from Flame's own FPT menu |
 | `operation_history` | Show the last N execute_python operations recorded this session |
 | `undo_last_operation` | Undo the last undoable execute_python operation |
 <!-- concept:mcp_tool_table end -->

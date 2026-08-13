@@ -31,7 +31,8 @@ _DESTRUCTIVE = {
     "mcp__flame__create_batch_group",
     "mcp__flame__create_sequence",
     "mcp__flame__rename_segments",
-    "mcp__flame__fpt_link",
+    # fpt_link left this set in Chat 98: its set/break actions were removed
+    # and the tool is now a read-only report, so it is auto-approved.
     "mcp__flame__import_clips",
     "mcp__flame__timeline_insert",
     "mcp__flame__timeline_overwrite",
@@ -48,6 +49,7 @@ _READ_ONLY_SAMPLE = {
     "mcp__flame__get_project_info",
     "mcp__flame__operation_history",
     "mcp__flame__collect_media_paths",
+    "mcp__flame__fpt_link",
 }
 
 
