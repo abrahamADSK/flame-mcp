@@ -327,3 +327,58 @@ class TestCriticalBehaviors:
                 assert et in entity_types_in_map, (
                     f"Behavior '{b['id']}' references '{et}' but no entity entry exists"
                 )
+
+
+class TestPipelineRecipes:
+    """The two cross-server workflow entries (Chat 98).
+
+    They carry a multi-step ``recipe`` that is deliberately NOT scored by the
+    matcher: a procedure names many tools, and scoring it let the conform
+    entry outrank 'import clips' for the query "import clips into a reel"
+    (measured while adding these).
+    """
+
+    def _entry(self, concept):
+        return next(e for e in CONCEPT_MAP if e["concept"] == concept)
+
+    def test_conform_resolves_from_a_bare_verb(self):
+        """The word the user actually types must reach the recipe."""
+        for query in ("conform", "conform the main cut", "conform this cut"):
+            match = resolve_concept(query)
+            assert match is not None, f"no match for {query!r}"
+            assert match["concept"] == "conform cut"
+
+    def test_fpt_link_concept_resolves(self):
+        match = resolve_concept("which fpt project is this linked to")
+        assert match is not None
+        assert match["tool"] == "fpt_link"
+
+    def test_recipes_are_not_scored(self):
+        """A recipe must not pull queries away from single-operation concepts."""
+        from flame_mcp.concept_map import _score_entry, _tokenize
+
+        conform = self._entry("conform cut")
+        # Tokens that appear ONLY in the recipe must contribute nothing.
+        recipe_only = _tokenize(conform["recipe"]) - (
+            _tokenize(conform["concept"])
+            | _tokenize(conform["tool"])
+            | _tokenize(conform["api_path"])
+            | _tokenize(conform["notes"])
+        )
+        assert recipe_only, "recipe adds no vocabulary — test would be vacuous"
+        assert _score_entry(recipe_only, conform) == 0.0
+
+    def test_conform_does_not_steal_import_clips(self):
+        """The regression this design prevents."""
+        assert resolve_concept("import clips into a reel")["concept"] == "import clips"
+
+    def test_conform_recipe_states_the_load_bearing_gotchas(self):
+        recipe = self._entry("conform cut")["recipe"].lower()
+        assert "edl" in recipe          # no tool imports one
+        assert "choice_required" in recipe  # the Task selector is a gate
+        assert "one-based" in recipe    # record frame vs edit_in
+        assert "to_desktop" in recipe   # library sequences are locked
+
+    def test_fpt_link_recipe_forbids_the_mismatch_claim(self):
+        recipe = self._entry("fpt link")["recipe"].lower()
+        assert "different" in recipe and "mismatch" in recipe
