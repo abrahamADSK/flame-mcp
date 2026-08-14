@@ -479,10 +479,29 @@ class TestBuildCompRecipe:
         assert "schedule_idle_event" in recipe
         assert "even reading node lists or sockets" in recipe
 
-    def test_one_shot_at_a_time_and_no_write_file(self):
+    def test_one_shot_at_a_time_and_chain_closed(self):
+        """Operator correction (Chat 98): the Write File CONNECTION is part
+        of the wiring — what stays manual is the Create Open Clip check and
+        the render, never the connection."""
         recipe = self._entry()["recipe"]
         assert "ONE shot at a time" in recipe
-        assert "Do not create or configure the Write File" in recipe
+        assert "Write File FRONT" in recipe
+        assert "never the connection" in recipe
+
+    def test_operator_wiring_semantics(self):
+        """The result travels on FRONT (Chat 98 in-vivo correction): beauty
+        enters the shadow Comp's Front, each Result feeds the next Front,
+        layers arrive on Back, charmatte gates via the SECOND matte input."""
+        recipe = self._entry()["recipe"]
+        assert "beauty (rgba) -> FRONT" in recipe
+        assert "Result -> the NEXT Comp's FRONT" in recipe
+        assert "SECOND matte input" in recipe
+        assert "FULL attributes list" in recipe  # invert found by dump, not fuzzy search
+
+    def test_layout_is_a_diagonal_not_organize(self):
+        recipe = self._entry()["recipe"]
+        assert "top-left to bottom-right" in recipe
+        assert "Do NOT rely on" in recipe and "organize()" in recipe
 
     def test_socket_names_never_guessed(self):
         recipe = self._entry()["recipe"]

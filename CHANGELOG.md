@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Comp wiring semantics corrected by the operator** (Chat 98, first
+  in-vivo graph): the recipe wired backwards — beauty entered the Back and
+  the cascade accumulated on Back. Corrected to the operator's semantics:
+  beauty (rgba) enters the shadow Comp's FRONT; each Comp's Result feeds
+  the NEXT Comp's FRONT; layers arrive on Back; charmatte gates via the
+  SECOND matte input (real socket names read from the node), inverted ON
+  the node if a full attribute dump reveals the option — the first pass
+  only fuzzy-searched 'invert', which is not a dump — else through a
+  Negative into that second matte. The chain now CLOSES: last Result ->
+  Write File Front (manual stays the Create Open Clip check and the
+  render, never the connection). And the graph lays out as a top-left to
+  bottom-right diagonal via node position attributes — batch.organize() is
+  explicitly not trusted, the operator reads this graph on camera. +3
+  tests reworked.
 - **Comp-batch phrasings route to the recipe directly** (Chat 98, logged
   by the console itself): every 'comp batch' phrasing fuzzy-matched the
   generic 'list batch groups' concept — the matcher does no stemming, so
