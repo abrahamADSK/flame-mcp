@@ -225,6 +225,33 @@ class ImportClipsArgs(BaseModel):
     )
 
 
+class SetupCompBatchArgs(BaseModel):
+    """Create a shot's comp batch group wired source → Write File.
+
+    Chat 98: one deterministic op per shot — batch group ``<shot>_comp``
+    with a ``sources`` reel, the shot's open clip imported as the source
+    Clip node, and a Write File node connected to it whose open-clip
+    target is the SOURCE's ``.clip`` (the operator's decision: comp
+    versions land in the conformed clip, so the timeline flips natively).
+    Write File attributes are set defensively and reported — the node's
+    attribute surface is dynamic, so unknown names degrade to a report
+    line, never an error.
+    """
+
+    model_config = _STRICT
+    shot: str = Field(..., description="Shot code, e.g. 'SEQ001_SH001'.")
+    clip_path: str = Field(
+        ..., description="Absolute path to the shot's source open clip "
+        "(.clip). Also used as the Write File's open-clip target."
+    )
+    comp_dir: str = Field(
+        default="",
+        description="Directory for the Write File's rendered media. Empty = "
+        "derived from clip_path: the 'comp' sibling of its 'clip' folder "
+        "(…/finishing/comp).",
+    )
+
+
 class _TimelineEditArgs(BaseModel):
     """Shared args for timeline_insert / timeline_overwrite."""
 
@@ -348,6 +375,13 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "handler": None,
         "description": "Import media from disk into a library/reel.",
         "tool": "import_clips",
+    },
+    "setup_comp_batch": {
+        "args_model": SetupCompBatchArgs,
+        "handler": None,
+        "description": "DESTRUCTIVE — create a shot's comp batch group wired "
+        "source Clip → Write File (open-clip target = the source .clip).",
+        "tool": "execute_plan",
     },
     "timeline_insert": {
         "args_model": TimelineInsertArgs,

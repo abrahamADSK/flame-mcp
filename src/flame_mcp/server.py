@@ -2203,6 +2203,9 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
       - create_reel_group (library_name, reel_group_name) — DESTRUCTIVE.
       - create_batch_group (name) — DESTRUCTIVE: create an empty Batch Group.
       - import_clips (path, library_name, reel_name?) — DESTRUCTIVE: import media.
+      - setup_comp_batch (shot, clip_path, comp_dir?) — DESTRUCTIVE: create a
+        shot's comp batch group wired source Clip → Write File (open-clip
+        target = the source .clip; one op per shot, batchable in one plan).
       - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
       - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
@@ -2709,6 +2712,121 @@ else:
     )
 
 
+def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "") -> str:
+    """Create a shot's comp batch group wired source → Write File (Chat 98).
+
+    One deterministic operation, main-threaded via schedule_idle_event
+    (batch territory — even reads crash from the worker thread):
+
+      1. ``flame.batch.create_batch_group('<shot>_comp', reels=['sources'])``
+      2. ``flame.batch.import_clip(clip_path, 'sources')`` — the source node
+      3. ``flame.batch.create_node('Write File')`` connected to the source
+      4. Write File configured DEFENSIVELY: the node's attribute surface is
+         dynamic, so each setting is attempted and REPORTED (set/skipped) —
+         the in-vivo report tells us the real attribute names instead of a
+         crash or a guessed flag. The open-clip target is the SOURCE's
+         ``.clip`` (operator decision: comp versions land in the conformed
+         clip, so the timeline flips natively via Source Versions).
+
+    ``comp_dir`` empty = derived from ``clip_path``: the ``comp`` sibling of
+    its ``clip`` folder (``…/finishing/comp``).
+    """
+    _track_dedicated()
+    if not comp_dir:
+        import os as _os
+        comp_dir = _os.path.join(
+            _os.path.dirname(_os.path.dirname(clip_path)), "comp")
+    code_template = '''import flame, os, sys, io, json, time
+_prj_name = str(flame.projects.current_project.name).strip("'")
+_result_path = "/tmp/flame_mcp_scb_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _do_setup():
+    _buf = io.StringIO()
+    _old_stdout = sys.stdout
+    sys.stdout = _buf
+    try:
+        bg = flame.batch.create_batch_group({bg_name!r}, reels=["sources"])
+        src = flame.batch.import_clip({clip_path!r}, "sources")
+        if isinstance(src, list):
+            src = src[0] if src else None
+        if src is None:
+            print("ERROR: import_clip returned no node for {clip_path!r}")
+        else:
+            wf = flame.batch.create_node("Write File")
+            # Defensive attribute configuration: the Write File node's
+            # attribute surface is dynamic — try each, report the outcome.
+            _settings = [
+                ("name", {wf_name!r}),
+                ("media_path", {comp_dir!r}),
+                ("create_clip", True),
+                ("create_clip_path", {clip_path!r}),
+                ("include_setup", True),
+                ("file_type", "OpenEXR"),
+                ("bit_depth", "16-bit fp"),
+            ]
+            _set, _skipped = [], []
+            for _attr, _val in _settings:
+                try:
+                    setattr(wf, _attr, _val)
+                    _set.append(_attr)
+                except Exception as _ae:
+                    _skipped.append(_attr + " (" + type(_ae).__name__ + ")")
+            _in = "Front"
+            try:
+                _ins = list(wf.input_sockets)
+                if _ins and "Front" not in [str(s) for s in _ins]:
+                    _in = str(_ins[0])
+            except Exception:
+                pass
+            ok = flame.batch.connect_nodes(src, "Default", wf, _in)
+            print("OK: {bg_name} — source + Write File ("
+                  + ("connected via " + _in if ok else "CONNECT FAILED")
+                  + ")")
+            print("  set: " + (", ".join(_set) or "none"))
+            if _skipped:
+                print("  skipped: " + ", ".join(_skipped))
+    except Exception as _exc:
+        print("ERROR: " + repr(_exc))
+    finally:
+        sys.stdout = _old_stdout
+        try:
+            with open(_result_path, "w") as _fh:
+                json.dump({{"message": _buf.getvalue().strip()}}, _fh)
+        except Exception:
+            pass
+
+flame.schedule_idle_event(_do_setup)
+_deadline = time.monotonic() + 20
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print(json.load(_fh)["message"])
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
+else:
+    print("SCHEDULED: setup queued on Flame's main thread; no result within "
+          "20s - verify with list_batch_groups()")
+'''
+    code = code_template.format(
+        bg_name=f"{shot}_comp",
+        wf_name=f"{shot}_writefile",
+        clip_path=clip_path,
+        comp_dir=comp_dir,
+    )
+    result = _call_flame(code, timeout=30, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
+
+
+_plan.register_op(
+    "setup_comp_batch",
+    lambda args: _setup_comp_batch_impl(
+        shot=args.shot, clip_path=args.clip_path, comp_dir=args.comp_dir,
+    ),
+)
 _plan.register_op(
     "export_clip",
     lambda args: _export_clip_impl(
