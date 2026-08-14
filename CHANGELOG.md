@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Comp-batch phrasings route to the recipe directly** (Chat 98, logged
+  by the console itself): every 'comp batch' phrasing fuzzy-matched the
+  generic 'list batch groups' concept — the matcher does no stemming, so
+  'batches' never hit 'batch' — and the recipe was only reachable via
+  'conform', at three failed queries per session. The concept name now
+  carries the routing vocabulary (create/setup/comp/batches); the batch
+  read/render concepts keep their queries (anti-theft pinned). +4 tests.
 - **Visual node expansion is UI-only** (Chat 98): the schematic
   expand/collapse of a node (showing every layer connection) has no Python
   API — the 2027 graph exposes nothing for it; it is the 'Expand/Collapse
