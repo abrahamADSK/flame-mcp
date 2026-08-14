@@ -552,3 +552,26 @@ class TestTernaryGuardAccepted:
         )
         warning = _check_dangerous(code)
         assert warning and "None check" in str(warning), "guard must still catch it"
+
+
+class TestCompBatchRouting:
+    """Comp-batch phrasings reach the recipe directly (Chat 98 in-vivo gap).
+
+    Without the routing vocabulary every phrasing fuzzy-matched the generic
+    'list batch groups' concept and the recipe was only reachable via
+    'conform' — three failed queries per session, each a billed turn. The
+    matcher does no stemming: 'batches' and 'batch' are distinct tokens.
+    """
+
+    @pytest.mark.parametrize("query", [
+        "create the comp batches for all shots",
+        "setup comp batch",
+        "create comp batches",
+    ])
+    def test_comp_batch_phrasings_reach_the_recipe(self, query):
+        m = resolve_concept(query)
+        assert m is not None and m["concept"].startswith("build comp"), query
+
+    def test_no_theft_from_batch_concepts(self):
+        assert resolve_concept("list batch groups")["concept"] == "list batch groups"
+        assert resolve_concept("render batch")["concept"] == "render batch"

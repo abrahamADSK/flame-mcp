@@ -639,7 +639,15 @@ CONCEPT_MAP: list[dict[str, str]] = [
         ),
     },
     {
-        "concept": "build comp expand multilayer compose shadow light layers",
+        "concept": (
+            "build comp expand multilayer compose shadow light layers "
+            # Routing vocabulary (Chat 98): without these tokens every
+            # comp-batch phrasing fuzzy-matched the generic 'list batch
+            # groups' concept and the recipe was only reachable via
+            # 'conform' — three failed queries per session. The matcher
+            # does no stemming: 'batches' and 'batch' are distinct tokens.
+            "create setup comp batches"
+        ),
         "api_layer": "python_api",
         "tool": "execute_python via schedule_idle_event (batch wiring recipe)",
         "api_path": "see recipe",
