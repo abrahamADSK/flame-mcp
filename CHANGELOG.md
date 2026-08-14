@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Batch territory is main-thread — reads included** (Chat 98, in-vivo):
+  the comp phase crashed Flame inside `getNodeList` while `list_batch_groups`
+  drilled freshly built batch groups from the worker thread — the shell log
+  ends mid-drill. Batch state is UI-backed, so even READS of it interleave
+  with main-thread redraws. `list_batch_groups` now runs its drill as an
+  idle event with a file-polled result, like the timeline edits. (The batch
+  builds themselves survived: the console applied the KB idle-event pattern
+  on its own and created 6 batch groups cleanly.)
+- **`build comp` recipe in `resolve_concept`** (Chat 98, operator-specified):
+  answers 'build comp', 'expand multilayer node' and 'compose shadow and
+  light layers'. One shot at a time (the demo records a single shot). Layer
+  rules: `shadow_mult` composited FIRST in MULTIPLY with `charmatte`
+  INVERTED as matte (charmatte includes props); every layer whose name
+  contains 'Light'/'light' plus the club discs — 'disco' and 'disco y beam'
+  are DISTINCT layers — cascaded in SCREEN, club beams last (the Chat 92
+  review-mov formula). Wiring uses the 2027-graph-verified
+  `flame.batch.connect_nodes(output_node, output_socket_name, input_node,
+  input_socket_name)` with socket names read from the clip node, never
+  guessed; every batch call — reads included — goes through
+  `schedule_idle_event`. The recipe stops after wiring: the Write File (and
+  its 'Create Open Clip' check) stays in the operator's hands, it is demo
+  material. +8 tests.
 
 ## [1.18.0] — 2026-08-14
 - **Timeline edits run on Flame's MAIN thread** (Chat 98 — CER-backed root

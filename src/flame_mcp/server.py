@@ -1358,35 +1358,74 @@ def list_batch_groups() -> str:
     List all batch groups in the active desktop with their reel counts.
     Use this instead of execute_python for any 'show batch groups' request.
     Batch groups live on the desktop alongside regular reel groups.
+
+    Runs on Flame's MAIN thread (Chat 98): drilling batch-group node lists
+    from the bridge worker thread killed Flame mid-``getNodeList`` on
+    freshly built batch groups — the shell log ends inside the drill. Batch
+    state is UI-backed; even READS of it interleave with main-thread
+    redraws, so the drill executes as an idle event with a file-polled
+    result, like the timeline edits.
     """
-    code = """
-ws = flame.projects.current_project.current_workspace
-desktop = ws.desktop
-try:
-    batch_groups = list(desktop.batch_groups)
-except Exception:
-    batch_groups = []
-if not batch_groups:
-    print("No batch groups found on the desktop.")
+    code = """import flame, os, sys, io, json, time
+_prj_name = str(flame.projects.current_project.name).strip("'")
+_result_path = "/tmp/flame_mcp_bg_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _do_list():
+    _buf = io.StringIO()
+    _old_stdout = sys.stdout
+    sys.stdout = _buf
+    try:
+        ws = flame.projects.current_project.current_workspace
+        desktop = ws.desktop
+        try:
+            batch_groups = list(desktop.batch_groups)
+        except Exception:
+            batch_groups = []
+        if not batch_groups:
+            print("No batch groups found on the desktop.")
+        else:
+            print(f"{len(batch_groups)} batch group(s):")
+            for bg in batch_groups:
+                name = str(bg.name)
+                try:
+                    reels = len(bg.reels)
+                except Exception:
+                    reels = 0
+                try:
+                    nodes = len(bg.nodes) if hasattr(bg, 'nodes') else 0
+                except Exception:
+                    nodes = 0
+                parts = []
+                if reels: parts.append(f"{reels} reel(s)")
+                if nodes: parts.append(f"{nodes} node(s)")
+                summary = ", ".join(parts) if parts else "empty"
+                print(f"  {name}  ({summary})")
+    except Exception as _exc:
+        print("ERROR: " + repr(_exc))
+    finally:
+        sys.stdout = _old_stdout
+        try:
+            with open(_result_path, "w") as _fh:
+                json.dump({"message": _buf.getvalue().strip()}, _fh)
+        except Exception:
+            pass
+
+flame.schedule_idle_event(_do_list)
+_deadline = time.monotonic() + 20
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print(json.load(_fh)["message"])
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
 else:
-    print(f"{len(batch_groups)} batch group(s):")
-    for bg in batch_groups:
-        name = str(bg.name)
-        try:
-            reels = len(bg.reels)
-        except Exception:
-            reels = 0
-        try:
-            nodes = len(bg.nodes) if hasattr(bg, 'nodes') else 0
-        except Exception:
-            nodes = 0
-        parts = []
-        if reels: parts.append(f"{reels} reel(s)")
-        if nodes: parts.append(f"{nodes} node(s)")
-        summary = ", ".join(parts) if parts else "empty"
-        print(f"  {name}  ({summary})")
+    print("SCHEDULED: listing queued on Flame's main thread; no result within 20s")
 """
-    result = _call_flame(code)
+    # timeout=30: the 20 s result poll must fit inside the socket read window.
+    result = _call_flame(code, timeout=30)
     output = result.get('output', '') + result.get('error', '')
     _stats['tokens_out'] += _tok(output)
     _track_dedicated()

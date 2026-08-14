@@ -1048,3 +1048,40 @@ class TestTimelineMainThread:
         idle_body = code.split("def _do_edit():", 1)[1].split(
             "flame.schedule_idle_event", 1)[0]
         assert 'print("ERROR: " + repr(_exc))' in idle_body
+
+
+class TestListBatchGroupsMainThread:
+    """list_batch_groups drills node lists on Flame's MAIN thread (Chat 98).
+
+    A worker-thread drill (getNodeList) on freshly built batch groups killed
+    Flame mid-listing — the shell log ends inside the drill. Batch state is
+    UI-backed, so even READS of it get the idle-event + file-result harness.
+    """
+
+    def _code(self):
+        from unittest.mock import patch
+        from flame_mcp import _workspace_snapshot
+        from flame_mcp.server import list_batch_groups
+        # The workspace read-cache would satisfy a repeated identical call
+        # without touching the bridge — clear it so call_args is real.
+        _workspace_snapshot.invalidate()
+        fn = getattr(list_batch_groups, "fn", list_batch_groups)
+        with patch("flame_mcp.server._call_flame") as mock_bridge:
+            mock_bridge.return_value = {
+                "output": "1 batch group(s):\n", "error": "", "_bridge_ms": 9}
+            fn()
+            return mock_bridge.call_args
+
+    def test_listing_is_scheduled_not_direct(self):
+        args = self._code()
+        code = args[0][0]
+        assert "flame.schedule_idle_event(_do_list)" in code
+        body = code.split("def _do_list():", 1)[1].split(
+            "flame.schedule_idle_event", 1)[0]
+        assert "desktop.batch_groups" in body
+
+    def test_poll_fits_inside_the_socket_timeout(self):
+        args = self._code()
+        code = args[0][0]
+        assert "time.monotonic() + 20" in code
+        assert args.kwargs.get("timeout") == 30

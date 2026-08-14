@@ -639,6 +639,69 @@ CONCEPT_MAP: list[dict[str, str]] = [
         ),
     },
     {
+        "concept": "build comp expand multilayer compose shadow light layers",
+        "api_layer": "python_api",
+        "tool": "execute_python via schedule_idle_event (batch wiring recipe)",
+        "api_path": "see recipe",
+        "notes": (
+            "Batch state is UI-backed: EVERY batch operation — creation, "
+            "wiring, and node-list READS — runs on Flame's main thread via "
+            "schedule_idle_event with a file-polled result. A worker-thread "
+            "node drill killed Flame in-vivo (Chat 98)."
+        ),
+        "recipe": (
+            "Comp build for a relit shot. Operator commands this recipe "
+            "answers: 'expand multilayer node' and 'compose shadow and light "
+            "layers'. Work ONE shot at a time — the demo records a single "
+            "shot; the rest are for testing.\n"
+            "THREADING (non-negotiable): every batch call — create_node, "
+            "connect_nodes, import_clip, and even reading node lists or "
+            "sockets — executes INSIDE a function passed to "
+            "flame.schedule_idle_event, writing its result to a /tmp file "
+            "the caller polls (~15 s budget). Follow the KB render/delete "
+            "pattern. Never touch flame.batch from the exec thread directly.\n"
+            "0) The shot's batch group already holds its source Clip node "
+            "(the shot's open clip). Resolve it with flame.batch.get_node or "
+            "by iterating batch.nodes — inside the idle event.\n"
+            "1) EXPAND MULTILAYER: read the source Clip node's "
+            "output_sockets (idle event) and report them. The multichannel "
+            "EXR presents one output socket per layer. Identify:\n"
+            "   - 'Beauty' (or the first/default socket) — the comp base;\n"
+            "   - the SHADOW layer: socket named like 'shadow_mult' "
+            "(operator may say shadow_multi);\n"
+            "   - the MATTE: 'charmatte' — used INVERTED as the shadow "
+            "comp's matte (remember it includes props, not only "
+            "characters);\n"
+            "   - the LIGHT layers: every socket whose name contains 'Light' "
+            "or 'light' (each shot names its lights differently), PLUS the "
+            "club discs: sockets containing 'disco' — note 'disco' and "
+            "'disco y beam' are DISTINCT layers, take both;\n"
+            "   - ignore 'rest' and anything unmatched, and LIST what was "
+            "ignored so the operator can veto.\n"
+            "2) SHADOW FIRST: create a Comp node (node_type must come from "
+            "flame.batch.node_types), blend mode MULTIPLY. Wire beauty -> "
+            "back input, shadow layer -> front, charmatte -> matte input, "
+            "INVERTED. Read the Comp node's attributes to find the blend-"
+            "mode and matte-invert attribute names — set invert on the node "
+            "if it exists, otherwise route charmatte through a Negative/"
+            "Invert node (check node_types for the exact name) before the "
+            "matte input.\n"
+            "3) LIGHTS IN CASCADE: one Comp node per light/disco layer, "
+            "blend mode SCREEN, chained — previous result -> back, the "
+            "light layer -> front. Order: lights first, club beams LAST "
+            "(the review-mov formula: beauty x shadow, then lights, beams "
+            "after).\n"
+            "4) connect_nodes signature (verified on the 2027 graph): "
+            "flame.batch.connect_nodes(output_node, output_socket_name, "
+            "input_node, input_socket_name). Socket names come from step 1 "
+            "— never guess them.\n"
+            "5) STOP after wiring: show the operator the graph summary "
+            "(nodes + connections) and let HIM hook the Write File node — "
+            "its 'Create Open Clip' check is demo material, not automation. "
+            "Do not create or configure the Write File."
+        ),
+    },
+    {
         "concept": "conform cut",
         "api_layer": "dedicated_tool",
         "tool": "conform recipe (spans fpt-mcp and flame-mcp)",

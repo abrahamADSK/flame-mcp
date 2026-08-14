@@ -443,3 +443,48 @@ class TestConformNaming:
         assert "'Conform'" in recipe
         assert "'master'" in recipe
         assert "the SEQUENCE carries the Cut's name" in recipe
+
+
+class TestBuildCompRecipe:
+    """The comp-build recipe (Chat 98, user-specified layer rules)."""
+
+    def _entry(self):
+        return next(e for e in CONCEPT_MAP
+                    if e["concept"].startswith("build comp"))
+
+    def test_operator_commands_resolve_to_it(self):
+        for q in ("build comp", "expand multilayer node",
+                  "compose shadow and light layers"):
+            m = resolve_concept(q)
+            assert m is not None and m["concept"].startswith("build comp"), q
+
+    def test_layer_identification_rules(self):
+        recipe = self._entry()["recipe"]
+        assert "shadow_mult" in recipe
+        assert "charmatte" in recipe
+        assert "INVERTED" in recipe
+        # lights match by substring, both cases; discs are TWO distinct layers
+        assert "'Light' or 'light'" in recipe
+        assert "'disco' and 'disco y beam' are DISTINCT" in recipe
+
+    def test_comp_structure(self):
+        recipe = self._entry()["recipe"]
+        assert "MULTIPLY" in recipe          # shadow first
+        assert "SCREEN" in recipe            # lights cascade
+        assert "beams LAST" in recipe        # club formula, Chat 92
+        assert recipe.index("SHADOW FIRST") < recipe.index("LIGHTS IN CASCADE")
+
+    def test_every_batch_call_is_main_threaded(self):
+        recipe = self._entry()["recipe"]
+        assert "schedule_idle_event" in recipe
+        assert "even reading node lists or sockets" in recipe
+
+    def test_one_shot_at_a_time_and_no_write_file(self):
+        recipe = self._entry()["recipe"]
+        assert "ONE shot at a time" in recipe
+        assert "Do not create or configure the Write File" in recipe
+
+    def test_socket_names_never_guessed(self):
+        recipe = self._entry()["recipe"]
+        assert "never guess them" in recipe
+        assert "connect_nodes(output_node, output_socket_name" in recipe
