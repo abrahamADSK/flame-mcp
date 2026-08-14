@@ -1817,7 +1817,15 @@ class _FlameChat:
                     except (json.JSONDecodeError, ValueError):
                         full_text = raw
                 # ── Flame C++ corruption warning ──────────────────────────────
-                if 'possibly_corrupted' in full_text or 'unordered_map::at' in full_text:
+                # Chat 98: fire only on an ACTUAL bridge error, not on any
+                # text that merely mentions the marker. The bare substring
+                # scan false-alarmed when a tool result carried our own
+                # documentation (comments/CHANGELOG describe last night's
+                # unordered_map::at crash) — the operator was told Flame was
+                # corrupted while it was perfectly healthy.
+                _cpp_marker = ('possibly_corrupted' in full_text
+                               or 'unordered_map::at' in full_text)
+                if _cpp_marker and 'ERROR:' in full_text:
                     warn = ("⚠️  Internal Flame C++ exception detected.\n"
                             "The interface may be corrupted.\n"
                             "If you see broken panels or curved lines → restart Flame.")
