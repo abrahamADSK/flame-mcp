@@ -2920,79 +2920,124 @@ def _timeline_edit(
     not in the library. It is never moved automatically.
     """
     _track_dedicated()
-    code_template = '''import flame
-ws = flame.projects.current_project.current_workspace
-def _find(lib_name, reel_name, item_name, attr):
-    lib = next((l for l in ws.libraries if str(l.name).strip("'") == lib_name), None)
-    if not lib:
-        return None
-    reel = next((r for r in lib.reels if str(r.name).strip("'") == reel_name), None)
-    if not reel:
-        return None
-    coll = getattr(reel, attr, []) or []
-    return next((x for x in coll if str(x.name).strip("'") == item_name), None)
-seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
-# Conform flows edit the same sequence repeatedly: after a to_desktop move the
-# sequence is NO LONGER in the library, so also resolve it from the desktop
-# reels (where it is directly editable — no library lock).
-seq_on_desktop = False
-if seq is None:
-    for _rg in ws.desktop.reel_groups:
-        for _r in _rg.reels:
-            for _s in (getattr(_r, "sequences", None) or []):
-                if str(_s.name).strip("'") == {seq_name!r}:
-                    seq = _s
-                    seq_on_desktop = True
-src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
-to_desktop = {to_desktop}
-record_frame = {record_frame}
-_edit_args = (src,) if record_frame is None else (src, flame.PyTime(record_frame))
-if seq is None:
-    print("ERROR: sequence not found (checked sequence library/reel/name and the desktop reels)")
-elif src is None:
-    print("ERROR: source clip not found (check source library/reel/clip)")
-elif seq_on_desktop:
-    ok = seq.{op}(*_edit_args)
-    print("Timeline {op}: " + ("OK - sequence resolved on the desktop and edited there" if ok else "failed (Flame returned False)"))
-elif to_desktop:
-    rgs = ws.desktop.reel_groups
-    dreel = rgs[0].reels[0] if (rgs and rgs[0].reels) else None
-    if dreel is None:
-        print("ERROR: no desktop reel available to move the sequence into")
-    else:
-        # Capture the name BEFORE the move: moving the sequence makes Flame
-        # resync the workspace, which can invalidate the Python wrappers held
-        # here — reading dreel.name AFTER the move raised a C++
-        # unordered_map::at exception in-vivo (Chat 98) and turned a fully
-        # successful edit into a reported failure.
-        dname = str(dreel.name).strip("'")
-        moved = flame.media_panel.move(seq, dreel)
-        target = moved[0] if (isinstance(moved, list) and moved) else (moved if moved is not None else seq)
-        ok = target.{op}(*_edit_args)
-        # The edit has LANDED by this point. Nothing below may undo that, so
-        # a stale-wrapper hiccup while reporting must degrade the message,
-        # never the result.
-        try:
-            if ok:
-                print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
-            else:
-                print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
-        except Exception as _report_exc:
-            print("Timeline {op}: OK - edit landed on the desktop (post-edit "
-                  "report degraded: " + repr(_report_exc) + ")")
-else:
+    # MAIN-THREAD execution via schedule_idle_event (Chat 98 — CER-backed).
+    # Two SIGSEGVs killed the sixth overwrite of a conform, and the crash
+    # backtrace shows Flame dying on its MAIN thread redrawing the editdesk
+    # UI (MenuDoDrawItem → lxUploadBufferToTexture → null), right after an
+    # AUTOSAVE, while our edit ran on the bridge worker thread. A worker-
+    # thread mutation of the desktop sequence lets the UI redraw interleave
+    # with invalidated state; a human never crashes this because the UI
+    # serialises everything on the main thread. An idle event runs there
+    # too — between redraws and after any in-flight autosave — so the race
+    # is impossible by construction, not merely throttled. Same documented-
+    # safe pattern as render_batch and structural deletes (validated
+    # in-vivo). The result comes back through a file the worker polls; the
+    # poll budget stays inside the bridge's 30 s exec guard.
+    code_template = '''import flame, os, sys, io, json, time
+# Cheap read-only probe FIRST (Chat 63 invariant): schedule main-thread work
+# only once a loaded project answers.
+_prj_name = str(flame.projects.current_project.name).strip("'")
+_result_path = "/tmp/flame_mcp_timeline_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _do_edit():
+    _buf = io.StringIO()
+    _old_stdout = sys.stdout
+    sys.stdout = _buf
     try:
-        ok = seq.{op}(*_edit_args)
-        print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
-    except RuntimeError as exc:
-        if "locked" in str(exc).lower():
-            print("LOCKED: sequence {seq_name!r} is in library {seq_lib!r} and is read-only for "
-                  "timeline edits. The sequence and source clip both resolved, so the only "
-                  "blocker is the library lock. To edit it, re-run with to_desktop=True - this "
-                  "MOVES the sequence to the desktop and edits it there, only on explicit user "
-                  "confirmation. It is never moved automatically.")
+        ws = flame.projects.current_project.current_workspace
+        def _find(lib_name, reel_name, item_name, attr):
+            lib = next((l for l in ws.libraries if str(l.name).strip("'") == lib_name), None)
+            if not lib:
+                return None
+            reel = next((r for r in lib.reels if str(r.name).strip("'") == reel_name), None)
+            if not reel:
+                return None
+            coll = getattr(reel, attr, []) or []
+            return next((x for x in coll if str(x.name).strip("'") == item_name), None)
+        seq = _find({seq_lib!r}, {seq_reel!r}, {seq_name!r}, "sequences")
+        # Conform flows edit the same sequence repeatedly: after a to_desktop
+        # move the sequence is NO LONGER in the library, so also resolve it
+        # from the desktop reels (directly editable — no library lock).
+        seq_on_desktop = False
+        if seq is None:
+            for _rg in ws.desktop.reel_groups:
+                for _r in _rg.reels:
+                    for _s in (getattr(_r, "sequences", None) or []):
+                        if str(_s.name).strip("'") == {seq_name!r}:
+                            seq = _s
+                            seq_on_desktop = True
+        src = _find({src_lib!r}, {src_reel!r}, {src_clip!r}, "clips")
+        to_desktop = {to_desktop}
+        record_frame = {record_frame}
+        _edit_args = (src,) if record_frame is None else (src, flame.PyTime(record_frame))
+        if seq is None:
+            print("ERROR: sequence not found (checked sequence library/reel/name and the desktop reels)")
+        elif src is None:
+            print("ERROR: source clip not found (check source library/reel/clip)")
+        elif seq_on_desktop:
+            ok = seq.{op}(*_edit_args)
+            print("Timeline {op}: " + ("OK - sequence resolved on the desktop and edited there" if ok else "failed (Flame returned False)"))
+        elif to_desktop:
+            rgs = ws.desktop.reel_groups
+            dreel = rgs[0].reels[0] if (rgs and rgs[0].reels) else None
+            if dreel is None:
+                print("ERROR: no desktop reel available to move the sequence into")
+            else:
+                # Capture the name BEFORE the move: the move resyncs the
+                # workspace and can invalidate wrappers held here (in-vivo
+                # Chat 98: reading dreel.name after the move raised a C++
+                # unordered_map::at and mislabelled a landed edit).
+                dname = str(dreel.name).strip("'")
+                moved = flame.media_panel.move(seq, dreel)
+                target = moved[0] if (isinstance(moved, list) and moved) else (moved if moved is not None else seq)
+                ok = target.{op}(*_edit_args)
+                # The edit has LANDED by this point: a stale-wrapper hiccup
+                # while reporting must degrade the message, never the result.
+                try:
+                    if ok:
+                        print("Timeline {op}: OK - moved {seq_name!r} to desktop reel '" + dname + "' and edited it there (no longer in library {seq_lib!r}).")
+                    else:
+                        print("Timeline {op} on desktop reel '" + dname + "': failed (Flame returned False)")
+                except Exception as _report_exc:
+                    print("Timeline {op}: OK - edit landed on the desktop (post-edit "
+                          "report degraded: " + repr(_report_exc) + ")")
         else:
-            raise
+            try:
+                ok = seq.{op}(*_edit_args)
+                print("Timeline {op}: " + ("OK" if ok else "failed (Flame returned False)"))
+            except RuntimeError as exc:
+                if "locked" in str(exc).lower():
+                    print("LOCKED: sequence {seq_name!r} is in library {seq_lib!r} and is read-only for "
+                          "timeline edits. The sequence and source clip both resolved, so the only "
+                          "blocker is the library lock. To edit it, re-run with to_desktop=True - this "
+                          "MOVES the sequence to the desktop and edits it there, only on explicit user "
+                          "confirmation. It is never moved automatically.")
+                else:
+                    raise
+    except Exception as _exc:
+        print("ERROR: " + repr(_exc))
+    finally:
+        sys.stdout = _old_stdout
+        try:
+            with open(_result_path, "w") as _fh:
+                json.dump({{"message": _buf.getvalue().strip()}}, _fh)
+        except Exception:
+            pass
+
+flame.schedule_idle_event(_do_edit)
+_deadline = time.monotonic() + 20
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print(json.load(_fh)["message"])
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
+else:
+    print("SCHEDULED: edit queued on Flame's main thread; no result within 20s - "
+          "verify with list_desktop_reels() before retrying, the edit may still land")
 '''
     code = code_template.format(
         op=op,
