@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp version must land in the CONFORMED clip** (Chat 98, first
+  render in-vivo): Flame appends its own `.clip` extension to
+  `create_clip_path`, so passing the full path sent the comp version into
+  `<Shot>.clip.clip` — a duplicate the timeline never looks at — while the
+  conformed clip stayed at v003. And with no `media_path_pattern` the
+  frames landed flat and unversioned (`…_writefile000100.exr`).
+  `setup_comp_batch` now strips the extension and sets the versioned
+  pattern (`<name>_v<version>/<name>_v<version>.<frame>`), and a new
+  plan-native op `fix_comp_writefile` repairs the Write File of the ACTIVE
+  batch in place — the active batch cannot be switched from Python, and
+  the wired comp graph must not be destroyed to fix two attributes. +4
+  tests.
 - **The active batch group cannot be switched from Python** (Chat 98,
   falsified in-vivo): `bg.open()` is a SILENT no-op on Flame 2027 when
   another batch is current — three idle-event attempts, `open()+go_to()`

@@ -346,3 +346,51 @@ class TestSetupCompBatchOp:
             code = m.call_args[0][0]
         assert "_skipped.append" in code
         assert "setattr(wf, _attr, _val)" in code
+
+
+class TestWriteFileClipTarget:
+    """The comp version must land in the CONFORMED clip (Chat 98 in-vivo).
+
+    The first render registered its version into <Shot>.clip.clip: Flame
+    appends its own .clip extension to create_clip_path, and we passed the
+    full path. And with no media_path_pattern the frames landed flat and
+    unversioned (SEQ003_SH002_writefile000100.exr).
+    """
+
+    def _codes(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl(
+                "S", "/r/sequences/Q/S/finishing/clip/S.clip")
+            setup = m.call_args[0][0]
+            server._fix_comp_writefile_impl(
+                "/r/sequences/Q/S/finishing/clip/S.clip")
+            fix = m.call_args[0][0]
+        return setup, fix
+
+    def test_clip_target_has_no_extension(self):
+        setup, fix = self._codes()
+        for code in (setup, fix):
+            assert "finishing/clip/S')," in code       # target sin .clip
+        assert "finishing/clip/S.clip'" in setup        # el import sí lo lleva
+
+    def test_media_pattern_is_versioned(self):
+        setup, fix = self._codes()
+        for code in (setup, fix):
+            assert "<name>_v<version>/<name>_v<version>.<frame>" in code
+
+    def test_fix_op_operates_on_the_active_batch_only(self):
+        """The active batch cannot be switched from Python — the fix op
+        reads flame.batch and never tries to open a group."""
+        _, fix = self._codes()
+        assert "flame.batch.nodes" in fix
+        assert "bg.open(" not in fix and "go_to(" not in fix
+
+    def test_fix_op_registered_plan_native(self):
+        import flame_mcp._plan_schema as ps
+        entry = ps._OP_REGISTRY["fix_comp_writefile"]
+        assert entry["tool"] == "execute_plan"
+        model = entry["args_model"]
+        assert model(clip_path="/x/clip/S.clip").comp_dir == ""
