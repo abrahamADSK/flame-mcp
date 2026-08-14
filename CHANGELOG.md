@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Visual node expansion is UI-only** (Chat 98): the schematic
+  expand/collapse of a node (showing every layer connection) has no Python
+  API — the 2027 graph exposes nothing for it; it is the 'Expand/Collapse
+  Current Node' hotkey. The recipe now says so: 'expand multilayer' means
+  reading and classifying the output sockets, and the operator presses the
+  hotkey for the on-screen expansion.
 - **Comp batches must target the CONFORMED clip** (Chat 98, in-vivo): the
   console asked ShotGrid whether the shots' open clips existed, concluded
   they did not (clips are never published to SG), generated a SECOND set at
