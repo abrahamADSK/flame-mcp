@@ -580,8 +580,13 @@ concepts:
       execute_plan MCP tool instead of writing raw Python. The plan is
       validated against a closed schema (every op has a typed pydantic
       args model with extra="forbid"). Co-exists with execute_python;
-      not a replacement (yet). Each registered op maps to a known
-      dedicated MCP tool — the every_op_is_a_tool invariant pins this.
+      not a replacement (yet). Each registered op either maps to a known
+      dedicated MCP tool, or is PLAN-NATIVE (its "tool" field says
+      "execute_plan" — first case Chat 98: setup_comp_batch, a composite
+      batch build that exists only as a plan op so the tool inventory
+      counted for the AU deck stays untouched). Plan-native ops are pinned
+      by the plan_native_ops_marked invariant; tool-backed ops by the
+      registry "tool" field + dispatch tests.
     source_of_truth:
       file: src/flame_mcp/_plan_schema.py
       symbol: _OP_REGISTRY
@@ -601,14 +606,17 @@ concepts:
         type: file_exists
         path: tests/test_plan_schema.py
         context: F5b unit tests
-      - id: every_op_is_a_tool
-        type: subset
-        direction: a_subset_b
-        a_source:
-          type: ast_dict_keys
-          file: src/flame_mcp/_plan_schema.py
-          symbol: _OP_REGISTRY
-        b_source:
-          type: ast_decorator_functions
-          file: src/flame_mcp/server.py
-          decorator: mcp.tool
+      - id: plan_native_ops_marked
+        type: claim_verifies
+        claim: "plan-native ops declare tool: execute_plan in the registry"
+        code_grep:
+          regex: '"tool": "execute_plan"'
+          file_pattern: 'src/flame_mcp/_plan_schema.py'
+        expected: found
+      - id: setup_comp_batch_registered
+        type: claim_verifies
+        claim: "the setup_comp_batch plan op exists with its args model"
+        code_grep:
+          regex: '"setup_comp_batch": \{'
+          file_pattern: 'src/flame_mcp/_plan_schema.py'
+        expected: found

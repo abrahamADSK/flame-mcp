@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **`setup_comp_batch`: the comp batch build is ONE deterministic call**
+  (Chat 98, operator order 'de una atacada'): a new PLAN-NATIVE op in the
+  execute_plan registry — no dedicated MCP tool, so the AU-deck tool
+  inventory stays untouched. Per shot it creates `<shot>_comp` with a
+  `sources` reel, imports the source open clip, and wires it to a Write
+  File whose open-clip target is the SOURCE's `.clip` (operator decision:
+  comp versions land in the conformed clip, so the timeline flips natively
+  via Source Versions). One plan carries all six shots. Runs on the main
+  thread via the idle harness; Write File attributes are set DEFENSIVELY
+  and reported set/skipped — the node's attribute surface is dynamic, so
+  the first in-vivo run reports the real names instead of crashing on a
+  guessed flag. The `every_op_is_a_tool` invariant evolved: ops are either
+  tool-backed or plan-native (`tool: execute_plan`), each pinned. The
+  `build comp` recipe now leads with the op; the verbatim template remains
+  as fallback. +4 tests.
 - **Guards must not bill the operator** (Chat 98): a 'create a batch group
   per shot' order burned the operator's remaining session tokens — every
   guard objection (a redirect, next() without default, an unrecognised

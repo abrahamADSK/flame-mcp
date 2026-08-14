@@ -289,3 +289,60 @@ def test_op_names_returns_sorted_list() -> None:
     assert names == sorted(names)
     assert "list_libraries" in names
     assert "ping" in names
+
+
+class TestSetupCompBatchOp:
+    """The plan-native comp batch op (Chat 98).
+
+    'De una atacada': one execute_plan call creates every shot's comp batch
+    wired source → Write File. Plan-native — no dedicated MCP tool, so the
+    AU-deck tool inventory stays untouched; its "tool" field says
+    execute_plan.
+    """
+
+    def test_op_is_registered_with_typed_args(self):
+        import flame_mcp._plan_schema as ps
+        assert "setup_comp_batch" in ps.op_names()
+        entry = ps._OP_REGISTRY["setup_comp_batch"]
+        assert entry["tool"] == "execute_plan"  # plan-native marker
+        model = entry["args_model"]
+        args = model(shot="SEQ001_SH001", clip_path="/x/clip/S.clip")
+        assert args.comp_dir == ""  # optional, derived by the impl
+
+    def test_extra_args_rejected(self):
+        import pytest as _pytest
+        import flame_mcp._plan_schema as ps
+        model = ps._OP_REGISTRY["setup_comp_batch"]["args_model"]
+        with _pytest.raises(Exception):
+            model(shot="S", clip_path="/x", invented_field=1)
+
+    def test_impl_generates_main_threaded_wiring(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl(
+                "SEQ001_SH001",
+                "/root/sequences/SEQ001/SEQ001_SH001/finishing/clip/SEQ001_SH001.clip",
+            )
+            code = m.call_args[0][0]
+        compile(code, "<g>", "exec")
+        assert "flame.schedule_idle_event(_do_setup)" in code
+        assert "create_batch_group('SEQ001_SH001_comp'" in code
+        assert 'create_node("Write File")' in code
+        # open-clip target = the SOURCE's .clip (operator decision)
+        assert "'create_clip_path'" in code or '"create_clip_path"' in code
+        assert "finishing/clip/SEQ001_SH001.clip" in code
+        # comp media dir derived: the 'comp' sibling of the clip folder
+        assert "/root/sequences/SEQ001/SEQ001_SH001/finishing/comp" in code
+
+    def test_write_file_attributes_are_defensive(self):
+        """Unknown attribute names must degrade to a report, never an error."""
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("S", "/x/clip/S.clip")
+            code = m.call_args[0][0]
+        assert "_skipped.append" in code
+        assert "setattr(wf, _attr, _val)" in code
