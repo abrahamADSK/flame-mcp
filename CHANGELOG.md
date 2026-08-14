@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Guards must not bill the operator** (Chat 98): a 'create a batch group
+  per shot' order burned the operator's remaining session tokens — every
+  guard objection (a redirect, next() without default, an unrecognised
+  None-check form) cost a full model round-trip. Two fixes: the safety
+  layer now accepts the TERNARY guard form (`y if x else z`) alongside the
+  existing ones (the unguarded case is still flagged, pinned by test); and
+  the `build comp` recipe carries a VERBATIM batch-group-per-shot template
+  (idle event + file result + `import_clip` for the source node) that
+  passes the safety layer, the AST validator and the redirect suppression
+  on first submission — with CI tests that run the template through the
+  REAL guard layers, so a future guard change that would reject it fails
+  CI instead of billing the operator. +7 tests.
 - **Batch territory is main-thread — reads included** (Chat 98, in-vivo):
   the comp phase crashed Flame inside `getNodeList` while `list_batch_groups`
   drilled freshly built batch groups from the worker thread — the shell log

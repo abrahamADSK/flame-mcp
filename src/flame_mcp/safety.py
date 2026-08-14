@@ -129,12 +129,16 @@ _DANGEROUS_PATTERNS = [
     (
         # TAREA 7: accept the common existence-guard forms, not just
         # `if x is [not] None`. `if not x:` and `if x:` are valid None checks.
+        # Chat 98: the ternary form (`y if x else z` / `... if x is None else`)
+        # is a valid guard too — rejecting it cost the operator a full model
+        # round-trip per objection during the batch build.
         r'=\s*next\s*\(.*\bNone\b.*\)'
         r'(?![\s\S]{0,200}(?:'
         r'if\s+\w+\s+is\s+(?:not\s+)?None'   # if x is None / if x is not None
         r'|if\s+not\s+\w+'                    # if not x
         r'|if\s+\w+\s*:'                      # if x:
         r'|if\s+\w+\s+and\b'                  # if x and ...
+        r'|\bif\s+\w+\s+else\b'               # ternary: y if x else z
         r'))',
         "Result of next(..., None) is used without a None check. "
         "Accessing attributes on None causes AttributeError.",

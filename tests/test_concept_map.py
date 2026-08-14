@@ -488,3 +488,67 @@ class TestBuildCompRecipe:
         recipe = self._entry()["recipe"]
         assert "never guess them" in recipe
         assert "connect_nodes(output_node, output_socket_name" in recipe
+
+
+class TestBatchTemplateClearsTheGuards:
+    """The recipe's batch template must pass every guard FIRST TIME (Chat 98).
+
+    A 'create a batch group per shot' order burned the operator's remaining
+    session tokens: each guard objection (redirect, next() default, None-check
+    form) cost a full model round-trip. The recipe now carries a verbatim
+    template; these tests run it through the REAL guard layers so a future
+    guard change that would reject it fails CI instead of billing the
+    operator.
+    """
+
+    def _template(self):
+        entry = next(e for e in CONCEPT_MAP
+                     if e["concept"].startswith("build comp"))
+        return entry["recipe"].split("```\n", 1)[1].split("\n```", 1)[0]
+
+    def test_template_compiles(self):
+        compile(self._template(), "<tpl>", "exec")
+
+    def test_template_clears_the_safety_layer(self):
+        from flame_mcp.safety import _check_dangerous
+        assert not _check_dangerous(self._template())
+
+    def test_template_clears_the_ast_validator(self):
+        from flame_mcp._ast_validate import validate_python
+        v = validate_python(self._template())
+        assert v.ok, getattr(v, "issues", v)
+
+    def test_template_carries_creation_intent(self):
+        """Matching the creation pattern is what suppresses the soft
+        redirects AND routes it through the write throttle."""
+        import re
+        assert re.search(r"schedule_idle_event|create_batch_group\s*\(",
+                         self._template())
+
+    def test_template_is_main_threaded_with_file_result(self):
+        tpl = self._template()
+        assert "flame.schedule_idle_event(_do_build)" in tpl
+        assert "json.dump" in tpl
+
+
+class TestTernaryGuardAccepted:
+    """`y if x else z` is a valid None guard (Chat 98 false positive)."""
+
+    def test_ternary_form_passes(self):
+        from flame_mcp.safety import _check_dangerous
+        code = (
+            "lib = next((l for l in ws.libraries if str(l.name) == 'X'), None)\n"
+            "name = str(lib.name) if lib else 'missing'\n"
+            "print(name)\n"
+        )
+        warning = _check_dangerous(code)
+        assert not (warning and "None check" in str(warning)), warning
+
+    def test_unguarded_next_still_flagged(self):
+        from flame_mcp.safety import _check_dangerous
+        code = (
+            "lib = next((l for l in ws.libraries if str(l.name) == 'X'), None)\n"
+            "print(str(lib.name))\n"
+        )
+        warning = _check_dangerous(code)
+        assert warning and "None check" in str(warning), "guard must still catch it"
