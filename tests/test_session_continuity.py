@@ -384,3 +384,15 @@ class TestSaveArmsTheSettleClock:
         block = source.split("def projectSaved(", 1)[1].split("\ndef ", 1)[0]
         assert "except Exception:" in block
         assert "pass" in block
+
+
+class TestCorruptionWarningNeedsARealError:
+    """The C++ corruption warning fires on errors, not on documentation
+    (Chat 98): a tool result carrying our own comments about last night's
+    unordered_map::at crash told the operator Flame was corrupted while it
+    was perfectly healthy."""
+
+    def test_marker_alone_is_not_enough(self, source):
+        block = source.split("Flame C++ corruption warning", 1)[1].split(
+            "_extract_stats_footer", 1)[0]
+        assert "_cpp_marker and 'ERROR:' in full_text" in block

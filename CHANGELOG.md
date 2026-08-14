@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Comp batches must target the CONFORMED clip** (Chat 98, in-vivo): the
+  console asked ShotGrid whether the shots' open clips existed, concluded
+  they did not (clips are never published to SG), generated a SECOND set at
+  `finishing/<Shot>.clip` and wired all six Write Files to it — comp
+  versions would land in a clip the conform timeline never looks at,
+  silently breaking the version flip. The recipe now pins clip_path to the
+  conformed clip at `finishing/clip/<Shot>.clip`, verified ON DISK, and
+  forbids generating a clip at any other path.
+- **The C++ corruption warning needs a real error** (Chat 98): the chat
+  scanned every tool result for the `unordered_map::at` substring — which
+  now lives in our own comments and CHANGELOG describing last night's
+  crash — and told the operator Flame was corrupted while it was perfectly
+  healthy. The warning now also requires an `ERROR:` marker in the same
+  result. +2 tests. The hook part requires **MCP Bridge → Reload hook**.
 - **`setup_comp_batch`: the comp batch build is ONE deterministic call**
   (Chat 98, operator order 'de una atacada'): a new PLAN-NATIVE op in the
   execute_plan registry — no dedicated MCP tool, so the AU-deck tool
