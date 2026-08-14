@@ -299,6 +299,26 @@ _write_gap_lock = threading.Lock()
 _last_structural_write = [0.0]
 
 
+def projectSaved(*_args):
+    """Flame Python hook — fires after EVERY project/workspace save,
+    AUTOSAVE included (the app log shows it: ``Calling python hook function
+    projectSaved('<project>', 0.63, True)``).
+
+    Chat 98: an autosave is a massive structural write that the settle clock
+    could not see — it only counted OUR writes, so a timeline edit landing
+    six seconds after ``AUTOSAVE ( completed )`` looked fully settled to the
+    throttle and segfaulted Flame. Arming the clock here makes any save
+    count as the last structural write, so the next media-heavy operation
+    waits its full settle from the SAVE, not from our previous call.
+    """
+    try:
+        with _write_gap_lock:
+            _last_structural_write[0] = time.monotonic()
+        _log("Project save detected (autosave or manual) — settle clock armed")
+    except Exception:
+        pass
+
+
 def _throttle_structural_write(required_gap=_WRITE_GAP_SECS):
     """Enforce a minimum gap since the previous structural write.
 

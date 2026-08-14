@@ -361,3 +361,26 @@ class TestCrashWarningConsumedOnDisplay:
         shown = block.split("_append_bubble(\"error\", m))", 1)[1]
         assert "_last_crash_info = None" in shown
         assert "_clear_crash_recovery()" in shown
+
+
+class TestSaveArmsTheSettleClock:
+    """Flame's own saves count as structural writes (Chat 98).
+
+    The autosave is a massive structural write the settle clock could not
+    see — it only counted OUR writes, so a timeline edit landing six
+    seconds after 'AUTOSAVE ( completed )' looked fully settled and
+    segfaulted Flame. The projectSaved Python hook (Flame calls it after
+    EVERY save, autosave included) now arms the clock.
+    """
+
+    def test_hook_exists_and_arms_the_clock(self, source):
+        block = source.split("def projectSaved(", 1)[1].split("\ndef ", 1)[0]
+        assert "_last_structural_write[0] = time.monotonic()" in block
+        assert "_write_gap_lock" in block
+
+    def test_hook_swallows_its_own_failures(self, source):
+        """A logging hiccup inside a Flame-called hook must never propagate
+        into Flame's save path."""
+        block = source.split("def projectSaved(", 1)[1].split("\ndef ", 1)[0]
+        assert "except Exception:" in block
+        assert "pass" in block

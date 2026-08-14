@@ -982,3 +982,69 @@ class TestTimelineStaleWrapperGuard:
         assert branch.index("target.overwrite(*_edit_args)") < branch.index("try:")
         assert "post-edit" in branch
         assert "report degraded" in branch
+
+
+class TestTimelineMainThread:
+    """Timeline edits run on Flame's MAIN thread via schedule_idle_event
+    (Chat 98, CER-backed).
+
+    Two SIGSEGVs killed the sixth overwrite of a conform; the crash
+    backtrace shows Flame dying on its main thread REDRAWING the editdesk
+    UI (MenuDoDrawItem → lxUploadBufferToTexture → null) right after an
+    autosave, while the edit ran on the bridge worker thread. An idle event
+    runs on the main thread — between redraws and after any in-flight save —
+    so the race is impossible by construction. Same documented-safe pattern
+    as render_batch and structural deletes.
+    """
+
+    def _code(self, **kw):
+        from unittest.mock import patch
+        args = dict(
+            sequence_library="Conform", sequence_reel="master",
+            sequence_name="Master v1", source_library="SEQ001",
+            source_reel="sources", source_clip="SEQ001_SH001",
+        )
+        args.update(kw)
+        with patch("flame_mcp.server._call_flame") as mock_bridge:
+            mock_bridge.return_value = {
+                "output": "Timeline overwrite: OK\n", "error": "", "_bridge_ms": 9}
+            timeline_overwrite(**args)
+            return mock_bridge.call_args[0][0]
+
+    def test_edit_is_scheduled_not_direct(self):
+        code = self._code(to_desktop=True)
+        assert "flame.schedule_idle_event(_do_edit)" in code
+        # the whole edit body lives inside the scheduled function
+        body = code.split("def _do_edit():", 1)[1].split(
+            "flame.schedule_idle_event", 1)[0]
+        assert "target.overwrite(*_edit_args)" in body
+        assert "flame.media_panel.move(seq, dreel)" in body
+
+    def test_cheap_probe_precedes_the_schedule(self):
+        """Chat 63 invariant: a read-only probe confirms a loaded project
+        BEFORE anything is queued on the main thread."""
+        code = self._code()
+        assert code.index("flame.projects.current_project.name") < code.index(
+            "schedule_idle_event")
+
+    def test_result_comes_back_through_a_file(self):
+        code = self._code()
+        assert "_result_path" in code
+        assert '"message"' in code
+        # bounded poll inside the bridge's 30 s exec guard
+        assert "time.monotonic() + 20" in code
+
+    def test_timeout_message_says_the_edit_may_still_land(self):
+        """A poll timeout is not a failure: the idle event may simply not
+        have run yet. The message must say so instead of inviting a blind
+        retry that would double the edit."""
+        code = self._code()
+        assert "may still land" in code
+
+    def test_errors_inside_the_idle_event_are_captured(self):
+        """An exception on the main thread has nowhere to propagate — it
+        must land in the result file, not vanish."""
+        code = self._code()
+        idle_body = code.split("def _do_edit():", 1)[1].split(
+            "flame.schedule_idle_event", 1)[0]
+        assert 'print("ERROR: " + repr(_exc))' in idle_body

@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Timeline edits run on Flame's MAIN thread** (Chat 98 — CER-backed root
+  cause): two SIGSEGVs killed the sixth overwrite of a conform, and the CER
+  crash backtrace shows Flame dying on its MAIN thread redrawing the
+  editdesk UI (`MenuDoDrawItem` → `lxUploadBufferToTexture` → null) right
+  after an `AUTOSAVE`, while the edit ran on the bridge worker thread. A
+  worker-thread mutation of the desktop sequence lets the UI redraw
+  interleave with invalidated state; a human never crashes this because the
+  UI serialises everything on the main thread. `timeline_insert`/`
+  timeline_overwrite` now wrap the whole resolve+move+edit in
+  `flame.schedule_idle_event` — the documented-safe pattern already
+  validated for `render_batch` and structural deletes — with the result
+  returned through a file the worker polls (bounded well inside the
+  bridge's exec guard; a poll timeout says the edit may still land instead
+  of inviting a doubled retry). A cheap read-only probe precedes the
+  schedule per the Chat 63 invariant.
+- **Flame's own saves arm the settle clock** (Chat 98): the `projectSaved`
+  Python hook fires after EVERY save, autosave included — and the autosave
+  is a massive structural write the settle clock could not see. A timeline
+  edit landing six seconds after `AUTOSAVE ( completed )` looked fully
+  settled to the throttle and segfaulted. Any save now counts as the last
+  structural write. +9 tests across both changes. The hook part requires
+  **MCP Bridge → Reload hook**.
 - **Timeline edits join the 10 s settle tier** (Chat 98, in-vivo SIGSEGV):
   five overwrites placed cleanly at 3-5 s spacing and the SIXTH segfaulted
   at address 0x0 inside `PySequence.overwrite` — the same delayed-burst
