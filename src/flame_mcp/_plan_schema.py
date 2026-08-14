@@ -252,6 +252,29 @@ class SetupCompBatchArgs(BaseModel):
     )
 
 
+class FixCompWritefileArgs(BaseModel):
+    """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
+
+    ``create_clip_path`` must be passed WITHOUT the ``.clip`` extension —
+    Flame appends its own, which sent the first comp version into
+    ``<Shot>.clip.clip`` instead of the conformed clip — and the media
+    pattern must carry the version token. Operates on the currently open
+    batch only (the active batch cannot be switched from Python); the
+    wired comp graph is untouched.
+    """
+
+    model_config = _STRICT
+    clip_path: str = Field(
+        ..., description="Absolute path to the shot's conformed open clip "
+        "(.clip, with extension — the op strips it for Flame)."
+    )
+    comp_dir: str = Field(
+        default="",
+        description="Directory for rendered media. Empty = derived from "
+        "clip_path (the 'comp' sibling of its 'clip' folder).",
+    )
+
+
 class _TimelineEditArgs(BaseModel):
     """Shared args for timeline_insert / timeline_overwrite."""
 
@@ -381,6 +404,14 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "handler": None,
         "description": "DESTRUCTIVE — create a shot's comp batch group wired "
         "source Clip → Write File (open-clip target = the source .clip).",
+        "tool": "execute_plan",
+    },
+    "fix_comp_writefile": {
+        "args_model": FixCompWritefileArgs,
+        "handler": None,
+        "description": "DESTRUCTIVE — repair the ACTIVE batch's Write File "
+        "settings (versioned media pattern + open-clip target without the "
+        ".clip extension Flame appends itself).",
         "tool": "execute_plan",
     },
     "timeline_insert": {

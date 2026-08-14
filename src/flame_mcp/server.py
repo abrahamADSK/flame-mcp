@@ -2206,6 +2206,9 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
       - setup_comp_batch (shot, clip_path, comp_dir?) — DESTRUCTIVE: create a
         shot's comp batch group wired source Clip → Write File (open-clip
         target = the source .clip; one op per shot, batchable in one plan).
+      - fix_comp_writefile (clip_path, comp_dir?) — DESTRUCTIVE: repair the
+        ACTIVE batch's Write File (versioned pattern + clip target without
+        the extension Flame appends).
       - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
       - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
@@ -2758,8 +2761,16 @@ def _do_setup():
             _settings = [
                 ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
+                # Versioned pattern per the comp template — the Flame default
+                # glues the frame to the name with no separator and no
+                # version token (in-vivo: SEQ003_SH002_writefile000100.exr).
+                ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
                 ("create_clip", True),
-                ("create_clip_path", {clip_path!r}),
+                # WITHOUT the .clip extension: Flame appends it. Passing the
+                # full path created finishing/clip/<Shot>.clip.clip and the
+                # comp version registered there instead of in the conformed
+                # clip (in-vivo Chat 98) — the timeline never saw it.
+                ("create_clip_path", {clip_target!r}),
                 ("include_setup", True),
                 ("file_type", "OpenEXR"),
                 ("bit_depth", "16-bit fp"),
@@ -2810,12 +2821,94 @@ else:
     print("SCHEDULED: setup queued on Flame's main thread; no result within "
           "20s - verify with list_batch_groups()")
 '''
+    clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
     code = code_template.format(
         bg_name=f"{shot}_comp",
         wf_name=f"{shot}_writefile",
         clip_path=clip_path,
+        clip_target=clip_target,
         comp_dir=comp_dir,
     )
+    result = _call_flame(code, timeout=30, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
+
+
+def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "") -> str:
+    """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
+
+    The first render exposed two configuration defects: ``create_clip_path``
+    was passed WITH the ``.clip`` extension — Flame appends its own, so the
+    comp version registered into ``<Shot>.clip.clip`` instead of the
+    conformed clip — and no ``media_path_pattern`` was set, so frames landed
+    flat and unversioned. This op re-sets both on the Write File of the
+    CURRENTLY OPEN batch (the active batch cannot be switched from Python;
+    the operator opens each group and runs this once), without touching the
+    wired comp graph.
+    """
+    _track_dedicated()
+    if not comp_dir:
+        import os as _os
+        comp_dir = _os.path.join(
+            _os.path.dirname(_os.path.dirname(clip_path)), "comp")
+    clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
+    code_template = '''import flame, os, sys, io, json, time
+_prj_name = str(flame.projects.current_project.name).strip("'")
+_result_path = "/tmp/flame_mcp_fwf_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _do_fix():
+    _buf = io.StringIO()
+    _old_stdout = sys.stdout
+    sys.stdout = _buf
+    try:
+        bg_name = str(flame.batch.name).strip("'")
+        wfs = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Write File"]
+        if not wfs:
+            print("ERROR: no Write File node in the active batch " + bg_name)
+        else:
+            wf = wfs[0]
+            _settings = [
+                ("media_path", {comp_dir!r}),
+                ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
+                ("create_clip", True),
+                ("create_clip_path", {clip_target!r}),
+            ]
+            _set, _skipped = [], []
+            for _attr, _val in _settings:
+                try:
+                    setattr(wf, _attr, _val)
+                    _set.append(_attr)
+                except Exception as _ae:
+                    _skipped.append(_attr + " (" + type(_ae).__name__ + ")")
+            print("OK: Write File fixed in " + bg_name)
+            print("  set: " + (", ".join(_set) or "none"))
+            if _skipped:
+                print("  skipped: " + ", ".join(_skipped))
+    except Exception as _exc:
+        print("ERROR: " + repr(_exc))
+    finally:
+        sys.stdout = _old_stdout
+        try:
+            with open(_result_path, "w") as _fh:
+                json.dump({{"message": _buf.getvalue().strip()}}, _fh)
+        except Exception:
+            pass
+
+flame.schedule_idle_event(_do_fix)
+_deadline = time.monotonic() + 20
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print(json.load(_fh)["message"])
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
+else:
+    print("SCHEDULED: fix queued on Flame's main thread; no result within 20s")
+'''
+    code = code_template.format(clip_target=clip_target, comp_dir=comp_dir)
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
     return _fmt(result)
@@ -2825,6 +2918,12 @@ _plan.register_op(
     "setup_comp_batch",
     lambda args: _setup_comp_batch_impl(
         shot=args.shot, clip_path=args.clip_path, comp_dir=args.comp_dir,
+    ),
+)
+_plan.register_op(
+    "fix_comp_writefile",
+    lambda args: _fix_comp_writefile_impl(
+        clip_path=args.clip_path, comp_dir=args.comp_dir,
     ),
 )
 _plan.register_op(
