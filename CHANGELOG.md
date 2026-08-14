@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.18.0] — 2026-08-14
 - **Timeline edits run on Flame's MAIN thread** (Chat 98 — CER-backed root
   cause): two SIGSEGVs killed the sixth overwrite of a conform, and the CER
   crash backtrace shows Flame dying on its MAIN thread redrawing the
