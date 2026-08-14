@@ -594,3 +594,17 @@ class TestCompBatchRouting:
     def test_no_theft_from_batch_concepts(self):
         assert resolve_concept("list batch groups")["concept"] == "list batch groups"
         assert resolve_concept("render batch")["concept"] == "render batch"
+
+
+class TestActiveBatchCannotBeSwitched:
+    """bg.open() is a silent no-op on Flame 2027 (Chat 98, falsified in-vivo:
+    three idle-event attempts, open()+go_to() included, left the current
+    batch unchanged with no error logged)."""
+
+    def test_recipe_forbids_programmatic_switching(self):
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        assert "SILENT no-op" in recipe
+        assert "double-click" in recipe
+        assert "never retry open() loops" in recipe
+        assert "Guard every mutating idle event on the batch-group name" in recipe

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The active batch group cannot be switched from Python** (Chat 98,
+  falsified in-vivo): `bg.open()` is a SILENT no-op on Flame 2027 when
+  another batch is current — three idle-event attempts, `open()+go_to()`
+  included, left the current batch unchanged with no error logged,
+  falsifying the KB's auto-learned pattern for this case. The recipe now
+  verifies the active batch's name FIRST, asks the operator for the one
+  UI double-click when it differs, forbids open() retry loops, and guards
+  every mutating idle event on the batch-group name so a wrong active
+  batch is never touched. +1 test.
 - **Comp wiring semantics corrected by the operator** (Chat 98, first
   in-vivo graph): the recipe wired backwards — beauty entered the Back and
   the cascade accumulated on Back. Corrected to the operator's semantics:
