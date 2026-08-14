@@ -2758,19 +2758,22 @@ def _do_setup():
             wf = flame.batch.create_node("Write File")
             # Defensive attribute configuration: the Write File node's
             # attribute surface is dynamic — try each, report the outcome.
+            # MEDIA-ONLY Write File (Chat 98 architecture, operator-
+            # approved): create_clip=False — in-vivo, Flame's Write File
+            # OWNS any clip it creates and OVERWROTE the pipeline's
+            # conformed clip wholesale. The pipeline aggregates versions
+            # instead (openclip_create steps=['Light','Comp']); this node
+            # only writes versioned EXR media. versioning=True is what
+            # expands the <version> token — the archived setup showed
+            # <Versioning>False</Versioning>, which is why the token
+            # stayed LITERAL in the rendered paths.
             _settings = [
                 ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
-                # Versioned pattern per the comp template — the Flame default
-                # glues the frame to the name with no separator and no
-                # version token (in-vivo: SEQ003_SH002_writefile000100.exr).
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
-                ("create_clip", True),
-                # WITHOUT the .clip extension: Flame appends it. Passing the
-                # full path created finishing/clip/<Shot>.clip.clip and the
-                # comp version registered there instead of in the conformed
-                # clip (in-vivo Chat 98) — the timeline never saw it.
-                ("create_clip_path", {clip_target!r}),
+                ("versioning", True),
+                ("version_padding", 3),
+                ("create_clip", False),
                 ("include_setup", True),
                 ("file_type", "OpenEXR"),
                 ("bit_depth", "16-bit fp"),
@@ -2870,8 +2873,9 @@ def _do_fix():
             _settings = [
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
-                ("create_clip", True),
-                ("create_clip_path", {clip_target!r}),
+                ("versioning", True),
+                ("version_padding", 3),
+                ("create_clip", False),
             ]
             _set, _skipped = [], []
             for _attr, _val in _settings:
