@@ -639,6 +639,24 @@ CONCEPT_MAP: list[dict[str, str]] = [
         ),
     },
     {
+        # Pointer entry (Chat 98): the operator's render command must reach
+        # the delivery cycle, but 'render'-heavy queries were won by the
+        # render-batch/crash concepts. This thin entry carries the winning
+        # vocabulary and DEFERS to the build-comp recipe — no duplication.
+        "concept": "render deliver comp",
+        "api_layer": "dedicated_tool",
+        "tool": "delivery cycle (recipe step 8)",
+        "api_path": "resolve_concept('expand multilayer') -> STEP 8",
+        "notes": (
+            "ONE operator command runs the whole cycle on the ACTIVE group: "
+            "fix write file -> render -> WAIT for the full frame count -> "
+            "publish to the compositing Task -> regenerate the conformed "
+            "clip (steps Light plus compositing). Execute STEP 8 of the "
+            "fetched recipe EXACTLY; the only manual step left is update "
+            "sources on the timeline."
+        ),
+    },
+    {
         "concept": (
             "build comp expand multilayer compose shadow light layers "
             # Routing vocabulary (Chat 98): without these tokens every
@@ -646,7 +664,7 @@ CONCEPT_MAP: list[dict[str, str]] = [
             # groups' concept and the recipe was only reachable via
             # 'conform' — three failed queries per session. The matcher
             # does no stemming: 'batches' and 'batch' are distinct tokens.
-            "create setup comp batches"
+            "create setup comp batches render deliver"
         ),
         "api_layer": "python_api",
         "tool": "execute_python via schedule_idle_event (batch wiring recipe)",
@@ -780,20 +798,30 @@ CONCEPT_MAP: list[dict[str, str]] = [
             "wants the diagonal.\n"
             "7) Report the graph summary (nodes + connections + layout) and "
             "stop.\n"
-            "8) POST-RENDER CYCLE (Chat 98 final architecture — the Write "
+            "8) RENDER AND DELIVER ('render the comp', 'render and deliver "
+            "to the timeline') — ONE operator command runs the whole cycle "
+            "on the ACTIVE batch (Chat 98 final architecture: the Write "
             "File writes MEDIA ONLY, create_clip=False; in-vivo its Create "
-            "Open Clip destroyed the pipeline's conformed clip): after the "
-            "operator renders, the loop that reaches the timeline is\n"
-            "   a) tk_publish the rendered EXR sequence as 'Rendered Image' "
-            "on the shot's Comp Task;\n"
-            "   b) regenerate the shot's conformed clip with "
+            "Open Clip destroyed the pipeline's conformed clip):\n"
+            "   a) ensure the Write File is media-only and versioned: run "
+            "the execute_plan op fix_comp_writefile (idempotent, safe to "
+            "repeat) and relay its set/skipped report;\n"
+            "   b) render: the render_batch tool (Background Reactor), the "
+            "documented-safe route;\n"
+            "   c) WAIT for the media: poll the comp dir with the Glob tool "
+            "until the new version folder holds the full frame count (match "
+            "the source: 100) and the count stops growing between polls — "
+            "never publish a partial sequence;\n"
+            "   d) tk_publish the rendered EXR sequence as 'Rendered Image' "
+            "on the shot's Comp Task (path with the %04d frame token);\n"
+            "   e) regenerate the shot's conformed clip with "
             "openclip_create steps=['Light', 'Comp'] — SAME output path "
             "(finishing/clip/<Shot>.clip). The clip then carries LIGHT_v* "
             "and COMP_v* versions together;\n"
-            "   c) the operator updates sources on the timeline and Flame "
-            "flips natively. A new Light publish follows the same loop: "
-            "regenerate, the batch source offers the new version, "
-            "re-render, publish, regenerate."
+            "   f) report DONE and tell the operator the one manual step "
+            "left: update sources on the timeline — Flame flips natively. "
+            "A new Light publish follows the same loop: regenerate, the "
+            "batch source offers the new version, render and deliver again."
         ),
     },
     {

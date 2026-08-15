@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **'Render the comp' is ONE command** (Chat 98, operator workflow): the
+  post-render cycle stopped being two manual steps. Step 8 of the comp
+  recipe now runs fix-write-file → render (Background Reactor) → WAIT for
+  the full frame count via Glob polling (never publish a partial
+  sequence) → tk_publish to the Comp Task → regenerate the conformed clip
+  (steps Light+Comp) — leaving the operator exactly one manual gesture:
+  update sources on the timeline. A thin pointer concept ('render deliver
+  comp') routes the render phrasings to that step with the 'comp' token
+  isolated to its name — spread across four fields it out-scored the main
+  concept and stole 'create the comp batches' (caught while tuning;
+  anti-theft pinned). +4 tests.
 - **Write File demoted to media-only; the pipeline owns the clip** (Chat
   98, architecture closed in-vivo and operator-approved): pointing the
   Write File's Create Open Clip at the pipeline's conformed clip made
