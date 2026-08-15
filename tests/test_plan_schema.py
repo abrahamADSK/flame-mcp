@@ -442,18 +442,121 @@ class TestFrameAlignment:
         assert "flame.batch.start_frame = _sf" in code
         assert "_sf = 1001" in code
 
-    def test_zero_leaves_the_batch_untouched(self):
+    # ---- Chat 99: the alignment must not depend on the console passing
+    # start_frame. In-vivo the console omitted it, the op printed OK, the
+    # comp rendered 0001-0100 against a 1001-1100 source: 'no media' on the
+    # COMP flip. The op now derives the value from the conformed clip and
+    # proves the alignment by read-back.
+
+    _CLIP_XML = (
+        '<?xml version="1.0"?><clip type="clip" version="6">'
+        '<name type="string">S_LGT_v003</name><tracks type="tracks">'
+        '<track uid="BEAUTY"><feeds currentVersion="COMP_v001">'
+        '<feed vuid="LIGHT_v003"><startFrame>1001</startFrame><spans><span>'
+        '<duration>100</duration><path encoding="pattern">'
+        '/r/S/LGT/publish/renders/LGT/v003/S_LGT_v003.[1001-1100].exr'
+        '</path></span></spans></feed>'
+        '<feed vuid="COMP_v001"><startFrame>1</startFrame><spans><span>'
+        '<duration>100</duration><path encoding="pattern">'
+        '/r/S/finishing/comp/S_writefile_v001/S_writefile_v001.[0001-0100].exr'
+        '</path></span></spans></feed>'
+        '</feeds></track></tracks></clip>'
+    )
+
+    def _write_clip(self, tmp_path, xml=None):
+        clip = tmp_path / "finishing" / "clip" / "S.clip"
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_text(xml if xml is not None else self._CLIP_XML)
+        return str(clip)
+
+    def test_derive_reads_the_source_feed_and_skips_comp(self, tmp_path):
+        import flame_mcp.server as server
+        assert server._derive_source_frame_range(self._write_clip(tmp_path)) == (1001, 100)
+
+    def test_derive_falls_back_to_the_path_pattern(self, tmp_path):
+        """A clip without <startFrame> still yields the range from [a-b]."""
+        import flame_mcp.server as server
+        xml = self._CLIP_XML.replace("<startFrame>1001</startFrame>", "")
+        xml = xml.replace("<duration>100</duration>", "", 1)
+        assert server._derive_source_frame_range(self._write_clip(tmp_path, xml)) == (1001, 100)
+
+    def test_derive_never_raises(self, tmp_path):
+        import flame_mcp.server as server
+        assert server._derive_source_frame_range("/nope/S.clip") is None
+        assert server._derive_source_frame_range(self._write_clip(tmp_path, "not xml")) is None
+        comp_only = self._CLIP_XML.replace('vuid="LIGHT_v003"', 'vuid="COMP_v000"')
+        assert server._derive_source_frame_range(self._write_clip(tmp_path, comp_only)) is None
+
+    def test_zero_derives_from_the_clip(self, tmp_path):
+        """The in-vivo failure: an omitted start_frame must NOT leave the
+        batch at 1 — the op derives 1001 from the clip it already gets."""
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path))
+            code = m.call_args[0][0]
+        assert "_sf = 1001" in code and "_dur = 100" in code
+        assert "derived from the conformed clip" in code
+        compile(code, "fix", "exec")
+
+    def test_zero_with_unreadable_clip_warns_and_leaves_untouched(self):
         from unittest.mock import patch
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             server._fix_comp_writefile_impl("/r/x/clip/S.clip")
             code = m.call_args[0][0]
-        assert "_sf = 0" in code  # the guard skips the assignment
+        assert "_sf = 0" in code
+        assert "NOT derivable" in code
+        assert "left untouched" in code
 
-    def test_recipe_reads_the_source_start_never_assumes(self):
+    def test_fix_reads_back_and_prints_one_alignment_verdict(self, tmp_path):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path))
+            code = m.call_args[0][0]
+        assert "wf.range_start" in code and "wf.range_end" in code
+        assert 'print("ALIGNMENT: batch start "' in code
+        assert "MISALIGNED" in code and "OVERWRITE WARNING" in code
+        # the read-back helper must not collide with the settings loop var
+        assert "for _attr, _val in _settings" in code
+        assert "def _gv(a):" in code and "_val(" not in code
+
+    def test_setup_derives_start_frame_by_default(self, tmp_path):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("S", self._write_clip(tmp_path))
+            code = m.call_args[0][0]
+        assert 'reels=["sources"], start_frame=1001)' in code
+        compile(code, "setup", "exec")
+
+    def test_setup_without_a_readable_clip_warns_loudly(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("S", "/nope/clip/S.clip")
+            code = m.call_args[0][0]
+        assert 'start_frame=1)' in code and "WARNING: start_frame NOT derivable" in code
+
+    def test_schema_defaults_mean_derive(self):
+        import flame_mcp._plan_schema as ps
+        assert ps._OP_REGISTRY["setup_comp_batch"]["args_model"](
+            shot="S", clip_path="/x/clip/S.clip").start_frame == 0
+        assert ps._OP_REGISTRY["fix_comp_writefile"]["args_model"](
+            clip_path="/x/clip/S.clip").start_frame == 0
+
+    def test_recipe_gates_the_render_on_the_alignment_verdict(self):
         from flame_mcp.concept_map import CONCEPT_MAP
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
-        assert "start_frame = the source media's FIRST frame" in recipe
-        assert "never assume" in recipe
+        assert "FRAME ALIGNMENT is AUTOMATIC" in recipe
+        assert "render ONLY on OK" in recipe
+        assert "NUMBERING CHECK" in recipe and ".1001.exr, not .0001.exr" in recipe
+        # the old wording asked the console to pass the value — gone
+        assert "pass start_frame = the source media's FIRST frame" not in recipe

@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Frame alignment is derived and PROVEN, never delegated to the console**
+  (Chat 99, in-vivo 'no media' on the COMP flip): the console ran
+  `fix_comp_writefile` without `start_frame`, the op left the batch at 1
+  and answered OK, the comp rendered `0001-0100` against a `1001-1100`
+  source and the conformed segment showed 'no media' on COMP. The recipe
+  had asked the model to read the value from the source filenames — it
+  skipped it. Guards must not bill the operator, so `setup_comp_batch` and
+  `fix_comp_writefile` now DERIVE `start_frame` (default `0`) from the
+  conformed clip they already receive (`_derive_source_frame_range`:
+  `<startFrame>` / `[first-last]` of the first non-COMP feed), apply it,
+  READ BACK the batch start and the Write File range (pulling the range
+  onto the source when it did not follow — the WF range is what numbers
+  the files: `batchExportBegin` reported `firstFrame=1`), and print one
+  `ALIGNMENT: … -> OK | MISALIGNED — do not render` verdict the recipe
+  gates the render on, plus an `OVERWRITE WARNING` when Follow Iteration
+  would overwrite an existing version and a diagnostic dump of the source
+  Clip node's timing (answers in-vivo whether the imported source shifts
+  with the batch start). Recipe step 8c adds a NUMBERING CHECK: the first
+  rendered filename must carry the source's first frame or the cycle
+  STOPS before publishing. +10 tests (the old `zero leaves the batch
+  untouched` test enshrined the failure and is gone).
 - **Comp renders number from the SOURCE's first frame** (Chat 98, in-vivo
   'no media' on the LIGHT flip): the batch was created with
   `start_frame=1`, the comp rendered frames 1-100 against a source
