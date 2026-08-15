@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Write File demoted to media-only; the pipeline owns the clip** (Chat
+  98, architecture closed in-vivo and operator-approved): pointing the
+  Write File's Create Open Clip at the pipeline's conformed clip made
+  Flame OVERWRITE the file wholesale (43 KB multichannel → 2.4 KB, LGT
+  versions gone, timeline with no media) — Flame owns any clip its Write
+  File creates, there is no co-ownership. Both batch ops now set
+  `create_clip=False`, and `versioning=True` + `version_padding=3` — the
+  archived setup revealed `<Versioning>False</Versioning>`, the reason the
+  `<version>` token stayed LITERAL in rendered paths. The comp reaches the
+  timeline through the pipeline instead: publish the render to the Comp
+  Task, regenerate the conformed clip with fpt-mcp's
+  `openclip_create steps=['Light','Comp']` (multi-step aggregation, fpt
+  PR #47), update sources, native flip. The recipe carries the full
+  post-render cycle. +3 tests reworked.
 - **The comp version must land in the CONFORMED clip** (Chat 98, first
   render in-vivo): Flame appends its own `.clip` extension to
   `create_clip_path`, so passing the full path sent the comp version into

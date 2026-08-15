@@ -779,7 +779,21 @@ CONCEPT_MAP: list[dict[str, str]] = [
             "batch.organize(): the operator reads this graph on camera and "
             "wants the diagonal.\n"
             "7) Report the graph summary (nodes + connections + layout) and "
-            "stop."
+            "stop.\n"
+            "8) POST-RENDER CYCLE (Chat 98 final architecture — the Write "
+            "File writes MEDIA ONLY, create_clip=False; in-vivo its Create "
+            "Open Clip destroyed the pipeline's conformed clip): after the "
+            "operator renders, the loop that reaches the timeline is\n"
+            "   a) tk_publish the rendered EXR sequence as 'Rendered Image' "
+            "on the shot's Comp Task;\n"
+            "   b) regenerate the shot's conformed clip with "
+            "openclip_create steps=['Light', 'Comp'] — SAME output path "
+            "(finishing/clip/<Shot>.clip). The clip then carries LIGHT_v* "
+            "and COMP_v* versions together;\n"
+            "   c) the operator updates sources on the timeline and Flame "
+            "flips natively. A new Light publish follows the same loop: "
+            "regenerate, the batch source offers the new version, "
+            "re-render, publish, regenerate."
         ),
     },
     {

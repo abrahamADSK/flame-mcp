@@ -608,3 +608,18 @@ class TestActiveBatchCannotBeSwitched:
         assert "double-click" in recipe
         assert "never retry open() loops" in recipe
         assert "Guard every mutating idle event on the batch-group name" in recipe
+
+
+class TestPostRenderCycle:
+    """The loop that reaches the timeline (Chat 98 final architecture)."""
+
+    def test_cycle_is_publish_then_regenerate(self):
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        cycle = recipe.split("POST-RENDER CYCLE", 1)[1]
+        assert "tk_publish" in cycle
+        assert "steps=['Light', 'Comp']" in cycle
+        assert "SAME output path" in cycle
+        assert cycle.index("tk_publish") < cycle.index("openclip_create")
+        assert "create_clip=False" in recipe.split("POST-RENDER CYCLE", 1)[1] \
+            or "create_clip=False" in recipe

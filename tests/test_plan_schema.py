@@ -330,8 +330,11 @@ class TestSetupCompBatchOp:
         assert "flame.schedule_idle_event(_do_setup)" in code
         assert "create_batch_group('SEQ001_SH001_comp'" in code
         assert 'create_node("Write File")' in code
-        # open-clip target = the SOURCE's .clip (operator decision)
-        assert "'create_clip_path'" in code or '"create_clip_path"' in code
+        # MEDIA-ONLY (Chat 98): the Write File never creates a clip — Flame
+        # owns any clip it creates and overwrote the pipeline's in-vivo.
+        assert '("create_clip", False)' in code
+        assert "create_clip_path" not in code
+        # the source import still uses the conformed clip
         assert "finishing/clip/SEQ001_SH001.clip" in code
         # comp media dir derived: the 'comp' sibling of the clip folder
         assert "/root/sequences/SEQ001/SEQ001_SH001/finishing/comp" in code
@@ -370,11 +373,24 @@ class TestWriteFileClipTarget:
             fix = m.call_args[0][0]
         return setup, fix
 
-    def test_clip_target_has_no_extension(self):
+    def test_write_file_never_creates_a_clip(self):
+        """Chat 98 final architecture: Flame owns any clip its Write File
+        creates (it overwrote the pipeline's conformed clip wholesale), so
+        both ops set create_clip=False — the pipeline aggregates versions
+        via openclip_create steps=['Light','Comp'] instead."""
         setup, fix = self._codes()
         for code in (setup, fix):
-            assert "finishing/clip/S')," in code       # target sin .clip
+            assert '("create_clip", False)' in code
+            assert "create_clip_path" not in code
         assert "finishing/clip/S.clip'" in setup        # el import sí lo lleva
+
+    def test_versioning_is_enabled_for_token_expansion(self):
+        """The archived setup showed <Versioning>False</Versioning> — the
+        reason the <version> token stayed LITERAL in rendered paths."""
+        setup, fix = self._codes()
+        for code in (setup, fix):
+            assert '("versioning", True)' in code
+            assert '("version_padding", 3)' in code
 
     def test_media_pattern_is_versioned(self):
         setup, fix = self._codes()
