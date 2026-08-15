@@ -668,7 +668,57 @@ class TestRenderDeliverPointer:
                      "never publish a partial sequence", "tk_publish",
                      "steps=['Light', 'Comp']", "update sources"):
             assert frag in step8, frag
-        # order: fix -> render -> wait -> publish -> regenerate
+        # order: fix -> render -> wait -> publish -> regenerate -> review
         assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
             < step8.index("Glob") < step8.index("tk_publish") \
-            < step8.index("openclip_create")
+            < step8.index("openclip_create") < step8.index("REVIEW VERSION")
+
+    # ---- Chat 99: the delivery is not finished until it is reviewable in
+    # Flow Production Tracking. The pipeline already does this for Light
+    # (Version + path_to_frames + path_to_movie + uploaded streaming media);
+    # the comp cycle published an EXR and stopped.
+
+    def _step8(self):
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        return recipe.split("RENDER AND DELIVER", 1)[1]
+
+    def test_review_version_fills_all_three_media_fields(self):
+        step8 = self._step8()
+        for frag in ("sg_path_to_frames", "sg_path_to_movie",
+                     "sg_uploaded_movie", "sg_upload"):
+            assert frag in step8, frag
+        # the streaming upload is the part that makes it playable — the
+        # recipe must say so, not leave it as an optional extra
+        assert "no thumbnail" in step8 and "cannot be played" in step8
+
+    def test_review_version_mirrors_the_light_convention(self):
+        step8 = self._step8()
+        for frag in ("code=<Shot>_<STEP>_v<version>", "sg_task=the compositing Task",
+                     "sg_first_frame", "sg_last_frame", "sg_status_list='rev'",
+                     "published_files=[the EXR PublishedFile]"):
+            assert frag in step8, frag
+
+    def test_movie_path_comes_from_the_template_never_composed(self):
+        step8 = self._step8()
+        assert "tk_resolve_path" in step8 and "movie_shot_publish" in step8
+        assert "Do not compose it by hand" in step8
+
+    def test_review_preset_is_the_native_shotgun_one_and_unversioned(self):
+        """The preset that ships with Flame for FPT review; its root is
+        version-scoped, so the recipe must resolve it, not hardcode it."""
+        step8 = self._step8()
+        assert "shotgun/movie_file/" in step8 and "Submit for review.xml" in step8
+        assert "get_flame_version" in step8 and "never hardcode" in step8
+        assert "2027" not in step8.split("REVIEW VERSION")[1]
+
+    def test_export_is_awaited_before_shotgrid(self):
+        step8 = self._step8()
+        review = step8.split("REVIEW VERSION", 1)[1]
+        assert "ASYNCHRONOUS" in review
+        assert "stops growing" in review
+        assert review.index("stops growing") < review.index("sg_create")
+
+    def test_pointer_concept_mentions_the_review_version(self):
+        m = next(e for e in CONCEPT_MAP if e["concept"] == "render deliver comp")
+        assert "review" in m["notes"] and "streaming" in m["notes"]

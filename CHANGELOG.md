@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp cycle now creates the review Version in Flow Production
+  Tracking** (Chat 99, operator request): the delivery published an EXR
+  sequence and stopped, so the comp never appeared as reviewable media —
+  while the Light pipeline has been creating Versions with frames path,
+  movie path and uploaded streaming media all along. Step 8 of the comp
+  recipe gains a REVIEW VERSION phase that mirrors that convention exactly:
+  resolve the movie path from the `movie_shot_publish` template
+  (`tk_resolve_path`, never composed by hand), export the rendered version
+  folder with Flame's own `shotgun/movie_file/Submit for review.xml` preset
+  (QuickTime H.264 — the preset the native ShotGrid integration uses; its
+  root is resolved from `get_flame_version`, never hardcoded), WAIT for the
+  asynchronous export to stop growing, then `sg_create` a Version
+  (`code`, `entity`, `sg_task`, `sg_path_to_frames`, `sg_path_to_movie`,
+  `sg_first_frame`/`sg_last_frame`, `sg_status_list='rev'`,
+  `published_files`) and `sg_upload` the movie into `sg_uploaded_movie` —
+  the streaming media, without which the Version has no thumbnail and
+  cannot be played. Recipe-only: no new tools, the decorator count is
+  untouched. +6 tests.
+
 - **The comp media now carries the timecode anchor it declares** (Chat 99 —
   the actual root cause behind four partial fixes): Maya/Arnold EXRs carry
   NO `timeCode` attribute, so the two consumers invent different values.
