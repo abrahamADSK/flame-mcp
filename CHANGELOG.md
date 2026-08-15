@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Comp renders number from the SOURCE's first frame** (Chat 98, in-vivo
+  'no media' on the LIGHT flip): the batch was created with
+  `start_frame=1`, the comp rendered frames 1-100 against a source
+  spanning 1001-1100, and after update sources the segment anchored to
+  COMP — flipping to LIGHT asked for frames outside its span. The spliced
+  clip document itself was verified byte-identical on the LIGHT feed; the
+  misalignment was pure frame numbering. `setup_comp_batch` takes
+  `start_frame` at creation and `fix_comp_writefile` can realign an
+  existing batch (`flame.batch.start_frame`); the recipe reads the value
+  from the source publish filenames — never assumed. +4 tests.
 - **`version_mode` is the real attribute** (Chat 98, console-discovered and
   read-back verified): `versioning` does not exist on this Flame 2027
   build, and the `version_mode` enum silently ignores invalid strings — no

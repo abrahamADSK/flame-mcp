@@ -250,6 +250,15 @@ class SetupCompBatchArgs(BaseModel):
         "derived from clip_path: the 'comp' sibling of its 'clip' folder "
         "(…/finishing/comp).",
     )
+    start_frame: int = Field(
+        default=1,
+        description="Batch group start frame. MUST match the source media's "
+        "first frame (e.g. 1001): otherwise the comp render numbers from 1 "
+        "and its version misaligns against the source inside the shared "
+        "open clip — in-vivo, the segment anchored to COMP (1-100) showed "
+        "'no media' when flipped to LIGHT (1001-1100). Read it from the "
+        "source frames, never assume.",
+    )
 
 
 class FixCompWritefileArgs(BaseModel):
@@ -272,6 +281,13 @@ class FixCompWritefileArgs(BaseModel):
         default="",
         description="Directory for rendered media. Empty = derived from "
         "clip_path (the 'comp' sibling of its 'clip' folder).",
+    )
+    start_frame: int = Field(
+        default=0,
+        description="When > 0, also set the ACTIVE batch's start frame to "
+        "this value (must match the source media's first frame, e.g. 1001) "
+        "so the render numbering aligns with the source inside the shared "
+        "open clip. 0 = leave the batch start frame untouched.",
     )
 
 

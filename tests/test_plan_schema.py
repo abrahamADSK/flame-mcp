@@ -413,3 +413,47 @@ class TestWriteFileClipTarget:
         assert entry["tool"] == "execute_plan"
         model = entry["args_model"]
         assert model(clip_path="/x/clip/S.clip").comp_dir == ""
+
+
+class TestFrameAlignment:
+    """The comp render must number from the SOURCE's first frame (Chat 98
+    in-vivo): the batch was created with start_frame=1, the comp rendered
+    frames 1-100 against a source spanning 1001-1100, and after update
+    sources the segment anchored to COMP — flipping to LIGHT asked for
+    frames outside its span: 'no media'."""
+
+    def test_setup_creates_batch_at_source_start(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl(
+                "S", "/r/sequences/Q/S/finishing/clip/S.clip", start_frame=1001)
+            code = m.call_args[0][0]
+        assert 'reels=["sources"], start_frame=1001)' in code
+
+    def test_fix_op_can_realign_an_existing_batch(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl("/r/x/clip/S.clip", start_frame=1001)
+            code = m.call_args[0][0]
+        assert "flame.batch.start_frame = _sf" in code
+        assert "_sf = 1001" in code
+
+    def test_zero_leaves_the_batch_untouched(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl("/r/x/clip/S.clip")
+            code = m.call_args[0][0]
+        assert "_sf = 0" in code  # the guard skips the assignment
+
+    def test_recipe_reads_the_source_start_never_assumes(self):
+        from flame_mcp.concept_map import CONCEPT_MAP
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        assert "start_frame = the source media's FIRST frame" in recipe
+        assert "never assume" in recipe
