@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp Write File is named `{Shot}_{Step}`, never `writefile`** (Chat
+  99, operator-caught): the media pattern `<name>_v<version>` expands the
+  node NAME, and `setup_comp_batch` named it `<shot>_writefile` — the
+  literal leaked into the folder, the frames and the PublishedFile code
+  (`SEQ003_SH001_writefile_v001.%04d.exr`) instead of the pipeline
+  convention the LGT publishes follow (`SEQ003_SH001_LGT_v003`). Both ops
+  now take a REQUIRED `step` (the compositing Step's `short_name` read from
+  ShotGrid — `Comp -> CMP` on this site — validated as a token, never a
+  default): `setup_comp_batch` names the node `<shot>_<step>` and
+  `fix_comp_writefile` RENAMES the active batch's Write File to
+  `<Shot>_<step>` (Shot = the clip filename stem) and reports
+  `name: old -> new`, so the six existing batches are repaired by the same
+  idempotent op. Recipe step 0 and 8a instruct the console to `sg_find` the
+  Step short_name. +4 tests.
 - **Frame alignment is derived and PROVEN, never delegated to the console**
   (Chat 99, in-vivo 'no media' on the COMP flip): the console ran
   `fix_comp_writefile` without `start_frame`, the op left the batch at 1
