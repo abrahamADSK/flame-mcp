@@ -472,14 +472,14 @@ class TestFrameAlignment:
 
     def test_derive_reads_the_source_feed_and_skips_comp(self, tmp_path):
         import flame_mcp.server as server
-        assert server._derive_source_frame_range(self._write_clip(tmp_path)) == (1001, 100)
+        assert server._derive_source_frame_range(self._write_clip(tmp_path)) == (1001, 100, 4)
 
     def test_derive_falls_back_to_the_path_pattern(self, tmp_path):
         """A clip without <startFrame> still yields the range from [a-b]."""
         import flame_mcp.server as server
         xml = self._CLIP_XML.replace("<startFrame>1001</startFrame>", "")
         xml = xml.replace("<duration>100</duration>", "", 1)
-        assert server._derive_source_frame_range(self._write_clip(tmp_path, xml)) == (1001, 100)
+        assert server._derive_source_frame_range(self._write_clip(tmp_path, xml)) == (1001, 100, 4)
 
     def test_derive_never_raises(self, tmp_path):
         import flame_mcp.server as server
@@ -615,3 +615,109 @@ class TestWriteFileNameFollowsTheStep:
         assert "short_name READ from ShotGrid" in recipe
         assert "'<shot>_<step>'" in recipe and "{Shot}_{Step}_v<version>" in recipe
         assert "leaked into the PublishedFile code" in recipe
+
+
+class TestTimecodeAnchorAndPadding:
+    """Chat 99, the fifth attempt and the real root cause.
+
+    Maya/Arnold EXRs carry NO timecode attribute, so the two consumers
+    invent different ones: dl_get_media_info (which writes the .clip) falls
+    back to the FRAME NUMBER and declares TC 1001, while Flame's batch gets
+    nothing (the source Clip node's source_timecode reads None, measured
+    in-vivo) and the Write File stamps an EXPLICIT 00:00:00:00 into the comp
+    EXRs. Whichever Flame re-reads wins — so the flip worked, then an
+    operation that re-read the media re-anchored the conformed segment to
+    00:00:00:00 and BOTH versions went 'no media' (measured: five segments
+    at 00:00:40:01, the comped one at 0).
+    """
+
+    CLIP_XML = (
+        '<?xml version="1.0"?><clip type="clip" version="8">'
+        '<tracks><track uid="BEAUTY:MasterBeauty"><feeds currentVersion="LIGHT_v003">'
+        '<feed vuid="LIGHT_v003"><startFrame>1001</startFrame><spans><span>'
+        '<duration>100</duration><path encoding="pattern">'
+        '/r/S/LGT/publish/renders/LGT/v003/S_LGT_v003.[1001-1100].exr'
+        '</path></span></spans></feed></feeds></track></tracks></clip>'
+    )
+
+    def _clip(self, tmp_path, xml=None):
+        c = tmp_path / "finishing" / "clip" / "S.clip"
+        c.parent.mkdir(parents=True, exist_ok=True)
+        c.write_text(xml or self.CLIP_XML)
+        return str(c)
+
+    def _code(self, tmp_path, impl="fix", xml=None, **kw):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        clip = self._clip(tmp_path, xml)
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            if impl == "fix":
+                server._fix_comp_writefile_impl(clip, step="CMP", **kw)
+            else:
+                server._setup_comp_batch_impl("S", clip, step="CMP", **kw)
+            return m.call_args[0][0]
+
+    # ---- timecode ----
+
+    def test_frames_to_timecode_matches_the_healthy_segments(self):
+        """The five healthy segments carry source_in 00:00:40:01 for frame
+        1001 at 25 fps — the value the comp media must be born with."""
+        import flame_mcp.server as server
+        assert server._frames_to_timecode(1001, 25.0) == "00:00:40:01"
+        assert server._frames_to_timecode(0, 25.0) == "00:00:00:00"
+        assert server._frames_to_timecode(1001, 24.0) == "00:00:41:17"
+        # fractional rates use their NOMINAL integer rate (NDF convention)
+        assert server._frames_to_timecode(1001, 23.976) == "00:00:41:17"
+        assert server._frames_to_timecode(1001, 29.97) == "00:00:33:11"
+
+    def test_fix_sets_custom_values_before_the_timecode(self, tmp_path):
+        """Flame refuses the write otherwise: 'Basic metadata values cannot
+        be set when the Basic Metadata mode is not set to Custom Values.'"""
+        code = self._code(tmp_path)
+        assert 'wf.basic_metadata = "Custom Values"' in code
+        # the MODE must be set before the values (the comment block above the
+        # code also names source_timecode, so compare the real statements)
+        assert (code.index('wf.basic_metadata = "Custom Values"')
+                < code.index("setattr(wf, _a, _tc)"))
+        assert '"source_timecode", "record_timecode"' in code
+
+    def test_fix_reads_the_rate_from_the_node_not_a_constant(self, tmp_path):
+        code = self._code(tmp_path)
+        assert "wf.frame_rate" in code
+        assert "int(round(_fps))" in code
+
+    def test_timecode_failure_is_reported_not_swallowed(self, tmp_path):
+        code = self._code(tmp_path)
+        assert "timecode NOT set" in code
+        assert "re-anchor the conformed segment" in code
+
+    def test_no_timecode_write_when_the_start_frame_is_unknown(self, tmp_path):
+        """_sf == 0 means the anchor could not be derived — stamping a
+        timecode from a guess would be worse than leaving it alone."""
+        code = self._code(tmp_path, xml="<clip/>")
+        assert "_sf = 0" in code
+        # the write lives inside the guard, so a zero anchor never stamps one
+        assert code.count('wf.basic_metadata = "Custom Values"') == 1
+        assert code.index("if _sf > 0:") < code.index('wf.basic_metadata = "Custom Values"')
+
+    # ---- frame padding ----
+
+    def test_padding_is_derived_from_the_source_bracket(self, tmp_path):
+        import flame_mcp.server as server
+        assert server._derive_source_frame_range(self._clip(tmp_path)) == (1001, 100, 4)
+
+    def test_both_ops_set_frame_padding_from_the_source(self, tmp_path):
+        """A fresh Write File defaults to 6: in-vivo the first comp rendered
+        .001001.exr against a source of .1001.exr — a wasted render."""
+        for impl in ("fix", "setup"):
+            assert '("frame_padding", 4)' in self._code(tmp_path, impl=impl)
+
+    def test_padding_falls_back_to_four_when_underivable(self, tmp_path):
+        for impl in ("fix", "setup"):
+            code = self._code(tmp_path, impl=impl, xml="<clip/>")
+            assert '("frame_padding", 4)' in code
+
+    def test_explicit_start_frame_still_derives_padding(self, tmp_path):
+        code = self._code(tmp_path, start_frame=2001)
+        assert '("frame_padding", 4)' in code and "_sf = 2001" in code
