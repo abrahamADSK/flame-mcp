@@ -2717,8 +2717,8 @@ else:
     )
 
 
-def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
-    """Read the SOURCE frame range (first frame, duration) from a conformed
+def _derive_source_frame_range(clip_path: str) -> tuple[int, int, int] | None:
+    """Read the SOURCE frame range (first frame, duration, PADDING) from a conformed
     open clip on disk (Chat 99 — the alignment must never depend on the
     console remembering to pass ``start_frame``).
 
@@ -2734,8 +2734,14 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
 
     Feeds whose ``vuid`` starts with ``COMP`` are skipped — they are the
     comp's own versions (possibly misaligned) and never the source of truth.
-    Returns ``(start_frame, duration)`` or ``None`` when the file is missing,
-    not XML, or has no readable source feed. Never raises.
+    The frame PADDING comes from the same ``[first-last]`` bracket (``1001``
+    = 4 digits). It is load-bearing: the Write File's ``frame_padding``
+    defaults to 6 on a fresh node, and a comp rendered as ``.001001.exr``
+    does not match the source's ``.1001.exr`` numbering — in-vivo (Chat 99)
+    that produced a wasted render plus a second, correct one.
+
+    Returns ``(start_frame, duration, padding)`` or ``None`` when the file is
+    missing, not XML, or has no readable source feed. Never raises.
     """
     import re as _re
     import xml.etree.ElementTree as _ET
@@ -2753,6 +2759,7 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
         if sf_txt.lstrip("-").isdigit():
             start = int(sf_txt)
         duration = None
+        padding = 0
         for span in feed.iter("span"):
             d_el = span.find("duration")
             d_txt = (d_el.text or "").strip() if d_el is not None else ""
@@ -2762,14 +2769,38 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
             m = _re.search(r"\[(\d+)-(\d+)\]", (p_el.text or "") if p_el is not None else "")
             if m:
                 first, last = int(m.group(1)), int(m.group(2))
+                padding = len(m.group(1))
                 if start is None:
                     start = first
                 if duration is None:
                     duration = last - first + 1
             break
         if start is not None:
-            return start, (duration if duration and duration > 0 else 0)
+            return (start,
+                    (duration if duration and duration > 0 else 0),
+                    padding)
     return None
+
+
+def _frames_to_timecode(frames: int, fps: float) -> str:
+    """Non-drop-frame ``HH:MM:SS:FF`` for a frame number at ``fps``.
+
+    Chat 99 — the timecode is the anchor a conformed segment lines its
+    versions up by, and frame 1001 at 25 fps is ``00:00:40:01``: exactly the
+    ``source_in`` the five healthy segments carry.
+
+    Fractional rates use their NOMINAL integer rate (23.976 -> 24, 29.97 ->
+    30), which is the NDF convention; drop-frame is NOT emitted, so a
+    29.97 DF timeline would need its own handling.
+    """
+    nominal = int(round(fps)) or 1
+    f = max(0, int(frames))
+    return "%02d:%02d:%02d:%02d" % (
+        f // (3600 * nominal),
+        (f // (60 * nominal)) % 60,
+        (f // nominal) % 60,
+        f % nominal,
+    )
 
 
 def _setup_comp_batch_impl(shot: str, clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
@@ -2808,11 +2839,13 @@ def _setup_comp_batch_impl(shot: str, clip_path: str, step: str, comp_dir: str =
         comp_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
     sf_note = ""
+    derived = _derive_source_frame_range(clip_path)
+    padding = derived[2] if derived else 0
     if int(start_frame) <= 0:
-        derived = _derive_source_frame_range(clip_path)
         if derived:
             start_frame = derived[0]
-            sf_note = f"start_frame {start_frame} derived from the conformed clip"
+            sf_note = (f"start_frame {start_frame} / frame padding {padding} "
+                       "derived from the conformed clip")
         else:
             start_frame = 1
             sf_note = ("WARNING: start_frame NOT derivable from the clip — "
@@ -2852,6 +2885,9 @@ def _do_setup():
                 ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
+                # frame_padding defaults to 6 on a fresh node — the source
+                # is 4-digit (in-vivo Chat 99: a wasted .001001.exr render).
+                ("frame_padding", {padding}),
                 # version_mode, NOT 'versioning' (in-vivo, read-back
                 # verified): the enum silently ignores invalid strings —
                 # no exception, value unchanged — which is how the
@@ -2917,6 +2953,7 @@ else:
         clip_target=clip_target,
         comp_dir=comp_dir,
         start_frame=int(start_frame),
+        padding=int(padding) or 4,
         sf_note=sf_note,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
@@ -2958,15 +2995,20 @@ def _fix_comp_writefile_impl(clip_path: str, step: str, comp_dir: str = "", star
     import os as _os
     wf_name = f"{_os.path.splitext(_os.path.basename(clip_path))[0]}_{step}"
     duration = 0
+    padding = 0
     sf_source = "explicit"
     if int(start_frame) <= 0:
         derived = _derive_source_frame_range(clip_path)
         if derived:
-            start_frame, duration = derived
+            start_frame, duration, padding = derived
             sf_source = "derived from the conformed clip"
         else:
             start_frame = 0
             sf_source = "NOT derivable from the clip (no source feed / unreadable)"
+    else:
+        derived = _derive_source_frame_range(clip_path)
+        if derived:
+            padding = derived[2]
     code_template = '''import flame, os, sys, io, json, time
 _prj_name = str(flame.projects.current_project.name).strip("'")
 _result_path = "/tmp/flame_mcp_fwf_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
@@ -3005,6 +3047,10 @@ def _do_fix():
             _settings = [
                 ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
+                # frame_padding defaults to 6 on a fresh node; the source is
+                # 4-digit, and a comp written as .001001.exr does not match
+                # the source numbering (in-vivo Chat 99: a wasted render).
+                ("frame_padding", {padding}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
                 # version_mode, NOT 'versioning' (in-vivo, read-back
                 # verified): the enum silently ignores invalid strings —
@@ -3026,6 +3072,49 @@ def _do_fix():
             print("  set: " + (", ".join(_set) or "none"))
             if _skipped:
                 print("  skipped: " + ", ".join(_skipped))
+            # ---- TIMECODE: the media must carry the anchor it declares ----
+            # Chat 99, the fifth attempt and the real root: Maya/Arnold EXRs
+            # carry NO timecode attribute, so the two consumers invent
+            # different ones. dl_get_media_info (which writes the .clip)
+            # falls back to the FRAME NUMBER and declares TC 1001; Flame's
+            # batch gets nothing (the source Clip node's source_timecode
+            # reads None, measured in-vivo) and the Write File stamps an
+            # EXPLICIT 00:00:00:00 into the comp EXRs. The clip then says
+            # 1001 and the media says 0 for the same frames, and which one
+            # wins depends on what Flame re-reads: the declaration lines up
+            # and the flip works, then any operation that re-reads the media
+            # finds the explicit zero and RE-ANCHORS the conformed segment
+            # to 00:00:00:00 — at which point BOTH versions go 'no media'
+            # (measured: five segments at 00:00:40:01, the comped one at 0).
+            # An ABSENT timecode falls back to the clip, an EXPLICIT zero
+            # overrides it: that asymmetry is why LGT-only conforms stayed
+            # stable for months and only the comped shot broke.
+            # Flame refuses the write unless basic_metadata is 'Custom
+            # Values' ("Basic metadata values cannot be set when the Basic
+            # Metadata mode is not set to Custom Values" — in-vivo).
+            if _sf > 0:
+                _fps = 25.0
+                try:
+                    _fps = float(str(_gv(wf.frame_rate)).strip("'").split()[0])
+                except Exception:
+                    pass
+                _nom = int(round(_fps)) or 1
+                _tc = "%02d:%02d:%02d:%02d" % (
+                    _sf // (3600 * _nom), (_sf // (60 * _nom)) % 60,
+                    (_sf // _nom) % 60, _sf % _nom)
+                try:
+                    wf.basic_metadata = "Custom Values"
+                    for _a in ("source_timecode", "record_timecode"):
+                        setattr(wf, _a, _tc)
+                    _rb = str(_gv(wf.source_timecode)).strip("'")
+                    print("  timecode: frame %d @ %d fps -> %s %s" % (
+                        _sf, _nom, _rb,
+                        "OK" if _rb == _tc else "MISMATCH (expected " + _tc + ")"))
+                except Exception as _tce:
+                    print("  timecode NOT set (" + type(_tce).__name__ + ": "
+                          + str(_tce)[:90] + ") — the comp media would carry "
+                          "00:00:00:00 and can re-anchor the conformed segment")
+
             # ---- READ-BACK: alignment is proven, never assumed (Chat 99) ----
             # The Write File's own range decides the rendered file numbers
             # (Flame's batchExportBegin hook reported firstFrame=1 when the
@@ -3113,7 +3202,8 @@ else:
 '''
     code = code_template.format(
         clip_target=clip_target, comp_dir=comp_dir, wf_name=wf_name,
-        start_frame=int(start_frame), duration=int(duration), sf_source=sf_source,
+        start_frame=int(start_frame), duration=int(duration),
+        padding=int(padding) or 4, sf_source=sf_source,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)

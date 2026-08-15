@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp media now carries the timecode anchor it declares** (Chat 99 —
+  the actual root cause behind four partial fixes): Maya/Arnold EXRs carry
+  NO `timeCode` attribute, so the two consumers invent different values.
+  `dl_get_media_info` (which writes the `.clip`) falls back to the FRAME
+  NUMBER and declares TC 1001; Flame's batch gets nothing — the source Clip
+  node's `source_timecode` reads `None`, measured in-vivo — and the Write
+  File stamps an EXPLICIT `00:00:00:00` into the comp EXRs. The clip then
+  says 1001 and the media says 0 for the same frames, and whichever Flame
+  re-reads wins: the declaration lines up and the version flip works, then
+  any operation that re-reads the media finds the explicit zero and
+  RE-ANCHORS the conformed segment to `00:00:00:00` — at which point BOTH
+  versions go 'no media' (measured on the live timeline: five segments at
+  `00:00:40:01`, the comped one at `00:00:00:00`). An ABSENT timecode falls
+  back to the clip while an EXPLICIT zero overrides it, which is why
+  LGT-only conforms stayed stable for months and only the comped shot
+  broke. `fix_comp_writefile` now sets `basic_metadata='Custom Values'`
+  (Flame refuses the write otherwise: *"Basic metadata values cannot be set
+  when the Basic Metadata mode is not set to Custom Values"*) and stamps
+  `source_timecode`/`record_timecode` from the derived start frame at the
+  node's own `frame_rate` — frame 1001 @ 25 fps = `00:00:40:01`, exactly
+  the `source_in` the healthy segments carry. Read back and reported; a
+  failure says so instead of being swallowed.
+- **`frame_padding` is derived from the source, not left at its default**
+  (Chat 99, in-vivo): a fresh Write File pads to 6, so the first comp
+  rendered `.001001.exr` against a source of `.1001.exr` — a wasted render
+  plus a second, correct one. `_derive_source_frame_range` now also returns
+  the padding read from the clip's `[1001-1100]` bracket, and BOTH ops set
+  it (falling back to 4 only when the clip is unreadable). +9 tests.
+
 
 ## [1.19.0] — 2026-08-16
 - **The comp Write File is named `{Shot}_{Step}`, never `writefile`** (Chat
