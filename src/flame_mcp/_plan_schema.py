@@ -251,13 +251,15 @@ class SetupCompBatchArgs(BaseModel):
         "(…/finishing/comp).",
     )
     start_frame: int = Field(
-        default=1,
-        description="Batch group start frame. MUST match the source media's "
+        default=0,
+        description="Batch group start frame. 0 (default) = DERIVED by the "
+        "op from the conformed clip's source feed (<startFrame> / "
+        "[first-last] pattern) — the value MUST match the source media's "
         "first frame (e.g. 1001): otherwise the comp render numbers from 1 "
         "and its version misaligns against the source inside the shared "
         "open clip — in-vivo, the segment anchored to COMP (1-100) showed "
-        "'no media' when flipped to LIGHT (1001-1100). Read it from the "
-        "source frames, never assume.",
+        "'no media' when flipped to LIGHT (1001-1100). Pass a value only to "
+        "override the derivation.",
     )
 
 
@@ -284,10 +286,14 @@ class FixCompWritefileArgs(BaseModel):
     )
     start_frame: int = Field(
         default=0,
-        description="When > 0, also set the ACTIVE batch's start frame to "
-        "this value (must match the source media's first frame, e.g. 1001) "
-        "so the render numbering aligns with the source inside the shared "
-        "open clip. 0 = leave the batch start frame untouched.",
+        description="ACTIVE batch start frame. 0 (default) = DERIVED by the "
+        "op from the conformed clip's source feed (<startFrame> / "
+        "[first-last] pattern) and applied; > 0 overrides. Either way the "
+        "op reads the batch start and the Write File range BACK and prints "
+        "one 'ALIGNMENT: … -> OK | MISALIGNED' line — render ONLY on OK "
+        "(in-vivo Chat 99: an omitted start_frame left the batch at 1 and "
+        "the comp rendered 0001-0100 against a 1001-1100 source: 'no media' "
+        "on the COMP flip).",
     )
 
 

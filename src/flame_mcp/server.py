@@ -2715,7 +2715,62 @@ else:
     )
 
 
-def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_frame: int = 1) -> str:
+def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
+    """Read the SOURCE frame range (first frame, duration) from a conformed
+    open clip on disk (Chat 99 — the alignment must never depend on the
+    console remembering to pass ``start_frame``).
+
+    In-vivo (Chat 99): the console called ``fix_comp_writefile`` without
+    ``start_frame`` and the op silently left the batch at 1-100, so the comp
+    rendered ``0001-0100`` against a source spanning ``1001-1100`` — the
+    conformed segment flipped to COMP showed 'no media'. The recipe told the
+    console to derive the value from the source filenames; the model
+    skipped it. The op now derives it ITSELF from the clip it already
+    receives: the pipeline-generated ``.clip`` (``dl_get_media_info`` +
+    version splice) carries ``<startFrame>`` and a ``[first-last]`` path
+    pattern per feed.
+
+    Feeds whose ``vuid`` starts with ``COMP`` are skipped — they are the
+    comp's own versions (possibly misaligned) and never the source of truth.
+    Returns ``(start_frame, duration)`` or ``None`` when the file is missing,
+    not XML, or has no readable source feed. Never raises.
+    """
+    import re as _re
+    import xml.etree.ElementTree as _ET
+    try:
+        root = _ET.parse(clip_path).getroot()
+    except Exception:
+        return None
+    for feed in root.iter("feed"):
+        vuid = str(feed.get("vuid") or "")
+        if vuid.upper().startswith("COMP"):
+            continue
+        start = None
+        sf_el = feed.find("startFrame")
+        sf_txt = (sf_el.text or "").strip() if sf_el is not None else ""
+        if sf_txt.lstrip("-").isdigit():
+            start = int(sf_txt)
+        duration = None
+        for span in feed.iter("span"):
+            d_el = span.find("duration")
+            d_txt = (d_el.text or "").strip() if d_el is not None else ""
+            if d_txt.isdigit():
+                duration = int(d_txt)
+            p_el = span.find("path")
+            m = _re.search(r"\[(\d+)-(\d+)\]", (p_el.text or "") if p_el is not None else "")
+            if m:
+                first, last = int(m.group(1)), int(m.group(2))
+                if start is None:
+                    start = first
+                if duration is None:
+                    duration = last - first + 1
+            break
+        if start is not None:
+            return start, (duration if duration and duration > 0 else 0)
+    return None
+
+
+def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_frame: int = 0) -> str:
     """Create a shot's comp batch group wired source → Write File (Chat 98).
 
     One deterministic operation, main-threaded via schedule_idle_event
@@ -2733,12 +2788,28 @@ def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_
 
     ``comp_dir`` empty = derived from ``clip_path``: the ``comp`` sibling of
     its ``clip`` folder (``…/finishing/comp``).
+
+    ``start_frame`` <= 0 (default) = derived from the conformed clip itself
+    (``_derive_source_frame_range``); when the clip yields nothing the group
+    is created at 1 and the report says so LOUDLY — a batch numbered from 1
+    misaligns the comp against a 1001-based source (Chat 98/99 in-vivo).
     """
     _track_dedicated()
     if not comp_dir:
         import os as _os
         comp_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
+    sf_note = ""
+    if int(start_frame) <= 0:
+        derived = _derive_source_frame_range(clip_path)
+        if derived:
+            start_frame = derived[0]
+            sf_note = f"start_frame {start_frame} derived from the conformed clip"
+        else:
+            start_frame = 1
+            sf_note = ("WARNING: start_frame NOT derivable from the clip — "
+                       "batch created at 1; run fix_comp_writefile with an "
+                       "explicit start_frame before rendering")
     code_template = '''import flame, os, sys, io, json, time
 _prj_name = str(flame.projects.current_project.name).strip("'")
 _result_path = "/tmp/flame_mcp_scb_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
@@ -2748,6 +2819,8 @@ def _do_setup():
     _old_stdout = sys.stdout
     sys.stdout = _buf
     try:
+        if {sf_note!r}:
+            print({sf_note!r})
         bg = flame.batch.create_batch_group({bg_name!r}, reels=["sources"], start_frame={start_frame})
         src = flame.batch.import_clip({clip_path!r}, "sources")
         if isinstance(src, list):
@@ -2836,6 +2909,7 @@ else:
         clip_target=clip_target,
         comp_dir=comp_dir,
         start_frame=int(start_frame),
+        sf_note=sf_note,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
@@ -2853,6 +2927,15 @@ def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: in
     CURRENTLY OPEN batch (the active batch cannot be switched from Python;
     the operator opens each group and runs this once), without touching the
     wired comp graph.
+
+    FRAME ALIGNMENT (Chat 99): ``start_frame`` <= 0 (default) is DERIVED
+    from the conformed clip (``_derive_source_frame_range``) — the console
+    once omitted the argument and the render silently numbered from 1. The
+    op sets ``flame.batch.start_frame``, then READS BACK the batch start,
+    the Write File range and the target version folder, and prints one
+    ``ALIGNMENT:`` line — ``OK`` or ``MISALIGNED … do not render`` — plus an
+    ``OVERWRITE WARNING`` when the version Follow Iteration would write
+    already holds frames. Guards report; they never bill the operator.
     """
     _track_dedicated()
     if not comp_dir:
@@ -2860,9 +2943,25 @@ def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: in
         comp_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
     clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
+    duration = 0
+    sf_source = "explicit"
+    if int(start_frame) <= 0:
+        derived = _derive_source_frame_range(clip_path)
+        if derived:
+            start_frame, duration = derived
+            sf_source = "derived from the conformed clip"
+        else:
+            start_frame = 0
+            sf_source = "NOT derivable from the clip (no source feed / unreadable)"
     code_template = '''import flame, os, sys, io, json, time
 _prj_name = str(flame.projects.current_project.name).strip("'")
 _result_path = "/tmp/flame_mcp_fwf_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _gv(a):
+    try:
+        return a.get_value()
+    except Exception:
+        return str(a).strip("'")
 
 def _do_fix():
     _buf = io.StringIO()
@@ -2871,6 +2970,8 @@ def _do_fix():
     try:
         bg_name = str(flame.batch.name).strip("'")
         _sf = {start_frame}
+        _dur = {duration}
+        print("start_frame " + str(_sf) + " (" + {sf_source!r} + ")")
         if _sf > 0:
             try:
                 flame.batch.start_frame = _sf
@@ -2878,6 +2979,9 @@ def _do_fix():
             except Exception as _sfe:
                 print("start_frame NOT set (" + type(_sfe).__name__ + ") — "
                       "set it in the batch UI so the render aligns with the source")
+        else:
+            print("WARNING: batch start frame left untouched — pass start_frame "
+                  "explicitly (source's first frame) before rendering")
         wfs = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Write File"]
         if not wfs:
             print("ERROR: no Write File node in the active batch " + bg_name)
@@ -2905,6 +3009,67 @@ def _do_fix():
             print("  set: " + (", ".join(_set) or "none"))
             if _skipped:
                 print("  skipped: " + ", ".join(_skipped))
+            # ---- READ-BACK: alignment is proven, never assumed (Chat 99) ----
+            # The Write File's own range decides the rendered file numbers
+            # (Flame's batchExportBegin hook reported firstFrame=1 when the
+            # batch sat at 1). Read the batch start + WF range back, pull
+            # the WF range onto the source range when it did not follow,
+            # then print ONE verdict line the recipe gates the render on.
+            _bs = None
+            try:
+                _bs = int(_gv(flame.batch.start_frame))
+            except Exception:
+                pass
+            _rs = _re = None
+            try:
+                _rs = int(_gv(wf.range_start)); _re = int(_gv(wf.range_end))
+            except Exception:
+                pass
+            if _sf > 0 and _rs is not None and _re is not None and _rs != _sf:
+                _want_end = _sf + (_dur if _dur > 0 else (_re - _rs + 1)) - 1
+                try:
+                    if _want_end > _re:
+                        wf.range_end = _want_end; wf.range_start = _sf
+                    else:
+                        wf.range_start = _sf; wf.range_end = _want_end
+                    _rs = int(_gv(wf.range_start)); _re = int(_gv(wf.range_end))
+                    print("  write file range pulled to " + str(_rs) + "-" + str(_re))
+                except Exception as _rge:
+                    print("  write file range NOT settable (" + type(_rge).__name__ + ")")
+            _rng = (str(_rs) + "-" + str(_re)) if _rs is not None else "unreadable"
+            _src = (str(_sf) + "-" + str(_sf + _dur - 1)) if (_sf > 0 and _dur > 0) else (str(_sf) if _sf > 0 else "unknown")
+            _ok = _sf > 0 and _bs == _sf and _rs == _sf
+            print("ALIGNMENT: batch start " + str(_bs) + " | write file range " + _rng
+                  + " | source " + _src + " -> "
+                  + ("OK" if _ok else "MISALIGNED — do not render; fix the batch start frame in the UI"))
+            # Source Clip node timing (diagnostic): whether the imported
+            # source shifted with the batch start is answered in-vivo, here.
+            try:
+                _clips = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Clip"]
+                if _clips:
+                    _c = _clips[0]
+                    _keys = [a for a in list(_c.attributes)
+                             if any(k in a.lower() for k in ("start", "offset", "duration", "timing", "record", "in_", "out_", "slip"))]
+                    print("  source clip node: " + ", ".join(
+                        k + "=" + repr(_gv(getattr(_c, k))) for k in _keys[:10]))
+            except Exception:
+                pass
+            # Overwrite guard (info only): Follow Iteration writes v<current_iteration_number>.
+            try:
+                _n = int(_gv(flame.batch.current_iteration_number))
+                _pad = 3
+                try:
+                    _pad = int(_gv(wf.version_padding))
+                except Exception:
+                    pass
+                _target = os.path.join({comp_dir!r}, "%s_v%0*d" % (_gv(wf.name), _pad, _n))
+                if os.path.isdir(_target) and any(f.endswith(".exr") for f in os.listdir(_target)):
+                    print("OVERWRITE WARNING: " + _target + " already holds frames — iterate "
+                          "the batch (flame.batch.iterate()) before rendering or it is overwritten")
+                else:
+                    print("  render target: " + _target)
+            except Exception:
+                pass
     except Exception as _exc:
         print("ERROR: " + repr(_exc))
     finally:
@@ -2929,7 +3094,10 @@ if os.path.exists(_result_path):
 else:
     print("SCHEDULED: fix queued on Flame's main thread; no result within 20s")
 '''
-    code = code_template.format(clip_target=clip_target, comp_dir=comp_dir, start_frame=int(start_frame))
+    code = code_template.format(
+        clip_target=clip_target, comp_dir=comp_dir,
+        start_frame=int(start_frame), duration=int(duration), sf_source=sf_source,
+    )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
     return _fmt(result)
