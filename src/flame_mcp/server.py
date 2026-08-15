@@ -2715,7 +2715,7 @@ else:
     )
 
 
-def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "") -> str:
+def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_frame: int = 1) -> str:
     """Create a shot's comp batch group wired source → Write File (Chat 98).
 
     One deterministic operation, main-threaded via schedule_idle_event
@@ -2748,7 +2748,7 @@ def _do_setup():
     _old_stdout = sys.stdout
     sys.stdout = _buf
     try:
-        bg = flame.batch.create_batch_group({bg_name!r}, reels=["sources"])
+        bg = flame.batch.create_batch_group({bg_name!r}, reels=["sources"], start_frame={start_frame})
         src = flame.batch.import_clip({clip_path!r}, "sources")
         if isinstance(src, list):
             src = src[0] if src else None
@@ -2835,13 +2835,14 @@ else:
         clip_path=clip_path,
         clip_target=clip_target,
         comp_dir=comp_dir,
+        start_frame=int(start_frame),
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
     return _fmt(result)
 
 
-def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "") -> str:
+def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: int = 0) -> str:
     """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
 
     The first render exposed two configuration defects: ``create_clip_path``
@@ -2869,6 +2870,14 @@ def _do_fix():
     sys.stdout = _buf
     try:
         bg_name = str(flame.batch.name).strip("'")
+        _sf = {start_frame}
+        if _sf > 0:
+            try:
+                flame.batch.start_frame = _sf
+                print("start_frame set to " + str(_sf))
+            except Exception as _sfe:
+                print("start_frame NOT set (" + type(_sfe).__name__ + ") — "
+                      "set it in the batch UI so the render aligns with the source")
         wfs = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Write File"]
         if not wfs:
             print("ERROR: no Write File node in the active batch " + bg_name)
@@ -2920,7 +2929,7 @@ if os.path.exists(_result_path):
 else:
     print("SCHEDULED: fix queued on Flame's main thread; no result within 20s")
 '''
-    code = code_template.format(clip_target=clip_target, comp_dir=comp_dir)
+    code = code_template.format(clip_target=clip_target, comp_dir=comp_dir, start_frame=int(start_frame))
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
     return _fmt(result)
@@ -2930,12 +2939,14 @@ _plan.register_op(
     "setup_comp_batch",
     lambda args: _setup_comp_batch_impl(
         shot=args.shot, clip_path=args.clip_path, comp_dir=args.comp_dir,
+        start_frame=args.start_frame,
     ),
 )
 _plan.register_op(
     "fix_comp_writefile",
     lambda args: _fix_comp_writefile_impl(
         clip_path=args.clip_path, comp_dir=args.comp_dir,
+        start_frame=args.start_frame,
     ),
 )
 _plan.register_op(
