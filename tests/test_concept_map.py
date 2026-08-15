@@ -611,18 +611,29 @@ class TestActiveBatchCannotBeSwitched:
 
 
 class TestPostRenderCycle:
-    """The loop that reaches the timeline (Chat 98 final architecture)."""
+    """The loop that reaches the timeline (Chat 98 final architecture) —
+    step 8, renamed RENDER AND DELIVER when it became one command."""
 
     def test_cycle_is_publish_then_regenerate(self):
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
-        cycle = recipe.split("POST-RENDER CYCLE", 1)[1]
+        cycle = recipe.split("RENDER AND DELIVER", 1)[1]
         assert "tk_publish" in cycle
         assert "steps=['Light', 'Comp']" in cycle
         assert "SAME output path" in cycle
         assert cycle.index("tk_publish") < cycle.index("openclip_create")
-        assert "create_clip=False" in recipe.split("POST-RENDER CYCLE", 1)[1] \
-            or "create_clip=False" in recipe
+        assert "create_clip=False" in recipe
+
+    def test_rerenders_iterate_first(self):
+        """version_mode='Follow Iteration' (the real attribute, read-back
+        verified in-vivo): a re-render without iterating OVERWRITES the
+        same version — the cycle iterates before re-rendering."""
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        step_b = recipe.split("RENDER AND DELIVER", 1)[1]
+        assert "ITERATE the batch first" in step_b
+        assert "flame.batch.iterate()" in step_b
+        assert "never overwrite a published version" in step_b
 
 
 class TestRenderDeliverPointer:

@@ -2771,7 +2771,11 @@ def _do_setup():
                 ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
-                ("versioning", True),
+                # version_mode, NOT 'versioning' (in-vivo, read-back
+                # verified): the enum silently ignores invalid strings —
+                # no exception, value unchanged — which is how the
+                # <version> token once rendered as a LITERAL folder name.
+                ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
                 ("create_clip", False),
                 ("include_setup", True),
@@ -2873,7 +2877,11 @@ def _do_fix():
             _settings = [
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
-                ("versioning", True),
+                # version_mode, NOT 'versioning' (in-vivo, read-back
+                # verified): the enum silently ignores invalid strings —
+                # no exception, value unchanged — which is how the
+                # <version> token once rendered as a LITERAL folder name.
+                ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
                 ("create_clip", False),
             ]

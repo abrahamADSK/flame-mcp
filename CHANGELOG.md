@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **`version_mode` is the real attribute** (Chat 98, console-discovered and
+  read-back verified): `versioning` does not exist on this Flame 2027
+  build, and the `version_mode` enum silently ignores invalid strings — no
+  exception, value unchanged — which is how the `<version>` token once
+  rendered as a literal folder name. Both ops now set
+  `version_mode='Follow Iteration'` + `version_padding=3`, and the
+  render-deliver cycle ITERATES the batch before a re-render — without it,
+  Follow Iteration overwrites the same version. +2 tests.
 - **'Render the comp' is ONE command** (Chat 98, operator workflow): the
   post-render cycle stopped being two manual steps. Step 8 of the comp
   recipe now runs fix-write-file → render (Background Reactor) → WAIT for
