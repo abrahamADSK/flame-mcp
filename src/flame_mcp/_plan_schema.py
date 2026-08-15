@@ -244,6 +244,15 @@ class SetupCompBatchArgs(BaseModel):
         ..., description="Absolute path to the shot's source open clip "
         "(.clip). Also used as the Write File's open-clip target."
     )
+    step: str = Field(
+        ..., min_length=2, max_length=8, pattern=r"^[A-Za-z0-9]+$",
+        description="short_name of the compositing Pipeline Step, READ from "
+        "ShotGrid (sg_find Step → short_name; e.g. 'CMP' for 'Comp') — never "
+        "guessed. Names the Write File '<shot>_<step>' so the media folder, "
+        "the frames and the publish follow the pipeline convention "
+        "{Shot}_{Step}_v<version> (in-vivo Chat 99: a literal 'writefile' "
+        "leaked into the PublishedFile code).",
+    )
     comp_dir: str = Field(
         default="",
         description="Directory for the Write File's rendered media. Empty = "
@@ -278,6 +287,14 @@ class FixCompWritefileArgs(BaseModel):
     clip_path: str = Field(
         ..., description="Absolute path to the shot's conformed open clip "
         "(.clip, with extension — the op strips it for Flame)."
+    )
+    step: str = Field(
+        ..., min_length=2, max_length=8, pattern=r"^[A-Za-z0-9]+$",
+        description="short_name of the compositing Pipeline Step, READ from "
+        "ShotGrid (sg_find Step → short_name; e.g. 'CMP' for 'Comp') — never "
+        "guessed. The op RENAMES the active batch's Write File to "
+        "'<Shot>_<step>' (Shot = the clip filename stem) so folder, frames "
+        "and publish carry {Shot}_{Step}_v<version>, like the LGT publishes.",
     )
     comp_dir: str = Field(
         default="",
@@ -425,15 +442,16 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "args_model": SetupCompBatchArgs,
         "handler": None,
         "description": "DESTRUCTIVE — create a shot's comp batch group wired "
-        "source Clip → Write File (open-clip target = the source .clip).",
+        "source Clip → Write File named '<shot>_<step>' (media-only, "
+        "versioned; start frame derived from the source clip).",
         "tool": "execute_plan",
     },
     "fix_comp_writefile": {
         "args_model": FixCompWritefileArgs,
         "handler": None,
         "description": "DESTRUCTIVE — repair the ACTIVE batch's Write File "
-        "settings (versioned media pattern + open-clip target without the "
-        ".clip extension Flame appends itself).",
+        "(name '<Shot>_<step>', versioned media-only pattern, batch start "
+        "frame derived from the source clip + read-back ALIGNMENT verdict).",
         "tool": "execute_plan",
     },
     "timeline_insert": {

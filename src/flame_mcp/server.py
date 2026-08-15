@@ -2203,12 +2203,14 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
       - create_reel_group (library_name, reel_group_name) — DESTRUCTIVE.
       - create_batch_group (name) — DESTRUCTIVE: create an empty Batch Group.
       - import_clips (path, library_name, reel_name?) — DESTRUCTIVE: import media.
-      - setup_comp_batch (shot, clip_path, comp_dir?) — DESTRUCTIVE: create a
-        shot's comp batch group wired source Clip → Write File (open-clip
-        target = the source .clip; one op per shot, batchable in one plan).
-      - fix_comp_writefile (clip_path, comp_dir?) — DESTRUCTIVE: repair the
-        ACTIVE batch's Write File (versioned pattern + clip target without
-        the extension Flame appends).
+      - setup_comp_batch (shot, clip_path, step, comp_dir?) — DESTRUCTIVE:
+        create a shot's comp batch group wired source Clip → Write File
+        named '<shot>_<step>' (media-only, versioned; one op per shot,
+        batchable in one plan; step = the comp Step's short_name from SG).
+      - fix_comp_writefile (clip_path, step, comp_dir?) — DESTRUCTIVE: repair
+        the ACTIVE batch's Write File (rename to '<Shot>_<step>', versioned
+        media-only pattern, batch start frame derived from the source clip,
+        read-back ALIGNMENT verdict).
       - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
       - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
@@ -2770,7 +2772,7 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int] | None:
     return None
 
 
-def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_frame: int = 0) -> str:
+def _setup_comp_batch_impl(shot: str, clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
     """Create a shot's comp batch group wired source → Write File (Chat 98).
 
     One deterministic operation, main-threaded via schedule_idle_event
@@ -2788,6 +2790,12 @@ def _setup_comp_batch_impl(shot: str, clip_path: str, comp_dir: str = "", start_
 
     ``comp_dir`` empty = derived from ``clip_path``: the ``comp`` sibling of
     its ``clip`` folder (``…/finishing/comp``).
+
+    ``step`` = the compositing Step's short_name read from ShotGrid (e.g.
+    ``CMP``): the Write File is named ``<shot>_<step>`` so the media folder,
+    the frames and the publish carry ``{Shot}_{Step}_v<version>`` like the
+    LGT publishes (Chat 99: a literal ``writefile`` leaked into the
+    PublishedFile code ``SEQ003_SH001_writefile_v001.%04d.exr``).
 
     ``start_frame`` <= 0 (default) = derived from the conformed clip itself
     (``_derive_source_frame_range``); when the clip yields nothing the group
@@ -2904,7 +2912,7 @@ else:
     clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
     code = code_template.format(
         bg_name=f"{shot}_comp",
-        wf_name=f"{shot}_writefile",
+        wf_name=f"{shot}_{step}",
         clip_path=clip_path,
         clip_target=clip_target,
         comp_dir=comp_dir,
@@ -2916,7 +2924,7 @@ else:
     return _fmt(result)
 
 
-def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: int = 0) -> str:
+def _fix_comp_writefile_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
     """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
 
     The first render exposed two configuration defects: ``create_clip_path``
@@ -2927,6 +2935,10 @@ def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: in
     CURRENTLY OPEN batch (the active batch cannot be switched from Python;
     the operator opens each group and runs this once), without touching the
     wired comp graph.
+
+    NAME (Chat 99): the Write File is RENAMED to ``<Shot>_<step>`` (Shot =
+    the clip filename stem, ``step`` = the comp Step's short_name from SG)
+    so folder, frames and publish follow ``{Shot}_{Step}_v<version>``.
 
     FRAME ALIGNMENT (Chat 99): ``start_frame`` <= 0 (default) is DERIVED
     from the conformed clip (``_derive_source_frame_range``) — the console
@@ -2943,6 +2955,8 @@ def _fix_comp_writefile_impl(clip_path: str, comp_dir: str = "", start_frame: in
         comp_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
     clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
+    import os as _os
+    wf_name = f"{_os.path.splitext(_os.path.basename(clip_path))[0]}_{step}"
     duration = 0
     sf_source = "explicit"
     if int(start_frame) <= 0:
@@ -2987,7 +3001,9 @@ def _do_fix():
             print("ERROR: no Write File node in the active batch " + bg_name)
         else:
             wf = wfs[0]
+            _old_name = _gv(wf.name)
             _settings = [
+                ("name", {wf_name!r}),
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
                 # version_mode, NOT 'versioning' (in-vivo, read-back
@@ -3006,6 +3022,7 @@ def _do_fix():
                 except Exception as _ae:
                     _skipped.append(_attr + " (" + type(_ae).__name__ + ")")
             print("OK: Write File fixed in " + bg_name)
+            print("  name: " + str(_old_name) + " -> " + str(_gv(wf.name)))
             print("  set: " + (", ".join(_set) or "none"))
             if _skipped:
                 print("  skipped: " + ", ".join(_skipped))
@@ -3095,7 +3112,7 @@ else:
     print("SCHEDULED: fix queued on Flame's main thread; no result within 20s")
 '''
     code = code_template.format(
-        clip_target=clip_target, comp_dir=comp_dir,
+        clip_target=clip_target, comp_dir=comp_dir, wf_name=wf_name,
         start_frame=int(start_frame), duration=int(duration), sf_source=sf_source,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
@@ -3106,14 +3123,14 @@ else:
 _plan.register_op(
     "setup_comp_batch",
     lambda args: _setup_comp_batch_impl(
-        shot=args.shot, clip_path=args.clip_path, comp_dir=args.comp_dir,
-        start_frame=args.start_frame,
+        shot=args.shot, clip_path=args.clip_path, step=args.step,
+        comp_dir=args.comp_dir, start_frame=args.start_frame,
     ),
 )
 _plan.register_op(
     "fix_comp_writefile",
     lambda args: _fix_comp_writefile_impl(
-        clip_path=args.clip_path, comp_dir=args.comp_dir,
+        clip_path=args.clip_path, step=args.step, comp_dir=args.comp_dir,
         start_frame=args.start_frame,
     ),
 )

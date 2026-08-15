@@ -306,7 +306,7 @@ class TestSetupCompBatchOp:
         entry = ps._OP_REGISTRY["setup_comp_batch"]
         assert entry["tool"] == "execute_plan"  # plan-native marker
         model = entry["args_model"]
-        args = model(shot="SEQ001_SH001", clip_path="/x/clip/S.clip")
+        args = model(shot="SEQ001_SH001", clip_path="/x/clip/S.clip", step="CMP")
         assert args.comp_dir == ""  # optional, derived by the impl
 
     def test_extra_args_rejected(self):
@@ -324,6 +324,7 @@ class TestSetupCompBatchOp:
             server._setup_comp_batch_impl(
                 "SEQ001_SH001",
                 "/root/sequences/SEQ001/SEQ001_SH001/finishing/clip/SEQ001_SH001.clip",
+                step="CMP",
             )
             code = m.call_args[0][0]
         compile(code, "<g>", "exec")
@@ -345,7 +346,7 @@ class TestSetupCompBatchOp:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._setup_comp_batch_impl("S", "/x/clip/S.clip")
+            server._setup_comp_batch_impl("S", "/x/clip/S.clip", step="CMP")
             code = m.call_args[0][0]
         assert "_skipped.append" in code
         assert "setattr(wf, _attr, _val)" in code
@@ -366,10 +367,10 @@ class TestWriteFileClipTarget:
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             server._setup_comp_batch_impl(
-                "S", "/r/sequences/Q/S/finishing/clip/S.clip")
+                "S", "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP")
             setup = m.call_args[0][0]
             server._fix_comp_writefile_impl(
-                "/r/sequences/Q/S/finishing/clip/S.clip")
+                "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP")
             fix = m.call_args[0][0]
         return setup, fix
 
@@ -412,7 +413,7 @@ class TestWriteFileClipTarget:
         entry = ps._OP_REGISTRY["fix_comp_writefile"]
         assert entry["tool"] == "execute_plan"
         model = entry["args_model"]
-        assert model(clip_path="/x/clip/S.clip").comp_dir == ""
+        assert model(clip_path="/x/clip/S.clip", step="CMP").comp_dir == ""
 
 
 class TestFrameAlignment:
@@ -428,7 +429,7 @@ class TestFrameAlignment:
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             server._setup_comp_batch_impl(
-                "S", "/r/sequences/Q/S/finishing/clip/S.clip", start_frame=1001)
+                "S", "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP", start_frame=1001)
             code = m.call_args[0][0]
         assert 'reels=["sources"], start_frame=1001)' in code
 
@@ -437,7 +438,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl("/r/x/clip/S.clip", start_frame=1001)
+            server._fix_comp_writefile_impl("/r/x/clip/S.clip", step="CMP", start_frame=1001)
             code = m.call_args[0][0]
         assert "flame.batch.start_frame = _sf" in code
         assert "_sf = 1001" in code
@@ -494,7 +495,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path))
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert "_sf = 1001" in code and "_dur = 100" in code
         assert "derived from the conformed clip" in code
@@ -505,7 +506,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl("/r/x/clip/S.clip")
+            server._fix_comp_writefile_impl("/r/x/clip/S.clip", step="CMP")
             code = m.call_args[0][0]
         assert "_sf = 0" in code
         assert "NOT derivable" in code
@@ -516,7 +517,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path))
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert "wf.range_start" in code and "wf.range_end" in code
         assert 'print("ALIGNMENT: batch start "' in code
@@ -530,7 +531,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._setup_comp_batch_impl("S", self._write_clip(tmp_path))
+            server._setup_comp_batch_impl("S", self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert 'reels=["sources"], start_frame=1001)' in code
         compile(code, "setup", "exec")
@@ -540,16 +541,16 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._setup_comp_batch_impl("S", "/nope/clip/S.clip")
+            server._setup_comp_batch_impl("S", "/nope/clip/S.clip", step="CMP")
             code = m.call_args[0][0]
         assert 'start_frame=1)' in code and "WARNING: start_frame NOT derivable" in code
 
     def test_schema_defaults_mean_derive(self):
         import flame_mcp._plan_schema as ps
         assert ps._OP_REGISTRY["setup_comp_batch"]["args_model"](
-            shot="S", clip_path="/x/clip/S.clip").start_frame == 0
+            shot="S", clip_path="/x/clip/S.clip", step="CMP").start_frame == 0
         assert ps._OP_REGISTRY["fix_comp_writefile"]["args_model"](
-            clip_path="/x/clip/S.clip").start_frame == 0
+            clip_path="/x/clip/S.clip", step="CMP").start_frame == 0
 
     def test_recipe_gates_the_render_on_the_alignment_verdict(self):
         from flame_mcp.concept_map import CONCEPT_MAP
@@ -560,3 +561,57 @@ class TestFrameAlignment:
         assert "NUMBERING CHECK" in recipe and ".1001.exr, not .0001.exr" in recipe
         # the old wording asked the console to pass the value — gone
         assert "pass start_frame = the source media's FIRST frame" not in recipe
+
+
+class TestWriteFileNameFollowsTheStep:
+    """The Write File name is what the media pattern <name>_v<version>
+    expands — and it leaked into the PublishedFile code as a literal
+    'writefile' (in-vivo Chat 99: SEQ003_SH001_writefile_v001.%04d.exr).
+    The pipeline convention is {Shot}_{Step}_v<version> (LGT publishes:
+    SEQ003_SH001_LGT_v003); the Step short_name comes from ShotGrid and is
+    a REQUIRED arg — never a default."""
+
+    def _fix(self, clip="/r/sequences/Q/SEQ003_SH001/finishing/clip/SEQ003_SH001.clip", **kw):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(clip, **kw)
+            return m.call_args[0][0]
+
+    def test_setup_names_the_write_file_shot_step(self):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("SEQ003_SH001", "/r/clip/SEQ003_SH001.clip", step="CMP")
+            code = m.call_args[0][0]
+        assert '("name", \'SEQ003_SH001_CMP\')' in code
+        assert "SEQ003_SH001_writefile" not in code   # the old literal name is gone
+
+    def test_fix_renames_the_write_file_from_the_clip_stem(self):
+        code = self._fix(step="CMP")
+        assert '("name", \'SEQ003_SH001_CMP\')' in code
+        assert 'print("  name: " + str(_old_name)' in code
+        compile(code, "fix", "exec")
+
+    def test_step_is_required_and_validated(self):
+        import pytest as _pytest
+        import flame_mcp._plan_schema as ps
+        setup = ps._OP_REGISTRY["setup_comp_batch"]["args_model"]
+        fix = ps._OP_REGISTRY["fix_comp_writefile"]["args_model"]
+        with _pytest.raises(Exception):
+            setup(shot="S", clip_path="/x/clip/S.clip")          # missing
+        with _pytest.raises(Exception):
+            fix(clip_path="/x/clip/S.clip")                      # missing
+        with _pytest.raises(Exception):
+            fix(clip_path="/x/clip/S.clip", step="write file")   # not a token
+        assert fix(clip_path="/x/clip/S.clip", step="CMP").step == "CMP"
+
+    def test_recipe_says_read_the_step_from_shotgrid(self):
+        from flame_mcp.concept_map import CONCEPT_MAP
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        assert "short_name READ from ShotGrid" in recipe
+        assert "'<shot>_<step>'" in recipe and "{Shot}_{Step}_v<version>" in recipe
+        assert "leaked into the PublishedFile code" in recipe
