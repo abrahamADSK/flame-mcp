@@ -611,15 +611,64 @@ class TestActiveBatchCannotBeSwitched:
 
 
 class TestPostRenderCycle:
-    """The loop that reaches the timeline (Chat 98 final architecture)."""
+    """The loop that reaches the timeline (Chat 98 final architecture) —
+    step 8, renamed RENDER AND DELIVER when it became one command."""
 
     def test_cycle_is_publish_then_regenerate(self):
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
-        cycle = recipe.split("POST-RENDER CYCLE", 1)[1]
+        cycle = recipe.split("RENDER AND DELIVER", 1)[1]
         assert "tk_publish" in cycle
         assert "steps=['Light', 'Comp']" in cycle
         assert "SAME output path" in cycle
         assert cycle.index("tk_publish") < cycle.index("openclip_create")
-        assert "create_clip=False" in recipe.split("POST-RENDER CYCLE", 1)[1] \
-            or "create_clip=False" in recipe
+        assert "create_clip=False" in recipe
+
+    def test_rerenders_iterate_first(self):
+        """version_mode='Follow Iteration' (the real attribute, read-back
+        verified in-vivo): a re-render without iterating OVERWRITES the
+        same version — the cycle iterates before re-rendering."""
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        step_b = recipe.split("RENDER AND DELIVER", 1)[1]
+        assert "ITERATE the batch first" in step_b
+        assert "flame.batch.iterate()" in step_b
+        assert "never overwrite a published version" in step_b
+
+
+class TestRenderDeliverPointer:
+    """'Render the comp' runs the WHOLE delivery cycle in one command
+    (Chat 98, operator workflow: he orders the render; the system publishes
+    and regenerates — never two manual steps)."""
+
+    @pytest.mark.parametrize("query", [
+        "render the comp",
+        "render and deliver to the timeline",
+    ])
+    def test_render_phrasings_reach_the_pointer(self, query):
+        m = resolve_concept(query)
+        assert m is not None and m["concept"] == "render deliver comp", query
+
+    def test_pointer_defers_to_step_8(self):
+        m = resolve_concept("render the comp")
+        assert "STEP 8" in m["api_path"] or "STEP 8" in m["notes"]
+        assert "update sources" in m["notes"]
+
+    def test_no_theft(self):
+        assert resolve_concept("render batch")["concept"] == "render batch"
+        assert resolve_concept("render the current batch")["concept"] == "render batch"
+        assert resolve_concept(
+            "create the comp batches for all shots")["concept"].startswith("build comp")
+
+    def test_step8_is_the_full_cycle(self):
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        step8 = recipe.split("RENDER AND DELIVER", 1)[1]
+        for frag in ("fix_comp_writefile", "render_batch", "Glob",
+                     "never publish a partial sequence", "tk_publish",
+                     "steps=['Light', 'Comp']", "update sources"):
+            assert frag in step8, frag
+        # order: fix -> render -> wait -> publish -> regenerate
+        assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
+            < step8.index("Glob") < step8.index("tk_publish") \
+            < step8.index("openclip_create")

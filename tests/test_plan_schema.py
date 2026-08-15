@@ -389,8 +389,11 @@ class TestWriteFileClipTarget:
         reason the <version> token stayed LITERAL in rendered paths."""
         setup, fix = self._codes()
         for code in (setup, fix):
-            assert '("versioning", True)' in code
+            assert '("version_mode", "Follow Iteration")' in code
             assert '("version_padding", 3)' in code
+            # the in-vivo trap: 'versioning' does not exist, and the enum
+            # ignores invalid strings silently
+            assert '"versioning"' not in code
 
     def test_media_pattern_is_versioned(self):
         setup, fix = self._codes()
