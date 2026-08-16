@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **A brand-new shot is born native** (Chat 99, operator question: "would
+  this setup be correct for a fresh conform, the first of the series?" — it
+  would not have been). `setup_comp_batch` still built the OLD shape, so a
+  new shot would have satisfied none of tk-flame's three gates and published
+  nothing until someone ran a repair op over it. Both ops now emit the SAME
+  contract, byte for byte: node named after the bare STEP (the Toolkit
+  template builds the media folder from it — a node called `<Shot>_CMP`
+  would produce `SEQ003_SH001_CMP_v001/` where `CMP_v001/` is expected),
+  `shot_name` populated so the filename gets the shot through `<shot name>`,
+  the setup redirected to `../batch/<shot name>.v<version>`, and
+  `create_clip` ON pointing at the node's own clip. Writing the tests
+  surfaced that `fix_comp_writefile` would have RENAMED the node back and
+  silently undone the template match — setup and fix must agree or repairing
+  a batch breaks it.
+- **The conform builds clips the way the cycle regenerates them**: it used
+  the singular `step=` (uid `v003`) while the comp delivery regenerates with
+  `steps=` (uid `LIGHT_v003`), so the version uid CHANGED under an
+  already-conformed segment on the first delivery. The recipe now mandates
+  the list form from the start.
 - **The rendered clip is renamed after the open clip is regenerated**
   (Chat 99, operator request): 'Add to Workspace' drops the render into the
   batch's *Batch Renders* shelf reel named after the NODE, and the Toolkit
