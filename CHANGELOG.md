@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.20.1] — 2026-08-16
 - **The comp delivery must render in FOREGROUND** (Chat 99, measured
   in-vivo — and it overrides the engine's usual "always use Background
   Reactor" rule): Flame fires `batchExportEnd` when a background job is
