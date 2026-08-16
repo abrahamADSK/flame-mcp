@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING
+- **`fix_comp_writefile` is renamed `prepare_comp_render`.** The old name
+  described the op's ORIGIN, not its job: it was born in Chat 98 to repair two
+  configuration defects found in-vivo, and kept the name after it became the
+  mandatory first step of every comp delivery. Three things were wrong with it:
+  the op repairs nothing (it runs on every shot, every time, and is
+  idempotent); it does not touch only the Write File (it also sets
+  `flame.batch.start_frame`, stamps the timecode, pulls the render range and
+  saves the batch); and it says nothing about the `ALIGNMENT:` verdict, which
+  is the gate the recipe decides to render on and arguably its most important
+  output.
+
+  The cost was not cosmetic. An agent reading `fix_comp_writefile` in the op
+  list infers "call this when the Write File is broken" — the exact opposite of
+  the truth, and the kind of inference that makes a model skip a mandatory
+  step.
+
+  `execute_plan` rejects the old name with the registry's normal structured
+  error (`not a registered op`), so the break is loud, never silent. No alias
+  is kept: the registry is closed by design. The recipe, `CLAUDE.md` rule 16,
+  the args model (`PrepareCompRenderArgs`) and the tests move in the same
+  commit. Historical CHANGELOG entries keep the old name — they describe
+  releases that shipped it.
+
+  The docstrings and the registry description were rewritten too, so the
+  op now states that it is mandatory before every render, idempotent, and
+  gated on its own read-back verdict.
+
 ## [1.21.0] — 2026-08-16
 
 ### Fixed

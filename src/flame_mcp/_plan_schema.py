@@ -272,8 +272,18 @@ class SetupCompBatchArgs(BaseModel):
     )
 
 
-class FixCompWritefileArgs(BaseModel):
-    """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
+class PrepareCompRenderArgs(BaseModel):
+    """Configure the ACTIVE batch for a comp render, then PROVE it is aligned.
+
+    This is the MANDATORY first step of every comp delivery, not a repair
+    for a batch someone broke: it runs on every shot, every time, and is
+    idempotent. It sets the batch start frame, names the Write File after
+    the Step, points it at the Toolkit-template paths, stamps the timecode
+    the media must declare, pulls the render range onto the source range,
+    and SAVES the batch (attribute changes live in memory only). It then
+    reads everything back and prints one ``ALIGNMENT:`` verdict — which is
+    the gate the recipe decides to render on, and the most important thing
+    this op produces.
 
     ``create_clip_path`` must be passed WITHOUT the ``.clip`` extension —
     Flame appends its own, which sent the first comp version into
@@ -446,12 +456,15 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "versioned; start frame derived from the source clip).",
         "tool": "execute_plan",
     },
-    "fix_comp_writefile": {
-        "args_model": FixCompWritefileArgs,
+    "prepare_comp_render": {
+        "args_model": PrepareCompRenderArgs,
         "handler": None,
-        "description": "DESTRUCTIVE — repair the ACTIVE batch's Write File "
-        "(name '<Shot>_<step>', versioned media-only pattern, batch start "
-        "frame derived from the source clip + read-back ALIGNMENT verdict).",
+        "description": "DESTRUCTIVE — MANDATORY before every comp render, on "
+        "every shot: configure the ACTIVE batch's Write File (name "
+        "'<Shot>_<step>', versioned media-only pattern, timecode, batch start "
+        "frame and render range derived from the source clip), save the batch, "
+        "and print the read-back ALIGNMENT verdict the render is gated on. "
+        "Idempotent — not a repair for a broken batch.",
         "tool": "execute_plan",
     },
     "timeline_insert": {
