@@ -3051,6 +3051,268 @@ else:
     return _fmt(result)
 
 
+def _wire_comp_tree_impl(batch_group: str = "", dry_run: bool = False) -> str:
+    """Wire a shot's light/shadow cascade inside a comp batch group.
+
+    Builds what ``setup_comp_batch`` leaves unbuilt: the source Clip node
+    carries one output socket per EXR layer, and this op composes them into
+    the delivery tree — beauty x shadow (MULTIPLY, charmatte inverted on the
+    second matte input), then one SCREEN Comp per light, club beams LAST,
+    and the final Result into the Write File's Front.
+
+    ``batch_group`` empty = the ACTIVE group (``flame.batch``), which is the
+    historical behaviour. Naming a group targets THAT group instead, without
+    activating it: creating and connecting nodes on a non-active PyBatch was
+    measured in-vivo (Chat 100) to land in the target and leave the active
+    group untouched, which is what makes "compose the batches that are still
+    empty" a single unattended pass instead of one operator double-click per
+    shot. The active batch still cannot be SWITCHED from Python — that part
+    of the Chat 98 finding stands.
+
+    Everything runs inside ``schedule_idle_event`` with a file-polled result.
+    That is not optional: batch territory crashes Flame from the bridge's
+    worker thread, and the very probes that established the non-active write
+    were run unwrapped and took Flame down with them (Chat 100).
+
+    Layer classification is REPORTED, never silent — sockets that match
+    nothing are listed so the operator can veto. ``dry_run`` stops after the
+    classification and wires nothing.
+    """
+    _track_dedicated()
+    code_template = '''import flame, os, sys, io, json, time
+_result_path = "/tmp/flame_mcp_wct_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+TARGET = {batch_group!r}
+DRY = {dry_run!r}
+
+def _s(v):
+    return str(v).strip("'")
+
+def _do_wire():
+    _buf = io.StringIO()
+    _old_stdout = sys.stdout
+    sys.stdout = _buf
+    try:
+        # ---- resolve the target group -------------------------------------
+        if TARGET:
+            _ws = flame.projects.current_project.current_workspace
+            bg = None
+            for _k in _ws.desktop.children:
+                if type(_k).__name__ == "PyBatch" and _s(_k.name) == TARGET:
+                    bg = _k
+                    break
+            if bg is None:
+                print("ERROR: batch group " + TARGET + " not found on the desktop")
+                return
+            print("target: " + TARGET + " (active stays " + _s(flame.batch.name) + ")")
+        else:
+            bg = flame.batch
+            print("target: " + _s(bg.name) + " (ACTIVE group)")
+
+        # ---- locate the source clip and the Write File ---------------------
+        src = None
+        wf = None
+        for _n in bg.nodes:
+            _t = _s(_n.type)
+            if _t == "Clip" and src is None:
+                src = _n
+            elif "Write" in _t and wf is None:
+                wf = _n
+        if src is None:
+            print("ERROR: no Clip source node in " + _s(bg.name))
+            return
+        if wf is None:
+            print("ERROR: no Write File node in " + _s(bg.name))
+            return
+
+        socks = [_s(x) for x in src.output_sockets]
+        print("source sockets (" + str(len(socks)) + "): " + ", ".join(socks))
+
+        # ---- classify the layers ------------------------------------------
+        beauty = None
+        shadow = None
+        matte = None
+        lights = []
+        beams = []
+        ignored = []
+        for _sk in socks:
+            _l = _sk.lower()
+            if beauty is None and (_l in ("beauty", "rgba", "default", "result")):
+                beauty = _sk
+            elif "shadow" in _l:
+                shadow = _sk
+            elif "charmatte" in _l or _l == "matte":
+                matte = _sk
+            elif "beam" in _l:
+                beams.append(_sk)
+            elif "light" in _l or "disco" in _l:
+                lights.append(_sk)
+            else:
+                ignored.append(_sk)
+        if beauty is None and socks:
+            beauty = socks[0]
+            if beauty in ignored:
+                ignored.remove(beauty)
+            print("NOTE: no explicit beauty socket - using the first one: " + beauty)
+
+        print("beauty : " + str(beauty))
+        print("shadow : " + str(shadow) + "   matte: " + str(matte))
+        print("lights : " + (", ".join(lights) or "none"))
+        print("beams  : " + (", ".join(beams) or "none"))
+        print("IGNORED (veto if wrong): " + (", ".join(ignored) or "none"))
+        if DRY:
+            print("DRY RUN - nothing wired")
+            return
+
+        # ---- helpers -------------------------------------------------------
+        def _blend(node, mode):
+            for _a in ("flame_blend_mode", "blend_mode"):
+                try:
+                    setattr(node, _a, mode)
+                    return _a + "=" + mode
+                except Exception:
+                    continue
+            return "blend mode NOT SET (" + mode + ")"
+
+        def _inputs(node):
+            try:
+                return [_s(x) for x in node.input_sockets]
+            except Exception:
+                return []
+
+        made = []
+        notes = []
+
+        # ---- 1) shadow: beauty FRONT, shadow BACK, matte on the 2nd matte --
+        chain = None
+        if shadow:
+            c = bg.create_node("Comp")
+            c.name = "comp_shadow"
+            made.append(c)
+            notes.append(_blend(c, "Multiply"))
+            ins = _inputs(c)
+            front = "Front" if "Front" in ins else (ins[0] if ins else "Front")
+            back = "Back" if "Back" in ins else (ins[1] if len(ins) > 1 else "Back")
+            bg.connect_nodes(src, beauty, c, front)
+            bg.connect_nodes(src, shadow, c, back)
+            if matte:
+                # The SECOND matte input (measured on the 2027 Comp node:
+                # Front / Back / Matte / Back Matte).
+                mattes = [i for i in ins if "matte" in i.lower()]
+                target_matte = mattes[1] if len(mattes) > 1 else (mattes[0] if mattes else None)
+                if target_matte:
+                    bg.connect_nodes(src, matte, c, target_matte)
+                    notes.append("charmatte -> " + target_matte)
+                    _inv = None
+                    for _a in list(c.attributes):
+                        if "invert" in _a.lower() and "matte" in _a.lower():
+                            _inv = _a
+                            break
+                    if _inv is None:
+                        for _a in list(c.attributes):
+                            if "invert" in _a.lower():
+                                _inv = _a
+                                break
+                    if _inv:
+                        try:
+                            setattr(c, _inv, True)
+                            notes.append("matte inverted via " + _inv)
+                        except Exception as _ie:
+                            notes.append("INVERT FAILED on " + _inv + " (" + type(_ie).__name__ + ")")
+                    else:
+                        notes.append("NO invert attribute on Comp - route charmatte "
+                                     "through a Negative node by hand")
+                else:
+                    notes.append("no matte input found on the Comp node")
+            chain = c
+        else:
+            notes.append("no shadow layer - cascade starts from the beauty socket")
+
+        # ---- 2) lights in cascade, beams LAST ------------------------------
+        for _layer in lights + beams:
+            c = bg.create_node("Comp")
+            c.name = "comp_" + _layer
+            made.append(c)
+            notes.append(_blend(c, "Screen"))
+            ins = _inputs(c)
+            front = "Front" if "Front" in ins else (ins[0] if ins else "Front")
+            back = "Back" if "Back" in ins else (ins[1] if len(ins) > 1 else "Back")
+            if chain is None:
+                bg.connect_nodes(src, beauty, c, front)
+            else:
+                bg.connect_nodes(chain, "Result", c, front)
+            bg.connect_nodes(src, _layer, c, back)
+            chain = c
+
+        # ---- 3) close the chain into the Write File ------------------------
+        if chain is not None:
+            wins = _inputs(wf)
+            wfront = "Front" if "Front" in wins else (wins[0] if wins else "Front")
+            bg.connect_nodes(chain, "Result", wf, wfront)
+            notes.append("chain -> " + _s(wf.name) + "." + wfront)
+
+        # ---- 4) diagonal layout (the operator reads this on camera) --------
+        _x, _y = 0, 0
+        try:
+            _x, _y = int(src.pos_x), int(src.pos_y)
+        except Exception:
+            pass
+        for _i, _n in enumerate(made, start=1):
+            for _attr, _val in (("pos_x", _x + 200 * _i), ("pos_y", _y - 120 * _i)):
+                try:
+                    setattr(_n, _attr, _val)
+                except Exception:
+                    pass
+        try:
+            wf.pos_x = _x + 200 * (len(made) + 1)
+            wf.pos_y = _y - 120 * (len(made) + 1)
+        except Exception:
+            notes.append("layout: Write File position not settable")
+
+        print("created " + str(len(made)) + " Comp node(s): "
+              + ", ".join(_s(n.name) for n in made))
+        for _n in notes:
+            print("  " + _n)
+        print("OK: " + _s(bg.name) + " now has " + str(len(list(bg.nodes))) + " nodes")
+    except Exception as _exc:
+        print("ERROR: " + repr(_exc))
+    finally:
+        sys.stdout = _old_stdout
+        try:
+            with open(_result_path, "w") as _fh:
+                json.dump({{"message": _buf.getvalue().strip()}}, _fh)
+        except Exception:
+            pass
+
+flame.schedule_idle_event(_do_wire)
+_deadline = time.monotonic() + 25
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print(json.load(_fh)["message"])
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
+else:
+    print("SCHEDULED: expansion queued on Flame's main thread; no result within "
+          "25s - verify with list_batch_groups()")
+'''
+    code = code_template.format(batch_group=batch_group, dry_run=bool(dry_run))
+    result = _call_flame(code, timeout=35, dedicated_tool=True)
+    _journal_record(code, result)
+    return _fmt(result)
+
+
+_plan.register_op(
+    "wire_comp_tree",
+    lambda args: _wire_comp_tree_impl(
+        batch_group=args.batch_group,
+        dry_run=args.dry_run,
+    ),
+)
+
+
 def _fix_comp_writefile_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
     """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
 

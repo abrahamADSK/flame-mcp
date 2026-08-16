@@ -225,6 +225,35 @@ class ImportClipsArgs(BaseModel):
     )
 
 
+class WireCompTreeArgs(BaseModel):
+    """Wire the light/shadow cascade inside a shot's comp batch group.
+
+    Chat 100: ``setup_comp_batch`` leaves a two-node skeleton (source Clip +
+    Write File); this op composes the multichannel EXR's layers into the
+    delivery tree — beauty x shadow (MULTIPLY, charmatte inverted on the
+    second matte input), one SCREEN Comp per light, club beams LAST, and the
+    final Result into the Write File.
+
+    ``batch_group`` targets a group WITHOUT activating it. Creating and
+    connecting nodes on a non-active PyBatch was measured in-vivo to land in
+    the target and leave the active group untouched, so several shots can be
+    composed in one unattended pass. Switching the active group from Python
+    is still impossible (Chat 98) — this sidesteps that, it does not fix it.
+    """
+
+    model_config = _STRICT
+    batch_group: str = Field(
+        "",
+        description="Batch group to wire, e.g. 'SEQ002_SH001_comp'. Empty = "
+        "the ACTIVE group (flame.batch), the historical behaviour.",
+    )
+    dry_run: bool = Field(
+        False,
+        description="Classify the source layers and report them WITHOUT "
+        "creating or connecting anything.",
+    )
+
+
 class SetupCompBatchArgs(BaseModel):
     """Create a shot's comp batch group wired source → Write File.
 
@@ -444,6 +473,15 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "DESTRUCTIVE — create a shot's comp batch group wired "
         "source Clip → Write File named '<shot>_<step>' (media-only, "
         "versioned; start frame derived from the source clip).",
+        "tool": "execute_plan",
+    },
+    "wire_comp_tree": {
+        "args_model": WireCompTreeArgs,
+        "handler": None,
+        "description": "DESTRUCTIVE — wire the light/shadow cascade in a comp "
+        "batch group (beauty x shadow MULTIPLY, lights SCREEN, beams last, "
+        "Result → Write File). Targets a named group WITHOUT activating it; "
+        "empty batch_group = the active one.",
         "tool": "execute_plan",
     },
     "fix_comp_writefile": {

@@ -883,3 +883,78 @@ class TestNewShotIsBornNative:
         assert "steps=[<the chosen step>]" in recipe
         assert "never the singular" in recipe
         assert "uid CHANGES under an already-conformed segment" in recipe
+
+
+class TestWireCompTree:
+    """The op that wires the light/shadow cascade (Chat 100).
+
+    Two properties matter beyond the schema: the wiring must be main-threaded
+    (batch territory kills Flame from the worker thread), and naming a group
+    must target THAT group instead of ``flame.batch`` — that is the whole
+    point of the op, and a regression there would silently rewire whichever
+    batch the operator happens to have open.
+    """
+
+    def test_op_is_registered_with_typed_args(self):
+        import flame_mcp._plan_schema as ps
+        assert "wire_comp_tree" in ps.op_names()
+        entry = ps._OP_REGISTRY["wire_comp_tree"]
+        assert entry["tool"] == "execute_plan"  # plan-native marker
+        args = entry["args_model"]()
+        assert args.batch_group == ""   # default = the active group
+        assert args.dry_run is False
+
+    def test_extra_args_rejected(self):
+        import pytest as _pytest
+        import flame_mcp._plan_schema as ps
+        model = ps._OP_REGISTRY["wire_comp_tree"]["args_model"]
+        with _pytest.raises(Exception):
+            model(batch_group="X", invented_field=1)
+
+    def _generated(self, **kwargs):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._wire_comp_tree_impl(**kwargs)
+        return m.call_args[0][0]
+
+    def test_wiring_is_main_threaded(self):
+        code = self._generated()
+        compile(code, "<g>", "exec")
+        assert "flame.schedule_idle_event(_do_wire)" in code
+        # every mutation must live inside the scheduled function, never at
+        # module level where it would run on the bridge's worker thread
+        body = code.split("def _do_wire():", 1)[1].split(
+            "flame.schedule_idle_event", 1)[0]
+        for mutating in ("create_node(", "connect_nodes("):
+            assert mutating in body
+            assert code.count(mutating) == body.count(mutating)
+
+    def test_named_group_is_resolved_without_activating_it(self):
+        code = self._generated(batch_group="SEQ002_SH001_comp")
+        compile(code, "<g>", "exec")
+        assert "'SEQ002_SH001_comp'" in code
+        assert "desktop.children" in code       # resolved by name off the desktop
+        # the active group must never be switched (Chat 98: impossible anyway,
+        # and a silent no-op if attempted)
+        assert ".open(" not in code
+        assert "go_to(" not in code
+
+    def test_active_group_is_the_default(self):
+        code = self._generated()
+        assert "TARGET = ''" in code
+        assert "bg = flame.batch" in code
+
+    def test_dry_run_wires_nothing(self):
+        code = self._generated(dry_run=True)
+        assert "DRY = True" in code
+        assert "DRY RUN - nothing wired" in code
+
+    def test_cascade_order_puts_beams_last(self):
+        code = self._generated()
+        # the club beams composite AFTER the lights (review-mov formula:
+        # beauty x shadow, then lights, beams after)
+        assert "for _layer in lights + beams:" in code
+        assert '_blend(c, "Multiply")' in code   # shadow
+        assert '_blend(c, "Screen")' in code     # lights and beams
