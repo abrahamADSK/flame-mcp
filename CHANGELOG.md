@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-08-16
+
 ### Fixed
 - **`fix_comp_writefile` signed off a 2-frame render as aligned** (Chat 101,
   measured on SEQ003_SH002). Two defects in the same read-back block:
