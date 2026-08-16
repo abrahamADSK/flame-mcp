@@ -2568,9 +2568,19 @@ async def render_batch(
 
     IMPORTANT: calling flame.batch.render() synchronously CRASHES Flame, so this
     tool schedules the render via flame.schedule_idle_event and writes the
-    outcome to a result file. The render runs ASYNCHRONOUSLY inside Flame; this
-    call returns as soon as the render is SCHEDULED. Do NOT poll Flame — read the
-    result file (path returned below) in a separate step to confirm completion.
+    outcome to a result file. The result file is DELETED before scheduling, so
+    its reappearance — never its mere existence — is the signal.
+
+    WHETHER THIS WAITS DEPENDS ON render_option (Chat 100/101):
+      * "Foreground" — flame.batch.render() BLOCKS Flame's main thread until the
+        render FINISHES, so the result file is written at the END. This call is
+        NOT fire-and-forget: the caller must poll the Write File's version
+        folder on disk until the frame count matches the Write File range, and
+        must NOT ask the operator whether the render finished.
+      * "Background Reactor" / "Burn" — returns once the job is SENT; the render
+        continues off Flame's main thread.
+
+    Either way, poll DISK and the result file — never poll Flame.
 
     Ensure the intended Batch Group is the current/open one before calling
     (the API renders flame.batch, i.e. the open Batch Group).
@@ -2597,9 +2607,23 @@ def _render_batch_impl(
     tests; the async MCP tool above wraps it with progress heartbeats."""
     _track_dedicated()
     result_file = os.path.expanduser("~/flame_render_result.txt")
+    # Foreground BLOCKS: flame.batch.render() returns only once the render has
+    # FINISHED, so the result file lands at the END. The old wording ("this
+    # call does not wait for completion", plus a message reading "render
+    # started" either way) made the agent conclude it had no completion signal
+    # and hand the wheel back to the operator — abandoning the rest of the
+    # delivery cycle every single run (Chat 100 gotcha 3, still biting in 101).
+    _blocking = render_option == "Foreground"
+    _done_msg = "OK: render finished" if _blocking else "OK: render started"
     code = (
         "import flame, os\n"
         f"result_file = {result_file!r}\n"
+        # A stale result file from an earlier render is byte-identical to a
+        # fresh one: remove it so its REAPPEARANCE is the completion signal.
+        "try:\n"
+        "    os.remove(result_file)\n"
+        "except OSError:\n"
+        "    pass\n"
         "if not hasattr(flame, 'schedule_idle_event'):\n"
         "    print('ERROR: Flame idle-event API unavailable — bring Flame to the "
         "foreground (active app) and retry.')\n"
@@ -2608,7 +2632,7 @@ def _render_batch_impl(
         "        try:\n"
         f"            flame.batch.render(render_option={render_option!r}, "
         f"generate_proxies={generate_proxies!r}, include_history={include_history!r})\n"
-        "            msg = 'OK: render started'\n"
+        f"            msg = {_done_msg!r}\n"
         "        except Exception as e:\n"
         "            msg = 'ERROR: ' + str(e)\n"
         "        with open(result_file, 'w') as f:\n"
@@ -2621,12 +2645,31 @@ def _render_batch_impl(
     out = _fmt(result)
     if result.get("status") == "error":
         return out
+    if _blocking:
+        return (
+            f"{out}\n"
+            "Render scheduled (Foreground). flame.batch.render() BLOCKS Flame's "
+            "main thread until the render FINISHES — this is NOT fire-and-forget. "
+            f"{result_file} was DELETED before scheduling and is written only when "
+            "the render ends.\n"
+            "WAIT FOR COMPLETION YOURSELF; do NOT ask the operator whether it "
+            "finished. Poll DISK only (no Flame calls): the Write File's version "
+            "folder until the .exr count equals range_end - range_start + 1 with "
+            f"no zero-byte files, AND {result_file} exists reading "
+            f"'{_done_msg}'. Only then continue the delivery cycle.\n"
+            "'ERROR: ...' in that file means the render aborted — read the app log "
+            "(read_flame_log) for the cause instead of retrying blind."
+        )
     return (
         f"{out}\n"
-        f"Render scheduled ({render_option}). It runs asynchronously inside Flame; "
-        "this call does not wait for completion.\n"
-        f"Outcome is written to: {result_file}\n"
-        "Read that file in a separate step to confirm (expect 'OK: render started')."
+        f"Render scheduled ({render_option}). It returns as soon as the job is SENT "
+        "and the render continues off Flame's main thread; this call does not wait "
+        "for completion.\n"
+        f"Outcome is written to: {result_file} — deleted before scheduling, so its "
+        f"reappearance is the signal (expect '{_done_msg}').\n"
+        "NOTE: the comp delivery cycle must use Foreground instead — tk-flame's "
+        "publish chain fires when a background job is SENT and would transcode "
+        "frames that do not exist yet."
     )
 
 
@@ -3237,23 +3280,49 @@ def _do_fix():
                 _rs = int(_gv(wf.range_start)); _re = int(_gv(wf.range_end))
             except Exception:
                 pass
-            if _sf > 0 and _rs is not None and _re is not None and _rs != _sf:
+            # The range is pulled onto the source range whenever EITHER end
+            # disagrees — not only when the START drifted. Chat 101, measured
+            # on SEQ003_SH002: the Write File sat at 1001-1002 while the batch
+            # was already at 1001, so the old guard (``_rs != _sf``) skipped
+            # this block entirely, range_end was never touched, and the render
+            # produced 2 frames of 100. The saved setup read
+            # <Range Start="1001" End="1002" SpanEnable="False" Span="100"/>.
+            _want_end = None
+            if _sf > 0 and _rs is not None and _re is not None:
                 _want_end = _sf + (_dur if _dur > 0 else (_re - _rs + 1)) - 1
-                try:
-                    if _want_end > _re:
-                        wf.range_end = _want_end; wf.range_start = _sf
-                    else:
-                        wf.range_start = _sf; wf.range_end = _want_end
-                    _rs = int(_gv(wf.range_start)); _re = int(_gv(wf.range_end))
-                    print("  write file range pulled to " + str(_rs) + "-" + str(_re))
-                except Exception as _rge:
-                    print("  write file range NOT settable (" + type(_rge).__name__ + ")")
-            _rng = (str(_rs) + "-" + str(_re)) if _rs is not None else "unreadable"
-            _src = (str(_sf) + "-" + str(_sf + _dur - 1)) if (_sf > 0 and _dur > 0) else (str(_sf) if _sf > 0 else "unknown")
-            _ok = _sf > 0 and _bs == _sf and _rs == _sf
+                if _rs != _sf or _re != _want_end:
+                    try:
+                        if _want_end > _re:
+                            wf.range_end = _want_end; wf.range_start = _sf
+                        else:
+                            wf.range_start = _sf; wf.range_end = _want_end
+                        _rs = int(_gv(wf.range_start)); _re = int(_gv(wf.range_end))
+                        print("  write file range pulled to " + str(_rs) + "-" + str(_re))
+                    except Exception as _rge:
+                        print("  write file range NOT settable (" + type(_rge).__name__ + ")")
+            _rng = ((str(_rs) + "-" + str(_re) + " (" + str(_re - _rs + 1) + " frames)")
+                    if (_rs is not None and _re is not None) else "unreadable")
+            _src = ((str(_sf) + "-" + str(_sf + _dur - 1) + " (" + str(_dur) + " frames)")
+                    if (_sf > 0 and _dur > 0) else (str(_sf) if _sf > 0 else "unknown"))
+            # The verdict checks BOTH ends and NAMES what disagrees. Checking
+            # only the start is what signed a 2-frame render as OK (Chat 101);
+            # the recipe gates the render on this line, so a partial check
+            # here bills the operator for a wasted render and a broken
+            # delivery.
+            _why = []
+            if _sf <= 0:
+                _why.append("no source start frame")
+            if _bs != _sf:
+                _why.append("batch start is " + str(_bs) + ", source starts at " + str(_sf))
+            if _rs != _sf:
+                _why.append("write file starts at " + str(_rs) + ", source starts at " + str(_sf))
+            if _want_end is not None and _re != _want_end:
+                _why.append("write file ends at " + str(_re) + ", source needs " + str(_want_end))
+            _ok = not _why
             print("ALIGNMENT: batch start " + str(_bs) + " | write file range " + _rng
                   + " | source " + _src + " -> "
-                  + ("OK" if _ok else "MISALIGNED — do not render; fix the batch start frame in the UI"))
+                  + ("OK" if _ok else "MISALIGNED (" + "; ".join(_why)
+                     + ") — do not render; fix it in the batch UI"))
             # Source Clip node timing (diagnostic): whether the imported
             # source shifted with the batch start is answered in-vivo, here.
             try:
