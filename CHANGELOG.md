@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-08-16
+
 ### Changed — BREAKING
 - **`fix_comp_writefile` is renamed `prepare_comp_render`.** The old name
   described the op's ORIGIN, not its job: it was born in Chat 98 to repair two
