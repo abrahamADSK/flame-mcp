@@ -387,12 +387,19 @@ class TestSaveArmsTheSettleClock:
 
 
 class TestCorruptionWarningNeedsARealError:
-    """The C++ corruption warning fires on errors, not on documentation
-    (Chat 98): a tool result carrying our own comments about last night's
-    unordered_map::at crash told the operator Flame was corrupted while it
-    was perfectly healthy."""
+    """The C++ corruption warning fires on a bridge DETECTION, never on text.
 
-    def test_marker_alone_is_not_enough(self, source):
+    Chat 98 narrowed a bare substring scan to (marker AND 'ERROR:'). Chat 99
+    showed that was still text-based and still wrong: one search_flame_docs
+    response concatenates chunks, and the vocabulary doc's "Error messages"
+    table lists `unordered_map::at` next to chunks carrying `print('ERROR:
+    ...')` samples — so the operator was told to restart a perfectly healthy
+    Flame mid-render. The rule is now a sentinel only server.py emits.
+    Full coverage: tests/test_cpp_corruption_sentinel.py.
+    """
+
+    def test_warning_is_gated_on_the_sentinel_only(self, source):
         block = source.split("Flame C++ corruption warning", 1)[1].split(
             "_extract_stats_footer", 1)[0]
-        assert "_cpp_marker and 'ERROR:' in full_text" in block
+        assert "if _cpp_sentinel in full_text:" in block
+        assert "_cpp_marker" not in block

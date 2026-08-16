@@ -249,6 +249,43 @@ concepts:
           file_pattern: 'hooks/flame_mcp_bridge.py'
         expected: found
 
+  cpp_corruption_sentinel:
+    description: >
+      The "Internal Flame C++ exception detected / restart Flame" warning is
+      raised ONLY on a sentinel that server.py emits when the bridge set
+      flame_state='possibly_corrupted'. The console must never infer it by
+      scanning tool text: documentation legitimately DESCRIBES the
+      unordered_map::at crash (flame_vocabulary.md's error table), and a
+      single search_flame_docs response concatenates chunks, so the old
+      substring heuristic told the operator to restart a perfectly healthy
+      Flame mid-render (Chat 99). The literal must stay byte-identical in
+      both files.
+    source_of_truth:
+      file: src/flame_mcp/server.py
+      symbol: CPP_CORRUPTION_SENTINEL
+    invariants:
+      - id: sentinel_defined_in_server
+        type: claim_verifies
+        claim: "server.py defines the C++ corruption sentinel literal"
+        code_grep:
+          regex: 'CPP_CORRUPTION_SENTINEL = "\\u27eaFLAME_CPP_CORRUPTION\\u27eb"'
+          file_pattern: 'src/flame_mcp/server.py'
+        expected: found
+      - id: sentinel_mirrored_in_console
+        type: claim_verifies
+        claim: "the console matches the same sentinel literal"
+        code_grep:
+          regex: '_cpp_sentinel = "\\u27eaFLAME_CPP_CORRUPTION\\u27eb"'
+          file_pattern: 'hooks/flame_mcp_bridge.py'
+        expected: found
+      - id: console_does_not_scan_free_text
+        type: claim_verifies
+        claim: "the console no longer infers corruption from marker substrings"
+        code_grep:
+          regex: "_cpp_marker = \\('possibly_corrupted' in full_text"
+          file_pattern: 'hooks/flame_mcp_bridge.py'
+        expected: not_found
+
   release_cadence:
     description: >
       Prevent the "18 commits past the last tag" state observed on 2026-04-17.

@@ -1817,15 +1817,19 @@ class _FlameChat:
                     except (json.JSONDecodeError, ValueError):
                         full_text = raw
                 # ── Flame C++ corruption warning ──────────────────────────────
-                # Chat 98: fire only on an ACTUAL bridge error, not on any
-                # text that merely mentions the marker. The bare substring
-                # scan false-alarmed when a tool result carried our own
-                # documentation (comments/CHANGELOG describe last night's
-                # unordered_map::at crash) — the operator was told Flame was
-                # corrupted while it was perfectly healthy.
-                _cpp_marker = ('possibly_corrupted' in full_text
-                               or 'unordered_map::at' in full_text)
-                if _cpp_marker and 'ERROR:' in full_text:
+                # Chat 99: fire ONLY on the sentinel the server emits when the
+                # bridge actually set flame_state='possibly_corrupted'. The
+                # previous heuristic (marker substring AND 'ERROR:') still
+                # misfired: one search_flame_docs response concatenates
+                # several chunks, and the vocabulary doc's "Error messages"
+                # table lists `unordered_map::at` while another chunk carries
+                # a `print('ERROR: ...')` sample — so the operator was told to
+                # restart Flame mid-render while it was perfectly healthy.
+                # Documentation must be free to DESCRIBE a crash; only the
+                # bridge may raise the alarm. Keep this literal byte-identical
+                # to server.CPP_CORRUPTION_SENTINEL (concept registry).
+                _cpp_sentinel = "\u27eaFLAME_CPP_CORRUPTION\u27eb"
+                if _cpp_sentinel in full_text:
                     warn = ("⚠️  Internal Flame C++ exception detected.\n"
                             "The interface may be corrupted.\n"
                             "If you see broken panels or curved lines → restart Flame.")

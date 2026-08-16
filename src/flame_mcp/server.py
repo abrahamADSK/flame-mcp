@@ -652,13 +652,33 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
         return {'status': 'error', 'error': safe_error_message(e)}
 
 
+# Emitted ONLY when the bridge actually set flame_state='possibly_corrupted'
+# (a C++ exception escaped the Python binding). The console shows its
+# "restart Flame" warning on this sentinel and nothing else.
+#
+# Chat 99 — why a sentinel instead of scanning the text: the console used to
+# fire when a tool result contained ('possibly_corrupted' OR
+# 'unordered_map::at') AND 'ERROR:'. A single search_flame_docs response
+# concatenates several chunks, and the vocabulary doc carries an "Error
+# messages" table listing `unordered_map::at` while another chunk carries a
+# `print('ERROR: ...')` sample — so the operator was told Flame was
+# corrupted, mid-render, while it was perfectly healthy (the render
+# completed: 100 frames, correct timecode). Documentation must be free to
+# DESCRIBE a crash without triggering the alarm; only the bridge can raise
+# it. Chat 98 already narrowed the heuristic once and it still misfired —
+# free-text scanning is the wrong mechanism, not the wrong threshold.
+CPP_CORRUPTION_SENTINEL = "\u27eaFLAME_CPP_CORRUPTION\u27eb"
+
+
 def _fmt(result: dict) -> str:
     """Format the bridge response for Claude."""
     if result.get('status') == 'error':
         # Defence in depth: scrub the error string regardless of its origin
         # (bridge exception OR Flame-side error text) before returning it.
         msg = scrub_secrets(str(result.get('error', 'Unknown error')))
-        return f"ERROR:\n{msg}"
+        prefix = ('' if result.get('flame_state') != 'possibly_corrupted'
+                  else CPP_CORRUPTION_SENTINEL + '\n')
+        return f"{prefix}ERROR:\n{msg}"
 
     parts = []
     output = result.get('output', '').strip()
