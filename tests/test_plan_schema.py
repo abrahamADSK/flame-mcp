@@ -330,11 +330,15 @@ class TestSetupCompBatchOp:
         compile(code, "<g>", "exec")
         assert "flame.schedule_idle_event(_do_setup)" in code
         assert "create_batch_group('SEQ001_SH001_comp'" in code
+        assert '("name", \'CMP\')' in code          # node named after the step
         assert 'create_node("Write File")' in code
-        # MEDIA-ONLY (Chat 98): the Write File never creates a clip — Flame
-        # owns any clip it creates and overwrote the pipeline's in-vivo.
-        assert '("create_clip", False)' in code
-        assert "create_clip_path" not in code
+        # Chat 99: create_clip is ON again — Flame 2027 omits versionNumber
+        # without it and tk-flame's publish dies — but it points at the
+        # node's OWN clip. The Chat 98 rule still holds where it matters:
+        # the Write File must never adopt the pipeline's conformed clip.
+        assert '("create_clip", True)' in code
+        settings = code.split("_settings = [", 1)[1].split("]", 1)[0]
+        assert "finishing/clip" not in settings
         # the source import still uses the conformed clip
         assert "finishing/clip/SEQ001_SH001.clip" in code
         # comp media dir derived: the 'comp' sibling of the clip folder
@@ -381,8 +385,10 @@ class TestWriteFileClipTarget:
         via openclip_create steps=['Light','Comp'] instead."""
         setup, fix = self._codes()
         for code in (setup, fix):
-            assert '("create_clip", False)' in code
-            assert "create_clip_path" not in code
+            assert '("create_clip", True)' in code
+            settings = code.split("_settings = [", 1)[1].split("]", 1)[0]
+            assert "finishing/clip" not in settings      # never the conformed clip
+            assert "_CMP" in settings                    # its own clip instead
         assert "finishing/clip/S.clip'" in setup        # el import sí lo lleva
 
     def test_versioning_is_enabled_for_token_expansion(self):
@@ -396,10 +402,12 @@ class TestWriteFileClipTarget:
             # ignores invalid strings silently
             assert '"versioning"' not in code
 
-    def test_media_pattern_is_versioned(self):
+    def test_media_pattern_carries_the_shot_and_the_version(self):
+        """Chat 99: folder <step>_v<version>, file <Shot>_<step>_v<version>
+        — the shape flame_shot_comp_exr demands and the native gate checks."""
         setup, fix = self._codes()
         for code in (setup, fix):
-            assert "<name>_v<version>/<name>_v<version>.<frame>" in code
+            assert "<name>_v<version>/<shot name>_<name>_v<version>.<frame>" in code
 
     def test_fix_op_operates_on_the_active_batch_only(self):
         """The active batch cannot be switched from Python — the fix op
@@ -587,12 +595,18 @@ class TestWriteFileNameFollowsTheStep:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             server._setup_comp_batch_impl("SEQ003_SH001", "/r/clip/SEQ003_SH001.clip", step="CMP")
             code = m.call_args[0][0]
-        assert '("name", \'SEQ003_SH001_CMP\')' in code
+        # Chat 99: the NODE is the bare step — the Toolkit template builds the
+        # media folder from it, so "<Shot>_CMP" would break the native gate.
+        # The shot reaches the filename through the <shot name> token.
+        assert '("name", \'CMP\')' in code
+        assert '("shot_name", \'SEQ003_SH001\')' in code
         assert "SEQ003_SH001_writefile" not in code   # the old literal name is gone
 
-    def test_fix_renames_the_write_file_from_the_clip_stem(self):
+    def test_fix_renames_the_write_file_to_the_bare_step(self):
+        """setup and fix must agree, or repairing a batch would rename the
+        node and silently break the template match the native hook gates on."""
         code = self._fix(step="CMP")
-        assert '("name", \'SEQ003_SH001_CMP\')' in code
+        assert '("name", \'CMP\')' in code
         assert 'print("  name: " + str(_old_name)' in code
         compile(code, "fix", "exec")
 
@@ -814,3 +828,58 @@ class TestBatchSourceIsTheLightRender:
         assert "SOURCE LOOP" in recipe
         # the clip keeps its aggregating job — the two must not be confused
         assert "the clip AGGREGATES for the timeline flip" in recipe
+
+
+class TestNewShotIsBornNative:
+    """A brand-new shot must satisfy tk-flame's gates without anyone
+    running a repair op over it (Chat 99, operator question: 'would this
+    setup be correct for a fresh conform, the first of the series?').
+    It would not have been: setup_comp_batch still built the old shape.
+    """
+
+    def _code(self, tmp_path):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        clip = tmp_path / "finishing" / "clip" / "S.clip"
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_text(
+            '<?xml version="1.0"?><clip type="clip" version="8"><tracks>'
+            '<track uid="T"><feeds currentVersion="v0"><feed vuid="v0">'
+            '<startFrame>1001</startFrame><spans><span><duration>100</duration>'
+            '<path encoding="pattern">/r/S/LGT/v003/S_LGT_v003.[1001-1100].exr'
+            '</path></span></spans></feed></feeds></track></tracks></clip>')
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("SEQ003_SH001", str(clip), step="CMP")
+            return m.call_args[0][0]
+
+    def test_node_is_named_after_the_step_not_the_shot(self, tmp_path):
+        """{segment_name} builds the media folder, so the node must BE the
+        step; the shot arrives through the <shot name> token instead."""
+        code = self._code(tmp_path)
+        assert '("name", \'CMP\')' in code
+        assert '("shot_name", \'SEQ003_SH001\')' in code
+
+    def test_paths_match_both_toolkit_templates(self, tmp_path):
+        code = self._code(tmp_path)
+        assert '"<name>_v<version>/<shot name>_<name>_v<version>.<frame>"' in code
+        assert '"../batch/<shot name>.v<version>"' in code
+
+    def test_create_clip_is_on_and_points_at_its_own_clip(self, tmp_path):
+        """The third gate: without create_clip Flame omits versionNumber and
+        tk-flame dies. It must never adopt the conformed clip."""
+        code = self._code(tmp_path)
+        assert '("create_clip", True)' in code
+        assert '"_CMP"' in code
+        assert "finishing/clip" not in code.split("_settings = [")[1].split("]")[0]
+
+    def test_generated_code_still_compiles(self, tmp_path):
+        compile(self._code(tmp_path), "setup", "exec")
+
+    def test_conform_builds_clips_the_way_the_cycle_regenerates_them(self):
+        from flame_mcp.concept_map import CONCEPT_MAP
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"] == "conform cut")["recipe"]
+        assert "steps=[<the chosen step>]" in recipe
+        assert "never the singular" in recipe
+        assert "uid CHANGES under an already-conformed segment" in recipe

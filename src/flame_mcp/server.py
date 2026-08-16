@@ -2951,9 +2951,20 @@ def _do_setup():
             # <Versioning>False</Versioning>, which is why the token
             # stayed LITERAL in the rendered paths.
             _settings = [
-                ("name", {wf_name!r}),
+                # NATIVE MODE from birth (Chat 99). A batch created in the
+                # old shape does not satisfy tk-flame's three gates, so a
+                # brand-new shot would publish nothing until someone ran
+                # fix_comp_writefile over it. The node is named after the
+                # STEP because the Toolkit template's segment-name key builds
+                # the media folder from it; the shot comes from <shot name>.
+                ("name", {step!r}),
+                ("shot_name", {shot!r}),
                 ("media_path", {comp_dir!r}),
-                ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
+                ("media_path_pattern",
+                 "<name>_v<version>/<shot name>_<name>_v<version>.<frame>"),
+                # setup lands where flame_shot_batch expects it, one level
+                # up from the media — the second gate.
+                ("include_setup_path", "../batch/<shot name>.v<version>"),
                 # frame_padding defaults to 6 on a fresh node — the source
                 # is 4-digit (in-vivo Chat 99: a wasted .001001.exr render).
                 ("frame_padding", {padding}),
@@ -2963,7 +2974,14 @@ def _do_setup():
                 # <version> token once rendered as a LITERAL folder name.
                 ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
-                ("create_clip", False),
+                # create_clip ON is the third gate: without it Flame 2027
+                # omits versionNumber from the hook payload and tk-flame
+                # dies with KeyError before publishing anything. It points
+                # at the node's OWN clip — never the conformed one, which
+                # the Write File would otherwise adopt and overwrite
+                # (Chat 98: 43 KB -> 2.4 KB).
+                ("create_clip_path", os.path.join({comp_dir!r}, {shot!r} + "_CMP")),
+                ("create_clip", True),
                 ("include_setup", True),
                 ("file_type", "OpenEXR"),
                 ("bit_depth", "16-bit fp"),
@@ -3017,6 +3035,8 @@ else:
     clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
     code = code_template.format(
         bg_name=f"{shot}_comp",
+        shot=shot,
+        step=step,
         wf_name=f"{shot}_{step}",
         clip_path=clip_path,
         clip_target=clip_target,
@@ -3063,7 +3083,13 @@ def _fix_comp_writefile_impl(clip_path: str, step: str, comp_dir: str = "", star
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
     clip_target = clip_path[:-5] if clip_path.endswith(".clip") else clip_path
     import os as _os
-    wf_name = f"{_os.path.splitext(_os.path.basename(clip_path))[0]}_{step}"
+    # The node is named after the STEP ALONE. The Toolkit template builds the
+    # media folder from the segment-name key, so a node called
+    # "<Shot>_CMP" would produce ".../SEQ003_SH001_CMP_v001/" where
+    # flame_shot_comp_exr expects ".../CMP_v001/" — and the native publish
+    # gate would stop matching. The shot reaches the FILENAME through the
+    # <shot name> token instead (Chat 99).
+    wf_name = step
     duration = 0
     padding = 0
     sf_source = "explicit"
@@ -3115,20 +3141,30 @@ def _do_fix():
             wf = wfs[0]
             _old_name = _gv(wf.name)
             _settings = [
+                # Same native contract as setup_comp_batch — the two MUST
+                # agree, or repairing a batch silently undoes the template
+                # match the tk-flame publish gate depends on (Chat 99).
                 ("name", {wf_name!r}),
+                ("shot_name", {shot!r}),
                 ("media_path", {comp_dir!r}),
                 # frame_padding defaults to 6 on a fresh node; the source is
                 # 4-digit, and a comp written as .001001.exr does not match
                 # the source numbering (in-vivo Chat 99: a wasted render).
                 ("frame_padding", {padding}),
-                ("media_path_pattern", "<name>_v<version>/<name>_v<version>.<frame>"),
+                ("media_path_pattern",
+                 "<name>_v<version>/<shot name>_<name>_v<version>.<frame>"),
+                ("include_setup_path", "../batch/<shot name>.v<version>"),
                 # version_mode, NOT 'versioning' (in-vivo, read-back
                 # verified): the enum silently ignores invalid strings —
                 # no exception, value unchanged — which is how the
                 # <version> token once rendered as a LITERAL folder name.
                 ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
-                ("create_clip", False),
+                # create_clip ON (third gate): without it Flame 2027 omits
+                # versionNumber and tk-flame's publish dies. It points at the
+                # node's OWN clip, never the conformed one (Chat 98).
+                ("create_clip_path", os.path.join({comp_dir!r}, {shot!r} + "_CMP")),
+                ("create_clip", True),
             ]
             _set, _skipped = [], []
             for _attr, _val in _settings:
@@ -3285,8 +3321,9 @@ if os.path.exists(_result_path):
 else:
     print("SCHEDULED: fix queued on Flame's main thread; no result within 20s")
 '''
+    shot = _os.path.splitext(_os.path.basename(clip_path))[0]
     code = code_template.format(
-        clip_target=clip_target, comp_dir=comp_dir, wf_name=wf_name,
+        clip_target=clip_target, comp_dir=comp_dir, wf_name=wf_name, shot=shot,
         start_frame=int(start_frame), duration=int(duration),
         padding=int(padding) or 4, sf_source=sf_source,
     )
