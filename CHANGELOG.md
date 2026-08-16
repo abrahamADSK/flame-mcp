@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **Both delivery gaps closed** (Chat 99, operator: "no admito huecos"). The
+  review movie is now native: with `batch_quicktime_template` configured
+  (`flame_shot_comp_mov`, added to the pipeline config) tk-flame writes a
+  PERMANENT quicktime beside the light one
+  (`{Shot}/CMP/review/{Shot}_CMP_v001.mov`, mirroring
+  `{Shot}/LGT/review/…`), publishes it as *Flame Quicktime* and its
+  backburner hook fills `sg_path_to_movie` itself — no `sg_update`
+  workaround. Previously the quicktime was generated in a temp dir, uploaded
+  and deleted, leaving the field empty. The Task link is the one thing the
+  native path genuinely cannot do — the context is resolved from the `.batch`
+  path and `flame_shot_batch` carries no `{Step}` token — so step 8d is now
+  a MANDATORY step (`sg_find` the Task by Step short_name, `sg_update` the
+  Version and both PublishedFiles) with "do not report DONE without it": an
+  unlinked publish is invisible to every Task-based query in production.
+
 - **The comp delivery is handed to Flame's own tk-flame integration** (Chat
   99, validated in-vivo end to end). Our hand-rolled publish and review steps
   are DELETED: once the Write File's output matches the Toolkit templates,

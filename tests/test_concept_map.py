@@ -678,14 +678,25 @@ class TestRenderDeliverPointer:
         assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
             < step8.index("openclip_create") < step8.index("VERIFY THE ANCHOR")
 
-    def test_known_gaps_are_stated_not_papered_over(self):
-        """The Version lands with no Task, and no local movie exists —
-        say so instead of inventing values."""
+    def test_the_task_link_is_mandatory_not_optional(self):
+        """The one thing the native path leaves undone (Chat 99): the
+        context comes from the .batch path and that template has no {Step}
+        token, so nothing carries a Task. An unlinked publish is invisible
+        to every Task-based query."""
         step8 = self._step8()
+        assert "LINK THE TASK" in step8
         assert "NO Task" in step8 and "sg_update" in step8
-        assert "sg_path_to_movie stays empty" in step8
+        assert "short_name" in step8
+        assert "do not report DONE without it" in step8
+
+    def test_the_review_movie_needs_nothing_from_us(self):
+        """Closed natively by batch_quicktime_template — and if the field
+        still comes back empty, say so rather than invent a path."""
+        step8 = self._step8()
         assert "batch_quicktime_template" in step8
-        assert "Never invent a path" in step8
+        assert "flame_shot_comp_mov" in step8
+        assert "fills sg_path_to_movie itself" in step8
+        assert "never invent a path" in step8.lower()
 
     def test_anchor_verification_is_mandatory_and_says_how_to_repair(self):
         step8 = self._step8()
