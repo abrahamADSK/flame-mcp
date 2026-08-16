@@ -373,7 +373,7 @@ class TestWriteFileClipTarget:
             server._setup_comp_batch_impl(
                 "S", "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP")
             setup = m.call_args[0][0]
-            server._fix_comp_writefile_impl(
+            server._prepare_comp_render_impl(
                 "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP")
             fix = m.call_args[0][0]
         return setup, fix
@@ -418,7 +418,7 @@ class TestWriteFileClipTarget:
 
     def test_fix_op_registered_plan_native(self):
         import flame_mcp._plan_schema as ps
-        entry = ps._OP_REGISTRY["fix_comp_writefile"]
+        entry = ps._OP_REGISTRY["prepare_comp_render"]
         assert entry["tool"] == "execute_plan"
         model = entry["args_model"]
         assert model(clip_path="/x/clip/S.clip", step="CMP").comp_dir == ""
@@ -446,7 +446,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl("/r/x/clip/S.clip", step="CMP", start_frame=1001)
+            server._prepare_comp_render_impl("/r/x/clip/S.clip", step="CMP", start_frame=1001)
             code = m.call_args[0][0]
         assert "flame.batch.start_frame = _sf" in code
         assert "_sf = 1001" in code
@@ -503,7 +503,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert "_sf = 1001" in code and "_dur = 100" in code
         assert "derived from the conformed clip" in code
@@ -514,7 +514,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl("/r/x/clip/S.clip", step="CMP")
+            server._prepare_comp_render_impl("/r/x/clip/S.clip", step="CMP")
             code = m.call_args[0][0]
         assert "_sf = 0" in code
         assert "NOT derivable" in code
@@ -525,7 +525,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert "wf.range_start" in code and "wf.range_end" in code
         assert 'print("ALIGNMENT: batch start "' in code
@@ -593,7 +593,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         wf = self._write_file_node(1001, 1002)          # <Range Start=1001 End=1002/>
         out, batch = self._run_generated(code, wf)
@@ -611,7 +611,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
 
         class _Locked(TestFrameAlignment._Node):
@@ -637,7 +637,7 @@ class TestFrameAlignment:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._write_clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         wf = self._write_file_node(1001, 1100)
         out, _ = self._run_generated(code, wf)
@@ -667,7 +667,7 @@ class TestFrameAlignment:
         import flame_mcp._plan_schema as ps
         assert ps._OP_REGISTRY["setup_comp_batch"]["args_model"](
             shot="S", clip_path="/x/clip/S.clip", step="CMP").start_frame == 0
-        assert ps._OP_REGISTRY["fix_comp_writefile"]["args_model"](
+        assert ps._OP_REGISTRY["prepare_comp_render"]["args_model"](
             clip_path="/x/clip/S.clip", step="CMP").start_frame == 0
 
     def test_recipe_gates_the_render_on_the_alignment_verdict(self):
@@ -695,7 +695,7 @@ class TestWriteFileNameFollowsTheStep:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(clip, **kw)
+            server._prepare_comp_render_impl(clip, **kw)
             return m.call_args[0][0]
 
     def test_setup_names_the_write_file_shot_step(self):
@@ -724,7 +724,7 @@ class TestWriteFileNameFollowsTheStep:
         import pytest as _pytest
         import flame_mcp._plan_schema as ps
         setup = ps._OP_REGISTRY["setup_comp_batch"]["args_model"]
-        fix = ps._OP_REGISTRY["fix_comp_writefile"]["args_model"]
+        fix = ps._OP_REGISTRY["prepare_comp_render"]["args_model"]
         with _pytest.raises(Exception):
             setup(shot="S", clip_path="/x/clip/S.clip")          # missing
         with _pytest.raises(Exception):
@@ -781,7 +781,7 @@ class TestTimecodeAnchorAndPadding:
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             if impl == "fix":
-                server._fix_comp_writefile_impl(clip, step="CMP", **kw)
+                server._prepare_comp_render_impl(clip, step="CMP", **kw)
             else:
                 server._setup_comp_batch_impl("S", clip, step="CMP", **kw)
             return m.call_args[0][0]
@@ -922,7 +922,7 @@ class TestBatchSourceIsTheLightRender:
         import flame_mcp.server as server
         with patch.object(server, "_call_flame") as m:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
-            server._fix_comp_writefile_impl(self._clip(tmp_path), step="CMP")
+            server._prepare_comp_render_impl(self._clip(tmp_path), step="CMP")
             code = m.call_args[0][0]
         assert "SOURCE LOOP" in code
         assert '"_CMP_" in _mp' in code

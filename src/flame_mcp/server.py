@@ -2227,10 +2227,12 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
         create a shot's comp batch group wired source Clip → Write File
         named '<shot>_<step>' (media-only, versioned; one op per shot,
         batchable in one plan; step = the comp Step's short_name from SG).
-      - fix_comp_writefile (clip_path, step, comp_dir?) — DESTRUCTIVE: repair
-        the ACTIVE batch's Write File (rename to '<Shot>_<step>', versioned
-        media-only pattern, batch start frame derived from the source clip,
-        read-back ALIGNMENT verdict).
+      - prepare_comp_render (clip_path, step, comp_dir?) — DESTRUCTIVE:
+        MANDATORY before every comp render, on every shot. Configures the
+        ACTIVE batch's Write File (rename to '<Shot>_<step>', versioned
+        media-only pattern, timecode, batch start frame and render range
+        derived from the source clip), saves the batch, and prints the
+        read-back ALIGNMENT verdict the render is gated on. Idempotent.
       - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
       - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
@@ -2785,7 +2787,7 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int, int] | None:
     open clip on disk (Chat 99 — the alignment must never depend on the
     console remembering to pass ``start_frame``).
 
-    In-vivo (Chat 99): the console called ``fix_comp_writefile`` without
+    In-vivo (Chat 99): the console called ``prepare_comp_render`` without
     ``start_frame`` and the op silently left the batch at 1-100, so the comp
     rendered ``0001-0100`` against a source spanning ``1001-1100`` — the
     conformed segment flipped to COMP showed 'no media'. The recipe told the
@@ -2951,7 +2953,7 @@ def _setup_comp_batch_impl(shot: str, clip_path: str, step: str, comp_dir: str =
         else:
             start_frame = 1
             sf_note = ("WARNING: start_frame NOT derivable from the clip — "
-                       "batch created at 1; run fix_comp_writefile with an "
+                       "batch created at 1; run prepare_comp_render with an "
                        "explicit start_frame before rendering")
     code_template = '''import flame, os, sys, io, json, time
 _prj_name = str(flame.projects.current_project.name).strip("'")
@@ -2997,7 +2999,7 @@ def _do_setup():
                 # NATIVE MODE from birth (Chat 99). A batch created in the
                 # old shape does not satisfy tk-flame's three gates, so a
                 # brand-new shot would publish nothing until someone ran
-                # fix_comp_writefile over it. The node is named after the
+                # prepare_comp_render over it. The node is named after the
                 # STEP because the Toolkit template's segment-name key builds
                 # the media folder from it; the shot comes from <shot name>.
                 ("name", {step!r}),
@@ -3094,17 +3096,31 @@ else:
     return _fmt(result)
 
 
-def _fix_comp_writefile_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
-    """Repair the ACTIVE batch's Write File settings (Chat 98 in-vivo).
+def _prepare_comp_render_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
+    """Configure the ACTIVE batch for a comp render, then PROVE it is aligned.
 
-    The first render exposed two configuration defects: ``create_clip_path``
+    MANDATORY first step of every comp delivery — it runs on every shot,
+    every time, and is idempotent. It was NOT named for what it does until
+    Chat 101: born in Chat 98 as ``fix_comp_writefile`` to repair two
+    configuration defects found in-vivo, the old name told every reader
+    "call this when the Write File is broken", which is the opposite of the
+    truth and exactly the inference that makes an agent skip a mandatory
+    step.
+
+    What it actually does: sets ``flame.batch.start_frame``, renames the
+    Write File to ``<Shot>_<step>``, points it at the Toolkit-template
+    paths, stamps the timecode the media must declare, pulls the render
+    range onto the source range, SAVES the batch — and then reads it all
+    back and prints one ``ALIGNMENT:`` verdict, which is the gate the recipe
+    decides to render on. The wired comp graph is never touched.
+
+    The two original defects it still guards against: ``create_clip_path``
     was passed WITH the ``.clip`` extension — Flame appends its own, so the
     comp version registered into ``<Shot>.clip.clip`` instead of the
     conformed clip — and no ``media_path_pattern`` was set, so frames landed
-    flat and unversioned. This op re-sets both on the Write File of the
-    CURRENTLY OPEN batch (the active batch cannot be switched from Python;
-    the operator opens each group and runs this once), without touching the
-    wired comp graph.
+    flat and unversioned. Operates on the CURRENTLY OPEN batch only (the
+    active batch cannot be switched from Python; the operator opens each
+    group and runs this once).
 
     NAME (Chat 99): the Write File is RENAMED to ``<Shot>_<step>`` (Shot =
     the clip filename stem, ``step`` = the comp Step's short_name from SG)
@@ -3409,8 +3425,8 @@ _plan.register_op(
     ),
 )
 _plan.register_op(
-    "fix_comp_writefile",
-    lambda args: _fix_comp_writefile_impl(
+    "prepare_comp_render",
+    lambda args: _prepare_comp_render_impl(
         clip_path=args.clip_path, step=args.step, comp_dir=args.comp_dir,
         start_frame=args.start_frame,
     ),

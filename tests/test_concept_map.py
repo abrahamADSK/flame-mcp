@@ -635,7 +635,7 @@ class TestPostRenderCycle:
 
     def test_write_file_is_configured_and_saved_before_rendering(self):
         step8 = self._recipe().split("RENDER AND DELIVER", 1)[1]
-        assert "fix_comp_writefile" in step8
+        assert "prepare_comp_render" in step8
         assert "SAVES the batch" in step8
         assert "ALIGNMENT" in step8
 
@@ -671,11 +671,11 @@ class TestRenderDeliverPointer:
 
     def test_step8_is_the_native_cycle_in_order(self):
         step8 = self._step8()
-        for frag in ("fix_comp_writefile", "render_batch", "Send to Review",
+        for frag in ("prepare_comp_render", "render_batch", "Send to Review",
                      "Flame Batch File", "openclip_create", "RENAME THE RENDERED CLIP",
                      "VERIFY THE ANCHOR", "flip"):
             assert frag in step8, frag
-        assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
+        assert step8.index("prepare_comp_render") < step8.index("render_batch") \
             < step8.index("openclip_create") < step8.index("RENAME THE RENDERED CLIP") \
             < step8.index("VERIFY THE ANCHOR")
 
