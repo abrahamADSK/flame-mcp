@@ -721,3 +721,92 @@ class TestTimecodeAnchorAndPadding:
     def test_explicit_start_frame_still_derives_padding(self, tmp_path):
         code = self._code(tmp_path, start_frame=2001)
         assert '("frame_padding", 4)' in code and "_sf = 2001" in code
+
+
+class TestBatchSourceIsTheLightRender:
+    """The comp batch must read the LIGHT render, never the conformed clip.
+
+    In-vivo (Chat 99): the batch imported the multi-version clip, so the
+    moment a COMP version became current its source resolved to the comp's
+    OWN output — the comp composited over itself and looked identical to the
+    light pass. Worse, after the comp media was rolled back Flame span
+    forever on 'Resize : Cannot access frame 35 ... _CMP_v001.1035.exr',
+    saturating the main thread until the bridge stopped answering.
+    """
+
+    XML = (
+        '<?xml version="1.0"?><clip type="clip" version="8"><tracks>'
+        '<track uid="BEAUTY:MasterBeauty"><feeds currentVersion="COMP_v001">'
+        '<feed vuid="LIGHT_v003"><startFrame>1001</startFrame><spans><span>'
+        '<duration>100</duration><path encoding="pattern">'
+        '/r/S/LGT/publish/renders/LGT/v003/S_LGT_v003.[1001-1100].exr'
+        '</path></span></spans></feed>'
+        '<feed vuid="COMP_v001"><startFrame>1001</startFrame><spans><span>'
+        '<duration>100</duration><path encoding="pattern">'
+        '/r/S/finishing/comp/S_CMP_v001/S_CMP_v001.[1001-1100].exr'
+        '</path></span></spans></feed>'
+        '</feeds></track></tracks></clip>'
+    )
+
+    def _clip(self, tmp_path, xml=None):
+        c = tmp_path / "finishing" / "clip" / "S.clip"
+        c.parent.mkdir(parents=True, exist_ok=True)
+        c.write_text(xml if xml is not None else self.XML)
+        return str(c)
+
+    def test_derives_the_light_media_and_skips_the_comp_feed(self, tmp_path):
+        import flame_mcp.server as server
+        got = server._derive_source_media(self._clip(tmp_path))
+        assert got == "/r/S/LGT/publish/renders/LGT/v003/S_LGT_v003.[1001-1100].exr"
+        assert "_CMP_" not in got
+
+    def test_derive_never_raises(self, tmp_path):
+        import flame_mcp.server as server
+        assert server._derive_source_media("/nope/S.clip") is None
+        assert server._derive_source_media(self._clip(tmp_path, "not xml")) is None
+        comp_only = self.XML.replace('vuid="LIGHT_v003"', 'vuid="COMP_v000"')
+        assert server._derive_source_media(self._clip(tmp_path, comp_only)) is None
+
+    def _setup_code(self, tmp_path, xml=None):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        clip = self._clip(tmp_path, xml)
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl("S", clip, step="CMP")
+            return m.call_args[0][0]
+
+    def test_setup_imports_the_light_render(self, tmp_path):
+        code = self._setup_code(tmp_path)
+        assert "S_LGT_v003.[1001-1100].exr" in code
+        assert "import_clip(_src_media or" in code
+        compile(code, "setup", "exec")
+
+    def test_unresolvable_source_falls_back_loudly(self, tmp_path):
+        """Falling back to the clip is allowed — doing it silently is not."""
+        code = self._setup_code(tmp_path, "<clip/>")
+        assert "_src_media = ''" in code
+        assert "WARNING: source media NOT derivable" in code
+        assert "read its own output" in code
+
+    def test_fix_op_flags_a_batch_that_reads_its_own_output(self, tmp_path):
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._clip(tmp_path), step="CMP")
+            code = m.call_args[0][0]
+        assert "SOURCE LOOP" in code
+        assert '"_CMP_" in _mp' in code
+        assert "re-point the source node" in code
+        compile(code, "fix", "exec")
+
+    def test_recipe_states_the_rule_and_the_evidence(self):
+        from flame_mcp.concept_map import CONCEPT_MAP
+        recipe = next(e for e in CONCEPT_MAP
+                      if e["concept"].startswith("build comp"))["recipe"]
+        assert "THE BATCH SOURCE IS THE LIGHT RENDER" in recipe
+        assert "FEEDBACK LOOP" in recipe
+        assert "SOURCE LOOP" in recipe
+        # the clip keeps its aggregating job — the two must not be confused
+        assert "the clip AGGREGATES for the timeline flip" in recipe

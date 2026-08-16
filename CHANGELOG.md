@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp batch reads the LIGHT render, never the conformed clip** (Chat
+  99, in-vivo — the cause behind two earlier symptoms): `setup_comp_batch`
+  imported the multi-version `.clip` as the batch's source, which is a
+  FEEDBACK LOOP. The clip aggregates Light+Comp, so the moment a COMP
+  version became current the source node resolved to the comp's OWN output:
+  the comp composited over itself and rendered visually identical to the
+  light pass (reported by the operator and unexplained at the time). Then,
+  after the comp media was rolled back, Flame span forever on
+  `Resize : Cannot access frame 35 … _CMP_v001.1035.exr`, saturating the
+  main thread until the bridge stopped answering. Nothing has needed the
+  aggregate as input since the Write File stopped creating clips (Chat 98):
+  the clip AGGREGATES for the timeline flip, the batch READS the light
+  render — different files, different jobs. `_derive_source_media` pulls the
+  light publish's `[first-last]` pattern out of the clip (skipping COMP
+  feeds) and the op imports that; an underivable source still falls back to
+  the clip but says so loudly. `fix_comp_writefile` gains a `SOURCE LOOP`
+  guard that flags batches created before this rule. +7 tests.
+
 - **The "restart Flame" warning now fires on a bridge detection, never on
   text** (Chat 99, in-vivo false alarm mid-render): the console told the
   operator that Flame had thrown an internal C++ exception and the
