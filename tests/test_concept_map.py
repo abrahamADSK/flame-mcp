@@ -672,11 +672,21 @@ class TestRenderDeliverPointer:
     def test_step8_is_the_native_cycle_in_order(self):
         step8 = self._step8()
         for frag in ("fix_comp_writefile", "render_batch", "Send to Review",
-                     "Flame Batch File", "openclip_create",
+                     "Flame Batch File", "openclip_create", "RENAME THE RENDERED CLIP",
                      "VERIFY THE ANCHOR", "flip"):
             assert frag in step8, frag
         assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
-            < step8.index("openclip_create") < step8.index("VERIFY THE ANCHOR")
+            < step8.index("openclip_create") < step8.index("RENAME THE RENDERED CLIP") \
+            < step8.index("VERIFY THE ANCHOR")
+
+    def test_rename_targets_the_clip_never_the_node(self):
+        """The node name is what {segment_name} resolves to, so renaming it
+        would break the very template match the native hook gates on."""
+        step8 = self._step8()
+        block = step8.split("RENAME THE RENDERED CLIP", 1)[1].split("VERIFY THE ANCHOR", 1)[0]
+        assert "shelf_reels" in block and "clip.name" in block
+        assert "do NOT touch the node name" in block
+        assert "<Shot>_<step>_v<version>" in block
 
     def test_the_task_link_is_mandatory_not_optional(self):
         """The one thing the native path leaves undone (Chat 99): the

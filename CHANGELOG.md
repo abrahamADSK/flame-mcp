@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The rendered clip is renamed after the open clip is regenerated**
+  (Chat 99, operator request): 'Add to Workspace' drops the render into the
+  batch's *Batch Renders* shelf reel named after the NODE, and the Toolkit
+  template forces that node to be the bare step (`CMP`) because
+  `{segment_name}` is what builds the media folder — so on screen it reads
+  as an anonymous `CMP`. Step 8f renames the CLIP to
+  `<Shot>_<step>_v<version>` and says explicitly not to touch the node name,
+  which is the very thing the native hook's template match depends on.
 - **Both delivery gaps closed** (Chat 99, operator: "no admito huecos"). The
   review movie is now native: with `batch_quicktime_template` configured
   (`flame_shot_comp_mov`, added to the pipeline config) tk-flame writes a
