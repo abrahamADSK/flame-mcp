@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp delivery must render in FOREGROUND** (Chat 99, measured
+  in-vivo — and it overrides the engine's usual "always use Background
+  Reactor" rule): Flame fires `batchExportEnd` when a background job is
+  **SENT**, not when it finishes, so tk-flame's native publish chain runs
+  against frames that do not exist yet. Timeline of the failure: job sent at
+  16:27:21, the hook warned "does not exist" at 16:27:25, the Reactor
+  finished frame 1100 at 16:28:08, and the quicktime transcode died at
+  16:28:13 with *"cannot be imported to be transcoded"*. The `.batch` and
+  render publishes and the Version all still land — **only the movie is
+  lost** — which makes the failure easy to miss entirely. Every earlier
+  validation passed only because the render option was passed explicitly as
+  Foreground; the console followed rule 13 and broke. Recipe step 8b and
+  `CLAUDE.md` rule 13 now both carry the exception.
+
 
 ## [1.20.0] — 2026-08-16
 - **A brand-new shot is born native** (Chat 99, operator question: "would

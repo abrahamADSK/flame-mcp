@@ -716,6 +716,17 @@ class TestRenderDeliverPointer:
         assert "PySequence.overwrite" in step8
         assert "one-based" in step8
 
+    def test_the_comp_render_must_be_foreground(self):
+        """Chat 99, measured: Flame fires batchExportEnd when a background
+        job is SENT, so tk-flame's publish chain transcodes frames that do
+        not exist yet. Publishes and Version still land — only the movie is
+        lost — which is exactly why the recipe has to say it out loud."""
+        step8 = self._step8()
+        assert "Foreground" in step8
+        assert "NOT Background Reactor" in step8
+        assert "when the job is SENT" in step8
+        assert "only the movie is lost" in step8
+
     def test_the_flip_stays_manual(self):
         """Operator requirement (Chat 99): showing both versions available
         and choosing one on camera is the point of the demo."""
