@@ -534,6 +534,116 @@ class TestFrameAlignment:
         assert "for _attr, _val in _settings" in code
         assert "def _gv(a):" in code and "_val(" not in code
 
+    # ---- the verdict is EXECUTED, not string-matched (Chat 101) ----
+    # Every test above asserts on the template TEXT, which is why a real
+    # defect shipped: the range correction was gated on "_rs != _sf", so a
+    # Write File already starting at 1001 skipped it, range_end stayed at
+    # 1002, and the verdict — comparing only the start — printed OK. The
+    # shot rendered 2 frames of 100. These tests run the generated code
+    # against a stubbed Flame and read the verdict it actually prints.
+
+    class _Node:
+        """Write File / Clip stand-in: attributes are plain values, which is
+        what Flame's PyAttribute degrades to once assigned (the template's
+        _gv helper accepts both)."""
+
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    def _run_generated(self, code, wf, batch_name="S_comp", iteration=1):
+        """exec the generated fix against a fake ``flame`` module, running the
+        idle event inline, and return everything it printed."""
+        import io as _io
+        import sys as _sys
+        import types
+        from contextlib import redirect_stdout
+
+        batch = self._Node(
+            name=batch_name, start_frame=0, nodes=[wf],
+            current_iteration_number=iteration,
+        )
+        flame_mod = types.ModuleType("flame")
+        flame_mod.batch = batch
+        flame_mod.projects = self._Node(current_project=self._Node(name="PRJ"))
+        flame_mod.schedule_idle_event = lambda fn: fn()
+        saved = _sys.modules.get("flame")
+        _sys.modules["flame"] = flame_mod
+        buf = _io.StringIO()
+        try:
+            with redirect_stdout(buf):
+                exec(compile(code, "fix", "exec"), {"__name__": "__main__"})
+        finally:
+            if saved is None:
+                _sys.modules.pop("flame", None)
+            else:
+                _sys.modules["flame"] = saved
+        return buf.getvalue(), batch
+
+    def _write_file_node(self, start, end):
+        return self._Node(
+            type="Write File", name="CMP", range_start=start, range_end=end,
+            frame_rate="25 fps", version_padding=3, basic_metadata="",
+            source_timecode="", record_timecode="",
+        )
+
+    def test_short_range_is_pulled_to_the_source_and_never_signed_off(self, tmp_path):
+        """THE Chat 101 regression: start already correct, end far too short."""
+        from unittest.mock import patch
+
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            code = m.call_args[0][0]
+        wf = self._write_file_node(1001, 1002)          # <Range Start=1001 End=1002/>
+        out, batch = self._run_generated(code, wf)
+        assert "write file range pulled to 1001-1100" in out
+        assert int(wf.range_end) == 1100                # the fix, not the report
+        assert "-> OK" in out and "MISALIGNED" not in out
+        assert "1001-1100 (100 frames)" in out          # both counts are visible
+        assert int(batch.start_frame) == 1001
+
+    def test_unfixable_short_range_is_reported_misaligned_with_the_reason(self, tmp_path):
+        """When Flame refuses the write, the verdict must BLOCK the render and
+        name the mismatch — the recipe gates on this line."""
+        from unittest.mock import patch
+
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            code = m.call_args[0][0]
+
+        class _Locked(TestFrameAlignment._Node):
+            def __setattr__(self, k, v):
+                if k in ("range_start", "range_end"):
+                    raise RuntimeError("read-only")
+                object.__setattr__(self, k, v)
+
+        wf = _Locked(
+            type="Write File", name="CMP", range_start=1001, range_end=1002,
+            frame_rate="25 fps", version_padding=3, basic_metadata="",
+            source_timecode="", record_timecode="",
+        )
+        out, _ = self._run_generated(code, wf)
+        assert "MISALIGNED" in out and "-> OK" not in out
+        assert "write file ends at 1002, source needs 1100" in out
+        assert "do not render" in out
+
+    def test_matching_range_still_reports_ok(self, tmp_path):
+        """The happy path must not regress into a false MISALIGNED."""
+        from unittest.mock import patch
+
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._fix_comp_writefile_impl(self._write_clip(tmp_path), step="CMP")
+            code = m.call_args[0][0]
+        wf = self._write_file_node(1001, 1100)
+        out, _ = self._run_generated(code, wf)
+        assert "-> OK" in out and "MISALIGNED" not in out
+        assert "write file range pulled" not in out     # nothing to correct
+
     def test_setup_derives_start_frame_by_default(self, tmp_path):
         from unittest.mock import patch
         import flame_mcp.server as server
