@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`fix_comp_writefile` signed off a 2-frame render as aligned** (Chat 101,
+  measured on SEQ003_SH002). Two defects in the same read-back block:
+  the range correction was gated on `_rs != _sf`, so a Write File whose
+  `range_start` already matched the batch start skipped it entirely and
+  `range_end` was never touched; and the `ALIGNMENT:` verdict compared only
+  the START (`_bs == _sf and _rs == _sf`), never the end. The node sat at
+  `<Range Start="1001" End="1002" Span="100"/>`, the op printed `-> OK`, the
+  recipe rendered on that verdict, and the shot delivered **2 frames of 100**.
+  The range is now pulled whenever EITHER end disagrees, the verdict checks
+  both ends and NAMES the mismatch, and both frame counts appear on the line.
+- **`render_batch` claimed it did not wait — in Foreground it does.**
+  `flame.batch.render()` BLOCKS the main thread in Foreground, so the outcome
+  file is written when the render ENDS; the tool nonetheless returned "this
+  call does not wait for completion" and wrote `OK: render started` either
+  way. The agent concluded it had no completion signal and handed the wheel
+  back to the operator, abandoning the rest of the delivery cycle on every
+  run. Foreground now reports the blocking semantics, writes
+  `OK: render finished`, and instructs the caller to poll disk itself. The
+  result file is also DELETED before scheduling, so its reappearance — not
+  its mere existence — is the signal (a stale file was byte-identical to a
+  fresh one).
+
+### Changed
+- **Comp delivery recipe (`resolve_concept` → STEP 8)**: 8a now requires the
+  `ALIGNMENT:` line to be relayed VERBATIM with both frame counts (it was
+  summarised as "aligned, 100 frames" while the node was set to 1001-1002);
+  8b gains the concrete WAIT mechanism — poll the version folder on disk for
+  the expected frame count, stable across two reads, plus the outcome file —
+  and forbids handing the wheel back to the operator, which is what left
+  steps (e) and (f) unrun in Chats 100 and 101.
+- **Recipe step 8e** now passes `steps=['LGT']` (the Step **short_name**), not
+  `['Light']`: the selector matches either, but the string passed becomes the
+  uid prefix uppercased, so `'Light'` silently relabels the light layer
+  `LIGHT_v003` where the conformed clip carries `LGT_v003`. The rationale for
+  `extra_publish_types` is corrected too — it is required because of the
+  publish TYPE (`Flame Render` vs the selector's `Rendered Image`), NOT
+  because the native publish lacks a Task, which Chat 100 measured to be
+  false.
+
+### Tests
+- The alignment verdict is now EXECUTED against a stubbed `flame` module
+  rather than string-matched against the template, and the three new cases
+  were confirmed to FAIL against the pre-fix code. String-matching the
+  generated template is what let this defect ship.
+
 ## [1.20.1] — 2026-08-16
 - **The comp delivery must render in FOREGROUND** (Chat 99, measured
   in-vivo — and it overrides the engine's usual "always use Background
