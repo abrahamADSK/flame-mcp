@@ -53,6 +53,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were confirmed to FAIL against the pre-fix code. String-matching the
   generated template is what let this defect ship.
 
+### Validated in-vivo
+Both fixes were exercised end to end on SEQ003_SH002 (Flame 2027.0.1) after
+the code landed:
+- `fix_comp_writefile` printed `write file range pulled to 1001-1100` — the
+  correction the old guard skipped — and the verdict read
+  `write file range 1001-1100 (100 frames) | source 1001-1100 (100 frames)
+  -> OK`. The render produced 100/100 EXR, zero zero-byte.
+- The console ran the whole delivery cycle (8a→8g) without once asking the
+  operator whether the render had finished, and closed with all six
+  conformed segments reading `source_in 00:00:40:01` — the anchor survived,
+  including the light layer's uid changing from a bare `v003` to `LGT_v003`
+  when the clip was regenerated with `steps=['LGT']`.
+- `sg_uploaded_movie` was populated by the recipe, not by hand — the open
+  question from Chat 100.
+
 ## [1.20.1] — 2026-08-16
 - **The comp delivery must render in FOREGROUND** (Chat 99, measured
   in-vivo — and it overrides the engine's usual "always use Background
