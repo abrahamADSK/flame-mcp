@@ -556,9 +556,10 @@ class TestFrameAlignment:
         from flame_mcp.concept_map import CONCEPT_MAP
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
-        assert "FRAME ALIGNMENT is AUTOMATIC" in recipe
-        assert "render ONLY on OK" in recipe
-        assert "NUMBERING CHECK" in recipe and ".1001.exr, not .0001.exr" in recipe
+        # Chat 99: the recipe now hands publishing to tk-flame, and the
+        # alignment gate lives in the op's own ALIGNMENT verdict.
+        assert "ALIGNMENT" in recipe and "-> OK" in recipe
+        assert "frame padding and start frame derived from the source" in recipe
         # the old wording asked the console to pass the value — gone
         assert "pass start_frame = the source media's FIRST frame" not in recipe
 
@@ -613,8 +614,11 @@ class TestWriteFileNameFollowsTheStep:
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
         assert "short_name READ from ShotGrid" in recipe
-        assert "'<shot>_<step>'" in recipe and "{Shot}_{Step}_v<version>" in recipe
-        assert "leaked into the PublishedFile code" in recipe
+        # Chat 99: the node is named after the step because that is what the
+        # Toolkit template's {segment_name} resolves to — the gate the native
+        # tk-flame hook checks before it will publish anything.
+        assert "node named after the step" in recipe
+        assert "MATCHES the Toolkit templates" in recipe
 
 
 class TestTimecodeAnchorAndPadding:

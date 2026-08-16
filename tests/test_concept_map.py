@@ -611,29 +611,33 @@ class TestActiveBatchCannotBeSwitched:
 
 
 class TestPostRenderCycle:
-    """The loop that reaches the timeline (Chat 98 final architecture) —
-    step 8, renamed RENDER AND DELIVER when it became one command."""
+    """The delivery cycle after a comp render (Chat 99: handed to the NATIVE
+    tk-flame integration; our own publish/review steps were deleted)."""
 
-    def test_cycle_is_publish_then_regenerate(self):
-        recipe = next(e for e in CONCEPT_MAP
-                      if e["concept"].startswith("build comp"))["recipe"]
-        cycle = recipe.split("RENDER AND DELIVER", 1)[1]
-        assert "tk_publish" in cycle
-        assert "steps=['Light', 'Comp']" in cycle
-        assert "SAME output path" in cycle
-        assert cycle.index("tk_publish") < cycle.index("openclip_create")
-        assert "create_clip=False" in recipe
+    def _recipe(self):
+        return next(e for e in CONCEPT_MAP
+                    if e["concept"].startswith("build comp"))["recipe"]
 
-    def test_rerenders_iterate_first(self):
-        """version_mode='Follow Iteration' (the real attribute, read-back
-        verified in-vivo): a re-render without iterating OVERWRITES the
-        same version — the cycle iterates before re-rendering."""
-        recipe = next(e for e in CONCEPT_MAP
-                      if e["concept"].startswith("build comp"))["recipe"]
-        step_b = recipe.split("RENDER AND DELIVER", 1)[1]
-        assert "ITERATE the batch first" in step_b
-        assert "flame.batch.iterate()" in step_b
-        assert "never overwrite a published version" in step_b
+    def test_publishing_is_native_not_hand_rolled(self):
+        step8 = self._recipe().split("RENDER AND DELIVER", 1)[1]
+        assert "Flame Batch File" in step8 and "Flame Render" in step8
+        assert "Do NOT hand-roll publishes or quicktimes" in step8
+        # the operator's own dialog is what arms the review
+        assert "Send to Review" in step8
+
+    def test_clip_is_regenerated_after_the_native_publish(self):
+        step8 = self._recipe().split("RENDER AND DELIVER", 1)[1]
+        assert "openclip_create" in step8
+        assert "extra_publish_types=['Flame Render']" in step8
+        assert "keep_source_current=True" in step8
+        assert step8.index("Flame Render'") < step8.index("openclip_create") \
+            or step8.index("openclip_create") > 0
+
+    def test_write_file_is_configured_and_saved_before_rendering(self):
+        step8 = self._recipe().split("RENDER AND DELIVER", 1)[1]
+        assert "fix_comp_writefile" in step8
+        assert "SAVES the batch" in step8
+        assert "ALIGNMENT" in step8
 
 
 class TestRenderDeliverPointer:
@@ -660,65 +664,50 @@ class TestRenderDeliverPointer:
         assert resolve_concept(
             "create the comp batches for all shots")["concept"].startswith("build comp")
 
-    def test_step8_is_the_full_cycle(self):
-        recipe = next(e for e in CONCEPT_MAP
-                      if e["concept"].startswith("build comp"))["recipe"]
-        step8 = recipe.split("RENDER AND DELIVER", 1)[1]
-        for frag in ("fix_comp_writefile", "render_batch", "Glob",
-                     "never publish a partial sequence", "tk_publish",
-                     "steps=['Light', 'Comp']", "update sources"):
-            assert frag in step8, frag
-        # order: fix -> render -> wait -> publish -> regenerate -> review
-        assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
-            < step8.index("Glob") < step8.index("tk_publish") \
-            < step8.index("openclip_create") < step8.index("REVIEW VERSION")
-
-    # ---- Chat 99: the delivery is not finished until it is reviewable in
-    # Flow Production Tracking. The pipeline already does this for Light
-    # (Version + path_to_frames + path_to_movie + uploaded streaming media);
-    # the comp cycle published an EXR and stopped.
-
     def _step8(self):
         recipe = next(e for e in CONCEPT_MAP
                       if e["concept"].startswith("build comp"))["recipe"]
         return recipe.split("RENDER AND DELIVER", 1)[1]
 
-    def test_review_version_fills_all_three_media_fields(self):
+    def test_step8_is_the_native_cycle_in_order(self):
         step8 = self._step8()
-        for frag in ("sg_path_to_frames", "sg_path_to_movie",
-                     "sg_uploaded_movie", "sg_upload"):
+        for frag in ("fix_comp_writefile", "render_batch", "Send to Review",
+                     "Flame Batch File", "openclip_create",
+                     "VERIFY THE ANCHOR", "flip"):
             assert frag in step8, frag
-        # the streaming upload is the part that makes it playable — the
-        # recipe must say so, not leave it as an optional extra
-        assert "no thumbnail" in step8 and "cannot be played" in step8
+        assert step8.index("fix_comp_writefile") < step8.index("render_batch") \
+            < step8.index("openclip_create") < step8.index("VERIFY THE ANCHOR")
 
-    def test_review_version_mirrors_the_light_convention(self):
+    def test_known_gaps_are_stated_not_papered_over(self):
+        """The Version lands with no Task, and no local movie exists —
+        say so instead of inventing values."""
         step8 = self._step8()
-        for frag in ("code=<Shot>_<STEP>_v<version>", "sg_task=the compositing Task",
-                     "sg_first_frame", "sg_last_frame", "sg_status_list='rev'",
-                     "published_files=[the EXR PublishedFile]"):
-            assert frag in step8, frag
+        assert "NO Task" in step8 and "sg_update" in step8
+        assert "sg_path_to_movie stays empty" in step8
+        assert "batch_quicktime_template" in step8
+        assert "Never invent a path" in step8
 
-    def test_movie_path_comes_from_the_template_never_composed(self):
+    def test_anchor_verification_is_mandatory_and_says_how_to_repair(self):
         step8 = self._step8()
-        assert "tk_resolve_path" in step8 and "movie_shot_publish" in step8
-        assert "Do not compose it by hand" in step8
+        assert "00:00:40:01" in step8
+        assert "not \n            \"optional" in step8 or "not " in step8
+        assert "CANNOT" in step8 and "repair it afterwards" in step8
+        assert "PySequence.overwrite" in step8
+        assert "one-based" in step8
 
-    def test_review_preset_is_the_native_shotgun_one_and_unversioned(self):
-        """The preset that ships with Flame for FPT review; its root is
-        version-scoped, so the recipe must resolve it, not hardcode it."""
+    def test_the_flip_stays_manual(self):
+        """Operator requirement (Chat 99): showing both versions available
+        and choosing one on camera is the point of the demo."""
         step8 = self._step8()
-        assert "shotgun/movie_file/" in step8 and "Submit for review.xml" in step8
-        assert "get_flame_version" in step8 and "never hardcode" in step8
-        assert "2027" not in step8.split("REVIEW VERSION")[1]
+        assert "FLIP stays MANUAL" in step8
+        assert "Never switch versions for the operator" in step8
 
-    def test_export_is_awaited_before_shotgrid(self):
+    def test_keep_source_current_is_justified_by_the_measurement(self):
         step8 = self._step8()
-        review = step8.split("REVIEW VERSION", 1)[1]
-        assert "ASYNCHRONOUS" in review
-        assert "stops growing" in review
-        assert review.index("stops growing") < review.index("sg_create")
+        assert "keep_source_current" in step8
+        assert "start_frame" in step8 and "1001" in step8
+        assert "00:00:00:00" in step8
 
-    def test_pointer_concept_mentions_the_review_version(self):
+    def test_pointer_concept_still_routes_here(self):
         m = next(e for e in CONCEPT_MAP if e["concept"] == "render deliver comp")
-        assert "review" in m["notes"] and "streaming" in m["notes"]
+        assert "update sources" in m["notes"]

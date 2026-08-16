@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The comp delivery is handed to Flame's own tk-flame integration** (Chat
+  99, validated in-vivo end to end). Our hand-rolled publish and review steps
+  are DELETED: once the Write File's output matches the Toolkit templates,
+  Flame's `pre_batch_render_checks` / `post_batch_render_sg_process` hooks
+  publish the `.batch` (**Flame Batch File**) and the render (**Flame
+  Render**), create the Version with `sg_path_to_frames` and the frame range,
+  generate the quicktime and upload it — after the operator accepts Flame's
+  own *Send to Review* dialog, which is deliberately part of the on-camera
+  flow. Getting there took three gates: the render path had to match
+  `flame_shot_comp_exr` (the node is named after the Step so `{segment_name}`
+  resolves, with `<shot name>` supplying the shot), the setup path had to
+  match `flame_shot_batch` (`include_setup_path` redirected to
+  `../batch/<shot name>.v<version>`), and `create_clip` had to be ON —
+  without it Flame 2027 omits `versionNumber` from the hook payload and
+  tk-flame dies with `KeyError`. `create_clip_path` points at the node's OWN
+  clip, never at the conformed one (Chat 98).
+- **Step 8 now ends with a mandatory ANCHOR VERIFICATION** and states how to
+  repair: every segment's `source_in` must equal the source's first frame as
+  timecode, the failure is silent, and *Update Sources* cannot undo it — a
+  damaged segment is re-laid with `PySequence.overwrite(clip,
+  PyTime(record_in.frame + 1))`. The version **flip stays MANUAL** by
+  operator requirement: showing both versions available and choosing one on
+  camera is the point of the demo.
+- **Known gaps are written down rather than papered over**: the native
+  Version and both publishes carry no Task (the batch template has no `Step`
+  token), and `sg_path_to_movie` stays empty because the quicktime is
+  generated in a temp dir, uploaded and deleted — a persistent movie needs
+  `batch_quicktime_template` in the pipeline config, which is empty today.
+- **The release-tag invariant only counts release tags**: `git describe
+  --tags` picked up a snapshot marker and blocked every commit with a
+  nonsense version. Now `--match 'v[0-9]*'` (same one-line fix applied to
+  fpt-mcp and maya-mcp).
+
 - **The comp batch reads the LIGHT render, never the conformed clip** (Chat
   99, in-vivo — the cause behind two earlier symptoms): `setup_comp_batch`
   imported the multi-version `.clip` as the batch's source, which is a

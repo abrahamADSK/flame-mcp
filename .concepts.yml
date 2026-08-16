@@ -213,7 +213,11 @@ concepts:
           pattern: '^version\s*=\s*"([^"]+)"'
         b:
           source: command
-          cmd: "git describe --tags --abbrev=0 | sed 's/^v//'"
+          # --match: only RELEASE tags count. A non-release tag (e.g. a
+          # snapshot marker) is the most recent one to `git describe` and
+          # would otherwise fail this invariant with a nonsense "version"
+          # (Chat 99: snapshot/pre-shot-export blocked every commit).
+          cmd: "git describe --tags --abbrev=0 --match 'v[0-9]*' | sed 's/^v//'"
 
   single_install_script_at_root:
     description: >
