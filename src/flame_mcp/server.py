@@ -2802,6 +2802,44 @@ def _derive_source_frame_range(clip_path: str) -> tuple[int, int, int] | None:
     return None
 
 
+def _derive_source_media(clip_path: str) -> str | None:
+    """Return the SOURCE media pattern the comp batch must read (Chat 99).
+
+    The comp batch used to import the conformed multi-version ``.clip`` as
+    its source. That is a FEEDBACK LOOP: the moment a COMP version exists
+    and becomes current, the batch's source node resolves to the comp's own
+    output, so the comp composites over itself. In-vivo it produced a comp
+    visually identical to the light render, and later — after the comp media
+    was rolled back — Flame span forever on ``Resize : Cannot access frame
+    35 … _CMP_v001.1035.exr``, saturating the main thread.
+
+    Nothing requires the aggregate clip as input any more: the Write File
+    stopped creating clips in Chat 98 (``create_clip=False``). The clip's
+    job is to AGGREGATE Light+Comp for the timeline flip; the batch's job is
+    to read the light render. Those are different files and must stay so.
+
+    Returns the first non-COMP feed's ``<path encoding="pattern">`` — e.g.
+    ``…/LGT/publish/renders/LGT/v003/S_LGT_v003.[1001-1100].exr``, the
+    bracket form ``flame.batch.import_clip`` accepts — or ``None`` when the
+    clip is missing, not XML, or has no readable source feed. Never raises.
+    """
+    import xml.etree.ElementTree as _ET
+    try:
+        root = _ET.parse(clip_path).getroot()
+    except Exception:
+        return None
+    for feed in root.iter("feed"):
+        if str(feed.get("vuid") or "").upper().startswith("COMP"):
+            continue
+        for span in feed.iter("span"):
+            p_el = span.find("path")
+            text = (p_el.text or "").strip() if p_el is not None else ""
+            if text:
+                return text
+            break
+    return None
+
+
 def _frames_to_timecode(frames: int, fps: float) -> str:
     """Non-drop-frame ``HH:MM:SS:FF`` for a frame number at ``fps``.
 
@@ -2859,6 +2897,7 @@ def _setup_comp_batch_impl(shot: str, clip_path: str, step: str, comp_dir: str =
         comp_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(clip_path)), "comp")
     sf_note = ""
+    src_media = _derive_source_media(clip_path) or ""
     derived = _derive_source_frame_range(clip_path)
     padding = derived[2] if derived else 0
     if int(start_frame) <= 0:
@@ -2883,7 +2922,17 @@ def _do_setup():
         if {sf_note!r}:
             print({sf_note!r})
         bg = flame.batch.create_batch_group({bg_name!r}, reels=["sources"], start_frame={start_frame})
-        src = flame.batch.import_clip({clip_path!r}, "sources")
+        # The SOURCE is the light render, never the conformed clip: the
+        # clip aggregates Light+Comp, so importing it makes the comp read
+        # its own output once a COMP version becomes current (Chat 99).
+        _src_media = {src_media!r}
+        if not _src_media:
+            print("WARNING: source media NOT derivable from the clip — "
+                  "importing the conformed clip instead. Re-point the source "
+                  "node at the light render before rendering, or the comp "
+                  "will read its own output once a COMP version is current")
+        src = flame.batch.import_clip(_src_media or {clip_path!r}, "sources")
+        print("source: " + (_src_media or {clip_path!r}))
         if isinstance(src, list):
             src = src[0] if src else None
         if src is None:
@@ -2972,6 +3021,7 @@ else:
         clip_path=clip_path,
         clip_target=clip_target,
         comp_dir=comp_dir,
+        src_media=src_media,
         start_frame=int(start_frame),
         padding=int(padding) or 4,
         sf_note=sf_note,
@@ -3178,6 +3228,21 @@ def _do_fix():
                              if any(k in a.lower() for k in ("start", "offset", "duration", "timing", "record", "in_", "out_", "slip"))]
                     print("  source clip node: " + ", ".join(
                         k + "=" + repr(_gv(getattr(_c, k))) for k in _keys[:10]))
+                    # FEEDBACK LOOP guard (Chat 99): a batch created before
+                    # the fix imported the conformed clip, so its source
+                    # resolves to the COMP version once one exists — the
+                    # comp composites over its own output, and a rollback of
+                    # the comp media leaves Flame spinning on missing frames.
+                    try:
+                        _mp = str(_gv(_c.media_path))
+                        if _mp.startswith({comp_dir!r}) or "_CMP_" in _mp:
+                            print("SOURCE LOOP: the batch reads its own comp output ("
+                                  + _mp + ") — re-point the source node at the light "
+                                  "render publish before rendering")
+                        else:
+                            print("  source media: " + _mp)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             # Overwrite guard (info only): Follow Iteration writes v<current_iteration_number>.
