@@ -137,9 +137,16 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     Every `execute_python` call should end with a `print()` or return value so
     Claude can confirm success or failure.
 
-13. **Use Background Reactor for renders.**
-    Long renders block Flame's UI. Always use `render_option="Background Reactor"`
-    unless the user explicitly requests Foreground.
+13. **Use Background Reactor for renders — EXCEPT the comp delivery cycle.**
+    Long renders block Flame's UI, so default to
+    `render_option="Background Reactor"`.
+
+    **Exception (Chat 99, measured): the comp delivery cycle MUST render in
+    Foreground.** Flame fires `batchExportEnd` when a background job is
+    SENT, not when it finishes, so tk-flame's native publish chain runs
+    against frames that do not exist yet and the review quicktime dies with
+    "cannot be imported to be transcoded". The publishes and the Version
+    still land — only the movie is lost — so the failure is easy to miss.
 
 14. **Debug via logs when execute_python errors.**
     When a tool returns an unexpected error or Flame crashes, call
