@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- **The "restart Flame" warning now fires on a bridge detection, never on
+  text** (Chat 99, in-vivo false alarm mid-render): the console told the
+  operator that Flame had thrown an internal C++ exception and the
+  interface might be corrupted — while the render was completing normally
+  (100 frames, correct embedded timecode) and neither the app log nor the
+  shell log carried any exception. The warning was inferred from tool TEXT:
+  it fired when a result contained (`possibly_corrupted` OR
+  `unordered_map::at`) AND `ERROR:`, and a single `search_flame_docs`
+  response concatenates several chunks — `docs/flame_vocabulary.md` carries
+  an "Error messages" table listing `unordered_map::at` while other chunks
+  carry `print('ERROR: ...')` samples. Chat 98 had already narrowed this
+  heuristic once and it still misfired, because free-text scanning is the
+  wrong mechanism, not the wrong threshold. `_fmt` now prefixes a sentinel
+  (`CPP_CORRUPTION_SENTINEL`) when — and only when — the bridge set
+  `flame_state='possibly_corrupted'`, and the console matches that literal
+  and nothing else. Documentation is free to DESCRIBE the crash again. A
+  concept-registry entry pins the literal byte-identical in both files and
+  forbids the old substring scan from coming back. +8 tests.
+
 - **The comp cycle now creates the review Version in Flow Production
   Tracking** (Chat 99, operator request): the delivery published an EXR
   sequence and stopped, so the comp never appeared as reviewable media —
