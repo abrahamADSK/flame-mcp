@@ -383,3 +383,17 @@ flame-mcp's `install.sh` (Step 8) extracts tool names dynamically from `src/flam
 - Run the install.sh Python snippet standalone to verify detection: `grep -c "mcp__flame__" ~/.claude/settings.json`
 
 This ensures users never get permission prompts on first use of new tools.
+
+---
+
+## Skills owned by this repo
+
+Procedural knowledge for driving Flame through this server — `flame-batch-authoring`,
+`flame-delivery` — lives in `docs/skills/`, version controlled here and symlinked into
+`~/.claude/skills/` so it fires from any directory. **A skill ships in the same
+commit as the code it describes.** Setup, rationale and the fresh-clone activation
+command: [`docs/skills/README.md`](docs/skills/README.md).
+
+Put a *recipe* (which tools, in what order, what fails silently) in a skill; put
+*reference* (flags, fields, signatures) in the RAG corpus; put an *invariant that
+must be enforced* in code. Never duplicate across two of the three.

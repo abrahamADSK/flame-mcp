@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Skills layer** (`docs/skills/`): `flame-batch-authoring` and
+  `flame-delivery`. Version controlled here and symlinked into
+  `~/.claude/skills/`; `.claude/` is gitignored, which is why they do not live
+  there. See `docs/skills/README.md`.
+  - `flame-batch-authoring` extracts the **generic** batch contract — the
+    main-thread idle-event rule (reads included), the active group that cannot
+    be switched from Python, node-name scoping against the *active* group —
+    out of the comp-specific `build comp` recipe, where it only fired on comp
+    vocabulary despite biting on any graph.
+  - `flame-delivery` covers render → export → review Version → open clip, with
+    `flame-media-versioning` folded in. Its body separates **Flame truth**,
+    **tk-flame Toolkit behaviour** and **this facility only** into distinct
+    sections, so a local accident — the colour preset that exists only in this
+    framestore — is never read as product behaviour.
+
+### Note
+- The threading and active-group contracts are now **duplicated** between
+  `flame-batch-authoring` and the `build comp` recipe in `concept_map.py`.
+  This is deliberate and temporary. Removing them from the recipe bets on the
+  skill always firing, and the recipe's keyword router has a documented failure
+  mode (`concept_map.py:663-666`, "three failed queries per session"); if the
+  skill does not fire, the agent loses the threading contract entirely, which
+  ends in a Flame crash. Deduplicate once the skills have proven they fire in
+  real use — not before.
+
 ## [1.22.0] — 2026-08-16
 
 ### Changed — BREAKING
