@@ -288,6 +288,31 @@ session_stats()                   ← show token summary
 
 ---
 
+## Skills (2)
+
+Tools are what the server can *do*. Skills are the **recipe** — which tools, in
+what order, and what fails silently. They live in [`docs/skills/`](docs/skills/),
+version controlled with the code they describe, and load only when the request
+matches their trigger, so they cost almost nothing until they are relevant.
+
+| Skill | Fires on |
+|---|---|
+| `flame-batch-authoring` | Any `flame.batch` call, **reads included**: the main-thread idle-event contract, the active group that cannot be switched from Python, node-name scoping |
+| `flame-delivery` | Render → export → review Version → open clip: export deadlocks, a start frame that moves with the current version, presets that apply no colour |
+
+Activate them on a fresh clone by symlinking into your user skills directory:
+
+```bash
+for s in flame-batch-authoring flame-delivery; do
+  ln -s "$PWD/docs/skills/$s" ~/.claude/skills/"$s"
+done
+```
+
+`flame-delivery` keeps **Flame truth**, **tk-flame Toolkit behaviour** and **this
+facility only** in separate sections, so a local configuration accident is never
+read as product behaviour. See [`docs/skills/README.md`](docs/skills/README.md)
+for the four-layer split (tool / skill / RAG / memory).
+
 ## Self-improving RAG
 
 The system maintains a local semantic search index (`rag/index/`) built from all documents in the `docs/` folder plus `FLAME_API.md`. Before every `execute_python` call, Claude searches this index to find the correct API pattern — avoiding guesswork and saving tokens.
@@ -378,6 +403,9 @@ flame-mcp/
 ├── rag/
 │   ├── corpus.json            # Chunked corpus (BM25 source, git-tracked)
 │   └── index/                 # ChromaDB vector store (git-ignored)
+├── docs/skills/               # Claude Code skills (symlinked into ~/.claude/skills/)
+│   ├── flame-batch-authoring/ # Batch/BFX graph authoring contract
+│   └── flame-delivery/        # Render → export → review Version → open clip
 ├── FLAME_API.md               # Flame Python API reference + patterns (RAG source)
 ├── CLAUDE.md                  # Instructions for Claude Code terminal context
 ├── claude_desktop_config.json # Claude Desktop MCP config (copy to ~/Library/...)
