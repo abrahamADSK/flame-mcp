@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-09-28
+
 ### Added
 - **Skills layer** (`docs/skills/`): `flame-batch-authoring` and
   `flame-delivery`. Version controlled here and symlinked into
