@@ -553,12 +553,20 @@ def _handle_connection(conn):
         if not _is_dt:
             _has_creation = bool(_BRIDGE_CREATION_INTENT_RE.search(code))
             try:
-                with open("/tmp/flame_mcp_redirect.log", "a") as _rf:
+                # Owner-only: this records a slice of the code about to run
+                # inside Flame, and it lives in a world-readable /tmp. The main
+                # bridge log is already restricted the same way.
+                _rf_path = "/tmp/flame_mcp_redirect.log"
+                with open(_rf_path, "a") as _rf:
                     _rf.write(
                         f"CHECK: code={code[:80]!r} "
                         f"patterns={len(_BRIDGE_REDIRECT_PATTERNS)} "
                         f"creation={_has_creation}\n"
                     )
+                try:
+                    os.chmod(_rf_path, 0o600)
+                except Exception:
+                    pass
             except Exception:
                 pass
             for _pat, _msg in _BRIDGE_REDIRECT_PATTERNS:

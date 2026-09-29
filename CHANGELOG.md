@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **The redirect-check log is now owner-only.** `/tmp/flame_mcp_redirect.log`
+  records the first 80 characters of every payload about to run inside Flame, and
+  was opened with no `chmod` — so it inherited the umask in a world-readable
+  `/tmp`, while the main bridge log was already restricted to `0o640`. Now
+  `chmod 0o600`, closing the asymmetry.
+
 ## [1.23.0] — 2026-09-28
 
 ### Added
