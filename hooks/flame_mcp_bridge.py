@@ -10,7 +10,7 @@ Installation:
 
 Restart Flame after installing. The bridge activates automatically on startup.
 
-Default port: 4444 (localhost only)
+Transport: UNIX domain socket, owner-only (0600). No TCP.
 
 Flame menu  (MCP Bridge in main menu bar):
     Status indicator  — shows Active / Inactive
@@ -22,6 +22,7 @@ Flame menu  (MCP Bridge in main menu bar):
 import os
 import threading
 import socket
+import struct
 import json
 import traceback
 import sys
@@ -95,8 +96,6 @@ except Exception:
     def log_usage(usage, console, dest=None):
         pass
 
-BRIDGE_HOST = '127.0.0.1'
-BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
 # ── Dynamic project root detection ────────────────────────────────────────────
 # Note: _BRIDGE_SOCKET_PATH is set after _PROJECT_ROOT is known (see below)
@@ -452,44 +451,50 @@ def _run_server():
     _use_unix = hasattr(socket, 'AF_UNIX')
     _bound_ok = False
 
-    if _use_unix:
-        run_dir = os.path.dirname(_BRIDGE_SOCKET_PATH)
+    # UNIX DOMAIN SOCKET ONLY. There used to be a TCP fallback to
+    # 127.0.0.1:4444 when this bind failed, and it was removed deliberately:
+    # a connection here is handed straight to exec() inside Flame, so the
+    # transport IS the access control. File permissions make that control real
+    # — the kernel refuses another account outright — and a loopback TCP socket
+    # has no owner at all, so any local account could have driven Flame. The
+    # fallback therefore degraded security, silently, on a path nobody tested.
+    #
+    # It also protected against almost nothing: AF_UNIX exists on every
+    # platform Flame runs on, the socket paths are far short of the ~104-byte
+    # sun_path limit, and a stale socket file is already unlinked below. So the
+    # failure is now honest — the bridge does not start, and says why.
+    if not hasattr(socket, 'AF_UNIX'):
+        print("[FlameMCPBridge] ERROR: AF_UNIX unavailable; refusing to start. "
+              "A TCP transport would expose arbitrary code execution inside "
+              "Flame to every local account.", file=sys.stderr)
+        return
+
+    run_dir = os.path.dirname(_BRIDGE_SOCKET_PATH)
+    try:
+        os.makedirs(run_dir, exist_ok=True)
+        os.chmod(run_dir, 0o700)
+    except Exception:
+        pass
+    # Remove a stale socket file left over from a previous Flame session
+    if os.path.exists(_BRIDGE_SOCKET_PATH):
         try:
-            os.makedirs(run_dir, exist_ok=True)
-            os.chmod(run_dir, 0o700)
+            os.unlink(_BRIDGE_SOCKET_PATH)
         except Exception:
             pass
-        # Remove stale socket file left over from a previous Flame session
-        if os.path.exists(_BRIDGE_SOCKET_PATH):
-            try:
-                os.unlink(_BRIDGE_SOCKET_PATH)
-            except Exception:
-                pass
-        _server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    _server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        _server_socket.bind(_BRIDGE_SOCKET_PATH)
+        os.chmod(_BRIDGE_SOCKET_PATH, 0o600)  # owner-only access
+        _bound_ok = True
+    except OSError as e:
+        print(f"[FlameMCPBridge] ERROR: Unix socket bind failed: {e}. "
+              f"Not starting — there is no fallback transport by design.",
+              file=sys.stderr)
         try:
-            _server_socket.bind(_BRIDGE_SOCKET_PATH)
-            try:
-                os.chmod(_BRIDGE_SOCKET_PATH, 0o600)  # owner-only access
-            except Exception:
-                pass
-            _bound_ok = True
-        except OSError as e:
-            print(f"[FlameMCPBridge] Unix socket bind failed: {e} — falling back to TCP",
-                  file=sys.stderr)
-            try:
-                _server_socket.close()
-            except Exception:
-                pass
-            _use_unix = False
-
-    if not _use_unix:
-        _server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        _server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            _server_socket.bind((BRIDGE_HOST, BRIDGE_PORT))
-            _bound_ok = True
-        except OSError as e:
-            print(f"[FlameMCPBridge] ERROR opening port {BRIDGE_PORT}: {e}", file=sys.stderr)
+            _server_socket.close()
+        except Exception:
+            pass
+        return
 
     if not _bound_ok:
         return
@@ -497,15 +502,18 @@ def _run_server():
     _server_socket.listen(5)
     _bridge_active = True
 
-    if _use_unix:
-        print(f"[FlameMCPBridge] Active on {_BRIDGE_SOCKET_PATH} (Unix socket)")
-    else:
-        print(f"[FlameMCPBridge] Active on {BRIDGE_HOST}:{BRIDGE_PORT} (TCP fallback)")
+    print(f"[FlameMCPBridge] Active on {_BRIDGE_SOCKET_PATH} (Unix socket, owner-only)")
 
     while _bridge_active:
         try:
             _server_socket.settimeout(1.0)
             conn, _addr = _server_socket.accept()
+            if not _peer_is_owner(conn):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                continue
             t = threading.Thread(target=_handle_connection, args=(conn,), daemon=True)
             t.start()
         except socket.timeout:
@@ -514,6 +522,39 @@ def _run_server():
             break
 
     _bridge_active = False
+
+
+def _peer_is_owner(conn) -> bool:
+    """Reject a connection whose process does not belong to this user.
+
+    A second layer behind the socket's 0600 mode, which the kernel already
+    enforces. It matters when the mode is not what we think — a socket
+    recreated by something else, an inherited descriptor, a umask surprise —
+    because what arrives here goes to exec() inside Flame.
+
+    macOS answers this for UNIX domain sockets through LOCAL_PEERCRED at level
+    0, returning a struct xucred whose first two 32-bit fields are the version
+    and the peer uid. A loopback TCP socket has no such answer, which is the
+    other half of why the TCP fallback is gone.
+
+    Fails OPEN on an unreadable credential: the 0600 mode is the primary
+    control, and refusing every connection because an optional probe failed
+    would take the bridge down for no security gain.
+    """
+    peercred = getattr(socket, 'LOCAL_PEERCRED', None)
+    if peercred is None:
+        return True
+    try:
+        raw = conn.getsockopt(0, peercred, 4 + 4 + 2 + 2 + 16 * 4)
+        _version, peer_uid = struct.unpack("=II", raw[:8])
+    except Exception:
+        return True
+    if peer_uid == os.getuid():
+        return True
+    _log(f"REJECTED connection from uid={peer_uid} (owner is {os.getuid()})")
+    print(f"[FlameMCPBridge] Rejected connection from uid {peer_uid}",
+          file=sys.stderr)
+    return False
 
 
 def _handle_connection(conn):
@@ -2465,7 +2506,7 @@ def _show_connection_test(selection):
     if _bridge_active:
         title = "MCP Bridge — Connected"
         msg = (f"Bridge is ACTIVE\n"
-               f"Listening on {BRIDGE_HOST}:{BRIDGE_PORT}\n\n"
+               f"Listening on {_BRIDGE_SOCKET_PATH}\n\n"
                f"Ready to receive commands from Claude.")
     else:
         title = "MCP Bridge — Not Connected"
@@ -2530,7 +2571,7 @@ def get_main_menu_custom_ui_actions():
             "name": f"MCP Bridge  [{status}]",
             "actions": [
                 {
-                    "name": f"Status: {status} — port {BRIDGE_PORT}",
+                    "name": f"Status: {status} — {os.path.basename(_BRIDGE_SOCKET_PATH)}",
                     "execute": _action_status,
                 },
                 {
@@ -2578,7 +2619,7 @@ def get_main_menu_custom_ui_actions():
 
 def _action_status(selection):
     status = "ACTIVE" if _bridge_active else "INACTIVE"
-    print(f"[FlameMCPBridge] Status: {status} — {BRIDGE_HOST}:{BRIDGE_PORT}")
+    print(f"[FlameMCPBridge] Status: {status} — {_BRIDGE_SOCKET_PATH}")
 
 
 def _action_start(selection):

@@ -92,7 +92,7 @@ _DEFAULT_BRIDGE_RESPONSE = {
 _BRIDGE_CONNECTION_ERROR = {
     "status": "error",
     "error":  (
-        "Cannot connect to Flame on port 4444.\n"
+        "Cannot connect to the Flame bridge socket.\n"
         "Check that:\n"
         "  1. Flame is open\n"
         "  2. flame_mcp_bridge.py is in /opt/Autodesk/shared/python/\n"

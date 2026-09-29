@@ -97,8 +97,12 @@ class TestConnectBridge:
             srv.close()
 
     def test_nothing_reachable(self, short_tmp, monkeypatch):
-        """Only a dead socket + TCP refused → ConnectionRefusedError so
-        the caller surfaces the standard guidance message."""
+        """A dead socket and nothing else → ConnectionRefusedError, so the
+        caller surfaces the standard guidance message.
+
+        There is no TCP fallback to fall through to any more: the transport is
+        the access control, and a loopback TCP socket has no owner the kernel
+        can check."""
         stale = os.path.join(short_tmp, "stale.sock")
         dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         dead.bind(stale)
@@ -107,6 +111,27 @@ class TestConnectBridge:
         monkeypatch.setattr(
             "flame_mcp.server._socket_candidates", lambda: [stale]
         )
-        monkeypatch.setattr("flame_mcp.server.BRIDGE_PORT", 1)  # → refused
         with pytest.raises(ConnectionRefusedError):
             _connect_bridge(timeout=2.0)
+
+
+class TestNoTcpFallback:
+    """The TCP fallback is gone deliberately, not by accident."""
+
+    def test_connect_never_opens_an_inet_socket(self, monkeypatch, short_tmp):
+        """Regression: a loopback TCP socket has no owner, so the kernel cannot
+        refuse another account — and what arrives goes to exec() inside Flame."""
+        opened = []
+        real_socket = socket.socket
+
+        def _spy(family=socket.AF_INET, *a, **kw):
+            opened.append(family)
+            return real_socket(family, *a, **kw)
+
+        monkeypatch.setattr(socket, "socket", _spy)
+        monkeypatch.setattr("flame_mcp.server._socket_candidates", lambda: [])
+
+        with pytest.raises(ConnectionRefusedError):
+            _connect_bridge(timeout=1.0)
+
+        assert socket.AF_INET not in opened

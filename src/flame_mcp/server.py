@@ -10,7 +10,7 @@ Usage:
 Requirements:
     pip install mcp>=1.26.0
 
-Bridge port: 4444 (must match flame_mcp_bridge.py)
+Bridge transport: UNIX domain socket, owner-only (must match flame_mcp_bridge.py)
 """
 
 import socket
@@ -323,8 +323,6 @@ def _stats_footer(mode: str | None = None) -> str:
         f"   Total avoided     : ~{saved_total}  ({ratio} of context)"
     )
 
-BRIDGE_HOST = '127.0.0.1'
-BRIDGE_PORT = int(os.environ.get('FLAME_BRIDGE_PORT', 4444))  # A8: override via env
 
 # A13 — Unix domain socket transport (more secure than TCP; owner-only file
 # permissions). F7 fix: resolve the socket at CONNECT time by probing
@@ -347,41 +345,37 @@ def _socket_candidates() -> list[str]:
 
 
 def _connect_bridge(timeout: float) -> socket.socket:
-    """Open a connection to the Flame bridge, probing transports in order.
+    """Open a connection to the Flame bridge over its UNIX domain socket.
 
-    Tries each EXISTING Unix-socket candidate by actually connecting; the
-    first that accepts wins. Falls back to TCP only when no Unix socket is
-    live. Raises ConnectionRefusedError when nothing is reachable so the
-    caller surfaces the standard guidance message. This probe-on-connect
-    design is what makes a stale leftover socket file harmless: a dead
-    socket refuses the connection and we move on to the next candidate
-    (and finally TCP), instead of trusting that the file's mere presence
-    means a live bridge.
+    Tries each EXISTING candidate by actually connecting; the first that accepts
+    wins. This probe-on-connect design is what makes a stale leftover socket
+    file harmless: a dead socket refuses and we move on to the next candidate,
+    instead of trusting that the file's mere presence means a live bridge.
+
+    There is **no TCP fallback**, by design. A connection here is executed
+    inside Flame, so the transport is the access control: the socket's 0600 mode
+    lets the kernel refuse another account, and a loopback TCP socket has no
+    owner for the kernel to check. The old fallback degraded that control
+    silently, on a path that never ran. Raises ConnectionRefusedError when
+    nothing is reachable, so the caller surfaces the standard guidance message.
     """
     last_exc: OSError = ConnectionRefusedError(
-        "no Flame bridge transport reachable"
+        "no Flame bridge socket reachable"
     )
-    if hasattr(socket, 'AF_UNIX'):
-        for cand in _socket_candidates():
-            if not os.path.exists(cand):
-                continue
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            try:
-                s.settimeout(timeout)
-                s.connect(cand)
-                return s
-            except OSError as exc:
-                last_exc = exc
-                s.close()
-    # TCP fallback — only reached when no Unix socket accepted.
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.settimeout(timeout)
-        s.connect((BRIDGE_HOST, BRIDGE_PORT))
-        return s
-    except OSError:
-        s.close()
+    if not hasattr(socket, 'AF_UNIX'):
         raise last_exc
+    for cand in _socket_candidates():
+        if not os.path.exists(cand):
+            continue
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            s.settimeout(timeout)
+            s.connect(cand)
+            return s
+        except OSError as exc:
+            last_exc = exc
+            s.close()
+    raise last_exc
 
 mcp = FastMCP(
     "flame",
@@ -639,7 +633,7 @@ def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> di
         return {
             'status': 'error',
             'error': (
-                'Cannot connect to Flame on port 4444.\n'
+                'Cannot connect to the Flame bridge socket.\n'
                 'Check that:\n'
                 '  1. Flame is open\n'
                 '  2. flame_mcp_bridge.py is in /opt/Autodesk/shared/python/\n'

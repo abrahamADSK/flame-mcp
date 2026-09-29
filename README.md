@@ -27,7 +27,7 @@ Claude → MCP Server → Unix socket → Flame Python API → Result back to Cl
 
 The system has two components:
 
-**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local Unix domain socket server when Flame launches (falls back to TCP port 4444 if AF_UNIX is unavailable). It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result.
+**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local **UNIX domain socket** server when Flame launches, restricted to its owner (`0600`, in a `0700` directory) and additionally checking the connecting process's UID. It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result. **There is no TCP transport**: what arrives here is executed, so the socket's file permissions *are* the access control, and a loopback TCP socket has no owner the kernel could check.
 
 **`src/flame_mcp/server.py`** — An MCP server that Claude launches. It exposes tools that Claude can call by name, translates natural language into Python code, and communicates with the bridge over the socket.
 
@@ -190,7 +190,7 @@ Selection is persisted to `~/flame-mcp/config.json` between sessions. The combo 
 
 Two different policies apply depending on what you are configuring:
 
-- **Socket transport** (`FLAME_BRIDGE_SOCKET`, `FLAME_BRIDGE_PORT`) — env var wins over any `config.json` default. Useful for overriding the bridge path in a dev sandbox without touching the committed config.
+- **Socket transport** (`FLAME_BRIDGE_SOCKET`) — env var wins over any `config.json` default. Useful for overriding the bridge path in a dev sandbox without touching the committed config.
 - **Model + backend + `ollama_url`** — `config.json` wins; there is no env var override. The Flame panel writes the user's choice back to `config.json` so selection is sticky across restarts.
 - **Anthropic credentials** (`ANTHROPIC_API_KEY`) — env var / `.env`, not `config.json`.
 
@@ -556,7 +556,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - Check `MCP Bridge → Status` in the Flame menu
 - Verify `flame_mcp_bridge.py` is in `/opt/Autodesk/shared/python/`
 - Check the Unix socket exists: `ls -la ~/flame-mcp/run/flame_mcp.sock` — should be `srw-------`
-- If Unix socket is absent, the bridge falls back to TCP; run `lsof -i :4444` to confirm Flame is listening
+- If the socket is absent the bridge is not running: there is no TCP fallback. Check Flame's console for the `[FlameMCPBridge] Active on …` line
 
 **Low RAG relevance scores on common operations**
 - If a pattern scores < 60%, Claude will auto-learn it after a successful run
@@ -588,8 +588,12 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 - The 480B model may take 2–5 minutes on first inference — the widget has a 5-minute watchdog
 - Check daemon logs: `journalctl --user -u ollama` (Linux) or `ollama serve` output (Mac)
 
-**Port 4444 is already in use**
-The bridge uses a Unix domain socket by default (`~/flame-mcp/run/flame_mcp.sock`), so TCP port 4444 is only used as a fallback when AF_UNIX is unavailable. If you still need to change the TCP fallback port, edit `BRIDGE_PORT = 4444` in both `flame_mcp_bridge.py` and `src/flame_mcp/server.py`. To override the socket path: set `FLAME_BRIDGE_SOCKET=/path/to/custom.sock` in your environment.
+**The bridge will not start**
+The bridge binds a UNIX domain socket and has **no fallback transport** — if the
+bind fails it says so on Flame's console and stops, rather than degrading to a
+transport with no access control. Override the path with
+`FLAME_BRIDGE_SOCKET=/path/to/custom.sock`; keep it short, since `sun_path` is
+capped near 104 bytes.
 
 **`pip install` fails with `--user` conflict**
 Add `--no-user` to pip commands. Happens when `install.user = true` is set globally.

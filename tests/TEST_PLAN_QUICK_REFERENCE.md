@@ -153,7 +153,7 @@ _DST = ToolAnnotations(readOnlyHint=False, destructiveHint=True)   # 1 tool (exe
 
 ### TCP Bridge (flame_mcp_bridge.py)
 - **Host**: 127.0.0.1 (localhost only)
-- **Port**: 4444 (override via `$FLAME_BRIDGE_PORT`)
+- **Transport**: UNIX domain socket, owner-only (override path via `$FLAME_BRIDGE_SOCKET`)
 - **Transport**: JSON protocol over TCP socket
 - **Request**: `{"code": "...", "timeout": 15}`
 - **Response**: `{"status": "ok"|"error", "output": "...", "error": "..."}`

@@ -279,11 +279,10 @@ dir(flame)
 
 | Problem | Cause | Solution |
 |---|---|---|
-| Claude can't connect to Flame | Bridge not running, or hook not installed | Open Flame > MCP Bridge > Status. Verify hook is in /opt/Autodesk/shared/python/. Run: `lsof -i :4444` |
+| Claude can't connect to Flame | Bridge not running, or hook not installed | Open Flame > MCP Bridge > Status. Verify hook is in /opt/Autodesk/shared/python/. Check Flame's console for `[FlameMCPBridge] Active on …` |
 | Low RAG scores (< 60%) on common operations | Pattern not documented in FLAME_API.md | flame-mcp auto-learns after a successful run. Or manually: `python rag/build_index.py` after editing FLAME_API.md |
 | Claude Chat doesn't open | ANTHROPIC_API_KEY missing | Check logs/flame_mcp_bridge.log. Set ANTHROPIC_API_KEY in environment or .env file. |
 | Hook changes not taking effect | Flame still running old version of hook | Copy hook: `sudo cp hooks/flame_mcp_bridge.py /opt/Autodesk/shared/python/`. Then: MCP Bridge → Reload hook (no Flame restart needed). |
-| Port 4444 in use | Another process is using port 4444 | Change BRIDGE_PORT in both flame_mcp_bridge.py and src/flame_mcp/server.py. Values must match. |
 | StopIteration in bridge log | next() call on empty iterator | Add fallback: `next((x for x in col if x.name == 'NAME'), None)` and check for None before flame.delete(). |
 | RAG index not found error | Index hasn't been built | `cd flame-mcp && source .venv/bin/activate && python rag/build_index.py` |
 

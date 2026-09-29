@@ -662,8 +662,9 @@ flame (module root)
 - ✓ Link to documentation section
 
 #### Bridge Security
-- ✓ TCP localhost-only binding (127.0.0.1:4444)
-- ✓ Port override via environment variable (FLAME_BRIDGE_PORT)
+- ✓ UNIX domain socket, 0600 in a 0700 directory
+- ✓ Peer UID checked on accept (LOCAL_PEERCRED)
+- ✓ No TCP transport — socket path override via FLAME_BRIDGE_SOCKET
 - ✓ Connection validation
 - ✓ Socket cleanup on disconnect
 
@@ -749,7 +750,7 @@ flame (module root)
 ### 8.1 Flame Instance Requirements
 - Flame 2026 running
 - Bridge installed: `/opt/Autodesk/shared/python/flame_mcp_bridge.py`
-- Bridge active on port 4444 (or `$FLAME_BRIDGE_PORT`)
+- Bridge active on its socket (or `$FLAME_BRIDGE_SOCKET`)
 - Default project loaded with:
   - ≥1 library with reels
   - ≥1 clip in reel for metadata testing

@@ -22,7 +22,7 @@
 
 `flame-mcp` is an **MCP server** for Autodesk Flame. It exposes 27 tools
 over MCP stdio and implements them by sending Python snippets to a hook
-running inside Flame over a local Unix-domain socket (TCP port 4444 as
+running inside Flame over a local UNIX domain socket, owner-only (no TCP
 fallback). A RAG index over the Flame Python API and a suite of curated
 `docs/*.md` files is consulted before every freeform code execution to
 keep the agent on documented API paths.
@@ -56,8 +56,10 @@ Two processes cooperate; they share `config.json` on disk but no memory:
 - **Unix domain socket** at `<repo>/run/flame_mcp.sock` (or
   `/tmp/flame_mcp.sock` when the repo path is not resolvable inside Flame).
   Override with `FLAME_BRIDGE_SOCKET` env var.
-- **TCP port 4444** is the fallback when `AF_UNIX` is unavailable. Override
-  with `FLAME_BRIDGE_PORT`. In practice macOS always has `AF_UNIX` and the
+- **There is no TCP transport.** It was removed: a connection is executed
+  inside Flame, so the socket's `0600` mode is the access control, and a
+  loopback TCP socket has no owner the kernel can check. In practice macOS
+  always has `AF_UNIX` and the
   TCP path is exercised only on exotic platforms.
 - **Wire format**: one JSON object per line. Client -> bridge:
   `{"code": "<python>"}` (optionally prefixed with `# DT\n` to mark the
@@ -97,7 +99,7 @@ No circular imports.
    snippet and calls `_call_flame(code, dedicated_tool=True)`.
 3. `_call_flame` prepends `# DT\n` so the bridge recognises it as trusted
    and skips the redirect-pattern safety check.
-4. The server connects to the Unix socket (or TCP 4444 fallback) and writes
+4. The server connects to the UNIX socket and writes
    the JSON line.
 5. Bridge `_handle_connection()` reads the line, detects `# DT`, strips it,
    and executes the payload in Flame's embedded Python (`exec()` inside a
@@ -203,7 +205,7 @@ Bridge (`flame_mcp_bridge.py::_load_model_config`):
 Keys: `model`, `backend`, `ollama_url`, `ollama_cloud_key`.
 
 Socket transport overrides (both processes):
-1. Env var: `FLAME_BRIDGE_SOCKET`, `FLAME_BRIDGE_PORT`.
+1. Env var: `FLAME_BRIDGE_SOCKET`.
 2. Repo-relative path (if detectable).
 3. `/tmp` / TCP fallback.
 
@@ -453,7 +455,7 @@ Inline references (all in `src/flame_mcp/server.py` unless noted):
 - Gate 4 — `dry_run=True` short-circuit (lines 684–704). Returns safety,
   redirect, and RAG status without executing.
 - Socket send: `_call_flame(code, timeout, dedicated_tool=False)`
-  (line 725). UDS preferred, TCP 4444 fallback (see §3).
+  (line 725). UDS only — no fallback (see §3).
 - Bridge entry: socket server in `hooks/flame_mcp_bridge.py` lines 310–370.
 - Bridge-side redirect mirror: `flame_mcp_bridge.py` lines 154–204.
   Skipped when wire payload is prefixed `# DT\n` (dedicated tools, see §3).
@@ -481,7 +483,7 @@ flowchart TD
     E7["_call_flame(code, timeout)<br/>(L725) → socket send"]
     E8{"UDS available?<br/>(see §3)"}
     E9["Send via UDS<br/>FLAME_BRIDGE_SOCKET<br/>or run/flame_mcp.sock"]
-    E10["Fallback: TCP 4444<br/>FLAME_BRIDGE_PORT"]
+    E10["No fallback:<br/>bridge refuses to start"]
     E11["Bridge receives JSON line<br/>{'code': '<python>'}<br/>(bridge L310–370)"]
     E12{"Payload starts with<br/>'# DT\\n'?<br/>(dedicated tool flag)"}
     E13["Bridge-side redirect mirror<br/>(bridge L154–204)"]

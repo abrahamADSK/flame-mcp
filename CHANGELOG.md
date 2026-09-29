@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **The TCP fallback transport (`127.0.0.1:4444`), on both ends.** A connection
+  to the bridge is handed straight to `exec()` inside Flame, so **the transport
+  is the access control**. That is a real control on a UNIX domain socket —
+  `0600` in a `0700` directory, enforced by the kernel — and **no control at all**
+  on loopback TCP, which has no owner. macOS exposes `LOCAL_PEERCRED` for UNIX
+  sockets and nothing equivalent for TCP, so the fallback silently traded the
+  only enforceable boundary for none.
+
+  It also guarded against almost nothing: `AF_UNIX` exists on every platform
+  Flame runs on, both socket paths are far short of the ~104-byte `sun_path`
+  limit, and a stale socket file was already unlinked before binding. Nothing
+  ever listened on 4444. The failure is now honest — the bridge does not start
+  and says why, and the client raises `ConnectionRefusedError` so the caller
+  surfaces the existing guidance.
+
+  `BRIDGE_HOST` / `BRIDGE_PORT` / `FLAME_BRIDGE_PORT` are gone with it, including
+  from the in-Flame status UI, which advertised a port it no longer used.
+
+### Added
+- **The connecting process's UID is checked on accept** (`_peer_is_owner`, via
+  `LOCAL_PEERCRED` at level 0 — verified empirically, the first two 32-bit fields
+  of `struct xucred` are version and uid). A second layer behind the `0600` mode
+  the kernel already enforces; it earns its place when the mode is not what we
+  think — a socket recreated by something else, an inherited descriptor, a umask
+  surprise. It fails **open** on an unreadable credential, because the mode is
+  the primary control and refusing every connection over a failed optional probe
+  would take the bridge down for no gain.
+
+  Regression test asserts the client never opens an `AF_INET` socket.
+
 ### Security
 - **The redirect-check log is now owner-only.** `/tmp/flame_mcp_redirect.log`
   records the first 80 characters of every payload about to run inside Flame, and
