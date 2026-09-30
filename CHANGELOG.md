@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Delivery gotchas moved from the ecosystem cold-start notes to where they
+  fire.** `flame-delivery` gains three it lacked: tk-flame publishes the `.batch`
+  and render *before* the Send to Review dialog (an aborted delivery leaves
+  PublishedFiles with no Version — check both entities); `tk-flame-review` cannot
+  be driven by API (automated masters go through `PyExporter`,
+  `foreground=True`); and the local Autodesk-patch `--check` as the pre-flight
+  gate of every delivery. The server `instructions` DEBUGGING rule gains the two
+  diagnostic traps: `(executed successfully, no output)` means the code raised or
+  was redirected, not a dead bridge; and `get_project_info` answering from `.cfg`
+  means Wiretap is down.
+
 ### Removed
 - **The TCP fallback transport (`127.0.0.1:4444`), on both ends.** A connection
   to the bridge is handed straight to `exec()` inside Flame, so **the transport
