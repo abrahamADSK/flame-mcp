@@ -58,9 +58,8 @@ Two processes cooperate; they share `config.json` on disk but no memory:
   Override with `FLAME_BRIDGE_SOCKET` env var.
 - **There is no TCP transport.** It was removed: a connection is executed
   inside Flame, so the socket's `0600` mode is the access control, and a
-  loopback TCP socket has no owner the kernel can check. In practice macOS
-  always has `AF_UNIX` and the
-  TCP path is exercised only on exotic platforms.
+  loopback TCP socket has no owner the kernel can check. Every platform Flame
+  runs on has `AF_UNIX`, so nothing was lost.
 - **Wire format**: one JSON object per line. Client -> bridge:
   `{"code": "<python>"}` (optionally prefixed with `# DT\n` to mark the
   call as originating from a dedicated tool and skip the bridge-side
@@ -936,7 +935,7 @@ flame-mcp is recognisably an MCP server — it speaks the protocol, it registers
 **What's added beyond a stock server:**
 
 - Two processes, not one. The MCP **server** runs in its own Python env (uv-managed, on macOS/Linux); the **bridge** runs inside Flame's *embedded* Python interpreter, which is locked to whatever Python Autodesk ships with the current Flame version.
-- Explicit transport between them: Unix domain socket by default, TCP as fallback for cross-host setups. Not stdio.
+- Explicit transport between them: Unix domain socket only (no TCP, so no cross-host setup). Not stdio.
 - The bridge is the only code that can touch `flame.X` at all; the server cannot import the Flame Python module because that module only exists inside Flame's process.
 
 **What this prevents / enables:**

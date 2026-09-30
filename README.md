@@ -27,7 +27,7 @@ Claude → MCP Server → Unix socket → Flame Python API → Result back to Cl
 
 The system has two components:
 
-**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local **UNIX domain socket** server when Flame launches, restricted to its owner (`0600`, in a `0700` directory) and additionally checking the connecting process's UID. It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result. **There is no TCP transport**: what arrives here is executed, so the socket's file permissions *are* the access control, and a loopback TCP socket has no owner the kernel could check.
+**`hooks/flame_mcp_bridge.py`** — A Flame Python hook that starts a local **UNIX domain socket** server when Flame launches, restricted to its owner (`0600` socket file — inside a `0700` `run/` directory in a dev tree, in `/tmp` for the installed hook) and additionally checking the connecting process's UID. It receives Python code, executes it inside Flame's Python interpreter with full access to the `flame` module, and returns the result. **There is no TCP transport**: what arrives here is executed, so the socket's file permissions *are* the access control, and a loopback TCP socket has no owner the kernel could check.
 
 **`src/flame_mcp/server.py`** — An MCP server that Claude launches. It exposes tools that Claude can call by name, translates natural language into Python code, and communicates with the bridge over the socket.
 
@@ -144,7 +144,7 @@ MCP Bridge  [● Active]
 ├── Claude Chat  (embedded)        → open Qt chat window inside Flame
 ├── Launch Claude (terminal)...    → open Claude Code in Terminal.app
 ├── Reload hook                    → hot-reload the bridge without restarting Flame
-├── Connection test                → test TCP round-trip, shows latency
+├── Connection test                → test the bridge socket round-trip, shows latency
 └── View log...                    → open the bridge log file in TextEdit
 ```
 

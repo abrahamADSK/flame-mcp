@@ -324,8 +324,8 @@ def _stats_footer(mode: str | None = None) -> str:
     )
 
 
-# A13 — Unix domain socket transport (more secure than TCP; owner-only file
-# permissions). F7 fix: resolve the socket at CONNECT time by probing
+# A13 — Unix domain socket transport, the ONLY transport (owner-only file
+# permissions are the access control; there is no TCP). F7 fix: resolve the socket at CONNECT time by probing
 # candidates, NOT at import by trusting file existence. A stale leftover
 # socket file (e.g. <repo>/run/flame_mcp.sock from a prior dev session) must
 # never trap the resolver when the live bridge listens on /tmp/flame_mcp.sock.
@@ -597,8 +597,8 @@ def _sysconfig_project_path(project_name: str) -> 'str | None':
 def _call_flame(code: str, timeout: int = 15, dedicated_tool: bool = True) -> dict:
     """
     Send Python code to the Flame bridge.
-    A13 — Prefers Unix domain socket (owner-only, no network exposure);
-    falls back to TCP if the socket file does not exist.
+    A13 — Unix domain socket only (owner-only, no network exposure); there is
+    no TCP fallback — an unreachable socket raises ConnectionRefusedError.
     Returns the result as a dictionary.
 
     dedicated_tool=True (default): marks the payload as coming from a dedicated MCP
@@ -721,7 +721,7 @@ async def _to_thread_with_heartbeat(fn, ctx, label, interval=10):
 @mcp.tool(annotations=_DST)
 async def execute_python(
     code: str,
-    timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+    timeout: Annotated[int, Field(ge=1, le=300, description="Bridge socket timeout in seconds (1–300, default 15)")] = 15,
     dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
     ctx: Context | None = None,
 ) -> str:
@@ -758,7 +758,7 @@ async def execute_python(
 
     Args:
         code:    Python code to execute inside Flame.
-        timeout: TCP socket timeout in seconds (default 15). Increase for
+        timeout: Bridge socket timeout in seconds (default 15). Increase for
                  long-running operations like media imports or batch renders.
         dry_run: If true, show what would happen without executing the code.
                  Returns safety check results, redirect matches, and RAG status.
@@ -775,7 +775,7 @@ async def execute_python(
 
 def _execute_python_impl(
     code: str,
-    timeout: Annotated[int, Field(ge=1, le=300, description="TCP timeout in seconds (1–300, default 15)")] = 15,
+    timeout: Annotated[int, Field(ge=1, le=300, description="Bridge socket timeout in seconds (1–300, default 15)")] = 15,
     dry_run: Annotated[bool, Field(description="If true, return what WOULD happen without executing. Shows safety checks, redirect matches, and RAG status.")] = False,
 ) -> str:
     """Sync body of execute_python — called by the execute_plan registry and
@@ -1672,7 +1672,7 @@ def get_flame_version() -> str:
 @mcp.tool(annotations=_RO)
 def ping() -> str:
     """
-    Check whether the TCP bridge to Autodesk Flame is reachable.
+    Check whether the bridge to Autodesk Flame (Unix socket) is reachable.
     Use this to answer any question about bridge/connection status.
     Returns 'connected' with Flame version, or a clear error message.
     No Flame state is modified. Safe to call at any time.

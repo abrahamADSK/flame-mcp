@@ -1,7 +1,7 @@
 """
 flame_mcp_bridge.py
 ===================
-Python hook for Autodesk Flame that opens a TCP socket server.
+Python hook for Autodesk Flame that opens a Unix domain socket server.
 Allows executing Python code inside Flame from the outside (via MCP server
 or directly from the Quick Console dialog).
 
@@ -404,7 +404,7 @@ def _clear_crash_recovery():
 # ── Bridge control ────────────────────────────────────────────────────────────
 
 def _start_bridge():
-    """Start the TCP server in a background thread."""
+    """Start the socket server in a background thread."""
     global _server_thread, _bridge_active
 
     if _bridge_active:
@@ -416,7 +416,7 @@ def _start_bridge():
 
 
 def _stop_bridge():
-    """Stop the server by closing the socket (Unix or TCP) and cleaning up."""
+    """Stop the server by closing the Unix socket and cleaning up."""
     global _server_socket, _bridge_active
 
     if not _bridge_active:
@@ -442,8 +442,8 @@ def _stop_bridge():
 def _run_server():
     """
     Main server loop. Accepts incoming connections.
-    A13 — Uses a Unix domain socket by default (owner-only file permissions replace
-    TCP network authentication). Falls back to TCP if AF_UNIX is unavailable.
+    A13 — Unix domain socket only: its owner-only file mode is the access
+    control. There is no TCP fallback; without AF_UNIX the bridge does not start.
     """
     global _server_socket, _bridge_active
 

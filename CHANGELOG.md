@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **No stale TCP wording left.** The `ping` tool description, the `timeout`
+  parameter help, the hook's module and server docstrings, the README menu entry
+  and `ARCHITECTURE.md` still described a TCP bridge or a TCP fallback after the
+  transport was removed; the `ping` text and the parameter help are what the
+  model reads. The README and this changelog also claimed a `0700` socket
+  directory unconditionally — true only for a dev tree's `run/`, not for the
+  installed hook's `/tmp`.
 - **CI pins `mypy==2.3.1`** (the version every green run already used). mypy is a
   blocking job and was installed unpinned, so a new mypy release could fail an
   unrelated PR — the same drift that `ruff==0.15.11` was pinned against in Chat 92.
@@ -26,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The TCP fallback transport (`127.0.0.1:4444`), on both ends.** A connection
   to the bridge is handed straight to `exec()` inside Flame, so **the transport
   is the access control**. That is a real control on a UNIX domain socket —
-  `0600` in a `0700` directory, enforced by the kernel — and **no control at all**
+  a `0600` socket file (in a `0700` `run/` directory for a dev tree; in `/tmp` for the installed hook), enforced by the kernel — and **no control at all**
   on loopback TCP, which has no owner. macOS exposes `LOCAL_PEERCRED` for UNIX
   sockets and nothing equivalent for TCP, so the fallback silently traded the
   only enforceable boundary for none.
