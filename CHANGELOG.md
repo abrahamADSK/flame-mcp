@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **CI pins `mypy==2.3.1`** (the version every green run already used). mypy is a
+  blocking job and was installed unpinned, so a new mypy release could fail an
+  unrelated PR — the same drift that `ruff==0.15.11` was pinned against in Chat 92.
 - **Delivery gotchas moved from the ecosystem cold-start notes to where they
   fire.** `flame-delivery` gains three it lacked: tk-flame publishes the `.batch`
   and render *before* the Send to Review dialog (an aborted delivery leaves
