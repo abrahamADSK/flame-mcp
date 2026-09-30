@@ -483,6 +483,13 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    - For Wiretap/IFFFS errors: read_flame_log("wiretap.log", grep="ERROR|FAIL")
    - For render issues: read_flame_log with backburner logs.
    - Log files are read directly by the MCP server (no bridge needed).
+   - "(executed successfully, no output)" is NOT a dead bridge: the bridge drops
+     ALL output when the code raises, and code that mentions the desktop or
+     reel_groups is redirected to list_desktop_reels(), which swallows output too.
+     Prove the bridge with print("ALIVE") before asking for a hook reload.
+   - get_project_info returning every field "(source: .cfg)" and bit depth
+     "not in .cfg" means Wiretap is DOWN — every export will fail with
+     "No route to host". Check this before diagnosing anything else.
 
 11. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern

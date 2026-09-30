@@ -127,12 +127,30 @@ True wherever the Toolkit engine is installed — not specific to one facility.
 - Review-movie generation depends on a configured quicktime template. If the movie
   path comes back empty, the template is missing from the config. Say so — never
   invent a path to a movie that was written to a temp dir and deleted.
+- The engine publishes the `.batch` and the render **before** the *Send to Review*
+  dialog. An aborted delivery therefore leaves PublishedFiles with **no Version**.
+  Verifying or cleaning a delivery means checking **both** entities — querying
+  Versions alone reports a false "clean". Match publishes by `path_cache`, not by
+  publish-type name (type names have changed between Flame versions).
+- `tk-flame-review` **cannot be driven by API**: its `pre_custom_export` opens a
+  mandatory Qt modal asking for comments and aborts if cancelled, and the engine
+  exposes no method that *launches* an export — Flame fires it from the menu. An
+  automated master goes through `PyExporter` with `foreground=True`
+  (`foreground=False` sends it to Backburner, which does not pre-render the
+  timeline, and raises a modal no agent can answer).
 
 ---
 
 ## This facility only — do not generalise
 
 Local configuration. A reader at another site should ignore all of it.
+
+- **Pre-flight gate for every delivery**: `apply_autodesk_patches.sh --check`
+  (diffs + idempotent installer in `/Users/Shared/FPT_MCP/patches/autodesk/`).
+  Three local patches to Autodesk's tk-flame code live in the bundle cache, which
+  `tank cache_apps` or a Toolkit bump replaces **without warning**. Without them the
+  permanent review movie is not written and the Version has no streaming media —
+  silently: publishes and the Version still appear.
 
 - The only colour-correct master preset here exists as a **single file saved in this
   framestore**. It is not in the repo and not reconstructible. Stock presets,
