@@ -688,6 +688,26 @@ class TestRenderDeliverPointer:
         assert "do NOT touch the node name" in block
         assert "<Shot>_<step>_v<version>" in block
 
+    def _recipe(self):
+        return next(e for e in CONCEPT_MAP
+                    if e["concept"].startswith("build comp"))["recipe"]
+
+    def test_clip_path_is_one_tk_resolve_path_call(self):
+        """Chat 101 blind spot 1: the conformed clip path cost 4-5 calls
+        derived from the light publish. The recipe names the single call."""
+        recipe = self._recipe()
+        assert "tk_resolve_path" in recipe and "'flame_shot_clip'" in recipe
+        assert "Do NOT derive it from the light" in recipe
+        step_a = self._step8().split("   a)", 1)[1].split("   b)", 1)[0]
+        assert "flame_shot_clip" in step_a
+
+    def test_quoted_names_warning_where_names_are_compared(self):
+        """Chat 101 blind spot 2: str(x.name) carries its quotes, so an
+        equality test fails silently. The warning sits in the rename step,
+        the one that looks a clip up by name."""
+        block = self._step8().split("RENAME THE RENDERED CLIP", 1)[1].split("VERIFY THE ANCHOR", 1)[0]
+        assert "QUOTED" in block and "get_value()" in block
+
     def test_the_task_link_is_mandatory_not_optional(self):
         """The one thing the native path leaves undone: the context comes
         from the .batch path and Toolkit only yields a Task from a

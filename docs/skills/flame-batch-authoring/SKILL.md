@@ -85,6 +85,12 @@ be made safe while the active group is both unswitchable and the validation scop
 without Python. Reach for them first; drop to `execute_python` only for graph
 shapes the tools do not expose — and then still inside an idle event.
 
+**Names read back quoted.** `str(node.name)` (and any clip, reel or group name)
+returns the value *with* its quotes — `"'CMP'"`. An equality test against
+`'CMP'` is silently `False`, so a lookup reports "not found" with no error.
+Compare `node.name.get_value()`, or `str(node.name).strip("'")`; the guard in
+the probe above does exactly that.
+
 ## What this skill is not
 
 - **Not the delivery cycle.** For the full relit-shot comp build and the
