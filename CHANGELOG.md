@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Two of the three Chat 101 "blind spots" written into the comp recipe** —
+  about half of a delivery run went into looking these up. The conformed clip
+  path is ONE fpt-mcp `tk_resolve_path(template_name='flame_shot_clip')` call,
+  not 4-5 calls derived from the light publish. And names read back QUOTED
+  (`str(x.name)` → `"'CMP'"`), so an equality test fails silently — the rename
+  step and `flame-batch-authoring` now say to compare `.get_value()`. The third
+  (reading segment anchors of the desktop sequence) needs a dedicated read tool:
+  an `execute_python` that walks the desktop is redirected and loses its output.
 - **Delivery recipe step (d) links the Task with one call.** The comp recipe and
   `flame-delivery` now call fpt-mcp's `fpt_bulk(action="link_task")` instead of
   a hand-made `sg_find` + three `sg_update`. They also stop blaming a missing
