@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Regression test asserts the client never opens an `AF_INET` socket.
 
 ### Security
+- **The bridge no longer tries to `chmod 0700` the shared `/tmp`.** It locked
+  its socket's directory unconditionally, and the installed hook binds in
+  `/tmp` — the attempt failed silently only because `/tmp` belongs to root. Now
+  only the bridge's own `run/` directory (dev tree) is set `0700`; a shared or
+  `FLAME_BRIDGE_SOCKET`-chosen directory is created if missing but its mode is
+  left alone. The socket file's `0600` and the peer-UID check remain the control.
 - **The redirect-check log is now owner-only.** `/tmp/flame_mcp_redirect.log`
   records the first 80 characters of every payload about to run inside Flame, and
   was opened with no `chmod` — so it inherited the umask in a world-readable
