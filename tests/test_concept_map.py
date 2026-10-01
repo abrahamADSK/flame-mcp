@@ -689,15 +689,19 @@ class TestRenderDeliverPointer:
         assert "<Shot>_<step>_v<version>" in block
 
     def test_the_task_link_is_mandatory_not_optional(self):
-        """The one thing the native path leaves undone (Chat 99): the
-        context comes from the .batch path and that template has no {Step}
-        token, so nothing carries a Task. An unlinked publish is invisible
-        to every Task-based query."""
+        """The one thing the native path leaves undone: the context comes
+        from the .batch path and Toolkit only yields a Task from a
+        Task-typed schema folder, so nothing carries a Task (Chat 108
+        corrected the Chat 99 {Step} theory). An unlinked publish is
+        invisible to every Task-based query; the link is ONE fpt-mcp call,
+        and a refusal must be reported, never patched by hand."""
         step8 = self._step8()
         assert "LINK THE TASK" in step8
-        assert "NO Task" in step8 and "sg_update" in step8
-        assert "short_name" in step8
-        assert "do not report DONE without it" in step8
+        assert "NO Task" in step8 and "Task-typed" in step8
+        assert "link_task" in step8 and "version_id" in step8
+        assert "wrote NOTHING" in step8
+        assert "do not fall back to hand-made sg_update" in step8
+        assert "Do not report DONE without it" in step8
 
     def test_the_review_movie_needs_nothing_from_us(self):
         """Closed natively by batch_quicktime_template — and if the field

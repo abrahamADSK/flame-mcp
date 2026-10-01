@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Delivery recipe step (d) links the Task with one call.** The comp recipe and
+  `flame-delivery` now call fpt-mcp's `fpt_bulk(action="link_task")` instead of
+  a hand-made `sg_find` + three `sg_update`. They also stop blaming a missing
+  `{Step}` token: tk-flame takes its context from the `.batch` path and Toolkit
+  only yields a Task from a Task-typed schema folder, so `{Step}` would add a
+  Step and still no Task (measured in tk-flame-export and tk-core, Chat 108).
+
 ## [1.24.0] — 2026-10-01
 
 ### Changed
