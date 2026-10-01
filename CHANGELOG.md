@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.24.0] — 2026-10-01
+
 ### Changed
 - **No stale TCP wording left.** The `ping` tool description, the `timeout`
   parameter help, the hook's module and server docstrings, the README menu entry
