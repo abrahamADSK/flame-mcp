@@ -701,6 +701,13 @@ class TestRenderDeliverPointer:
         step_a = self._step8().split("   a)", 1)[1].split("   b)", 1)[0]
         assert "flame_shot_clip" in step_a
 
+    def test_anchor_check_is_one_read_only_op(self):
+        """Chat 101 blind spot 3: the desktop sequence cannot be walked with
+        execute_python (redirected). Step g names the read-only op."""
+        block = self._step8().split("VERIFY THE ANCHOR", 1)[1]
+        assert "verify_anchors" in block and "READ-ONLY" in block
+        assert "Do NOT walk the desktop with execute_python" in block
+
     def test_quoted_names_warning_where_names_are_compared(self):
         """Chat 101 blind spot 2: str(x.name) carries its quotes, so an
         equality test fails silently. The warning sits in the rename step,

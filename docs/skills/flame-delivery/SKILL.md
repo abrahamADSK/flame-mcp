@@ -100,7 +100,10 @@ timecode (frame 1001 at 25 fps = `00:00:40:01`).
 one-based on input while `record_in` reads back **zero-based**; mixing them costs
 exactly one frame.
 
-Verify anchors and report the verdict in the same breath as the delivery.
+Verify anchors and report the verdict in the same breath as the delivery — with
+the read-only `execute_plan` op `verify_anchors` (`sequence_name`). It finds the
+sequence in a library or on the desktop; an `execute_python` that walks the
+desktop is redirected by the bridge and loses its output.
 
 ### 8. Never build structure you might have to remove
 
@@ -169,6 +172,8 @@ Local configuration. A reader at another site should ignore all of it.
   `fpt_bulk(action="link_task", params={"version_id": …, "step": "CMP"})` — it
   covers the Version, render, `.batch` and quicktime, and writes nothing if the
   Task is ambiguous or a record already sits on another Task.
+- The conformed sequence lives on the **desktop** (`Master v1` here), not in a
+  library — pass that name to `verify_anchors`.
 - Our server cannot import an EDL into Flame. `cut_to_edl` writes one as a separate
   deliverable, on explicit request.
 

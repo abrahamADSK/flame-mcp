@@ -324,6 +324,26 @@ class PrepareCompRenderArgs(BaseModel):
     )
 
 
+class VerifyAnchorsArgs(BaseModel):
+    """Read every segment's anchor of a sequence — READ-ONLY.
+
+    A conformed segment is anchored when its ``source_in`` sits on the first
+    frame of its source (frame 1001 = ``00:00:40:01`` at 25 fps). A wrong
+    anchor is silent and *Update Sources* cannot repair it, so the delivery
+    recipe checks it after every comp version. The sequence usually lives on
+    the DESKTOP, which an ``execute_python`` walk cannot reach (the bridge
+    redirects any desktop traversal); this op reads it through the dedicated
+    path, on Flame's main thread, and changes nothing.
+    """
+
+    model_config = _STRICT
+    sequence_name: str = Field(
+        ..., min_length=1,
+        description="Exact name of the conformed sequence (searched in every "
+        "library reel AND on the desktop).",
+    )
+
+
 class _TimelineEditArgs(BaseModel):
     """Shared args for timeline_insert / timeline_overwrite."""
 
@@ -465,6 +485,15 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "frame and render range derived from the source clip), save the batch, "
         "and print the read-back ALIGNMENT verdict the render is gated on. "
         "Idempotent — not a repair for a broken batch.",
+        "tool": "execute_plan",
+    },
+    "verify_anchors": {
+        "args_model": VerifyAnchorsArgs,
+        "handler": None,
+        "description": "READ-ONLY — report every segment's anchor of a "
+        "sequence (library or desktop): source_in vs the source's first frame, "
+        "with an OK / DAMAGED verdict. Run after every comp version (recipe "
+        "step g).",
         "tool": "execute_plan",
     },
     "timeline_insert": {

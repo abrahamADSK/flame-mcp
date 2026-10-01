@@ -2234,6 +2234,9 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
         media-only pattern, timecode, batch start frame and render range
         derived from the source clip), saves the batch, and prints the
         read-back ALIGNMENT verdict the render is gated on. Idempotent.
+      - verify_anchors (sequence_name) — READ-ONLY: every segment's
+        source_in vs its source's first frame (library or desktop
+        sequence), with an ANCHORS verdict. Recipe step (g).
       - timeline_insert (sequence_*, source_*) — DESTRUCTIVE: ripple-insert a clip.
       - timeline_overwrite (sequence_*, source_*) — DESTRUCTIVE: overwrite with a clip.
 
@@ -3418,12 +3421,187 @@ else:
     return _fmt(result)
 
 
+# READ-ONLY anchor reader (Chat 108). Runs on Flame's main thread via an idle
+# event like every other desktop walk (Chat 98: worker-thread access to a
+# desktop sequence raced the editdesk redraw). The comparison is in FRAMES —
+# source_in.frame against the segment's start_frame — so no frame-rate maths
+# is needed; the timecode is carried only for the human-readable report.
+_VERIFY_ANCHORS_CODE = """import flame, os, sys, json, time
+_prj = flame.projects.current_project
+SEQ_NAME = __SEQ_NAME__
+_result_path = "/tmp/flame_mcp_anchors_%d_%d.json" % (os.getpid(), int(time.time() * 1000))
+
+def _val(obj, attr):
+    x = getattr(obj, attr)
+    if callable(x):
+        x = x()
+    try:
+        return x.get_value()
+    except Exception:
+        return x
+
+def _nm(x):
+    return str(_val(x, "name")).strip("'")
+
+def _do_read():
+    out = {}
+    try:
+        ws = _prj.current_workspace
+        found = []
+        for lib in (ws.libraries or []):
+            for reel in (lib.reels or []):
+                for s in (getattr(reel, "sequences", None) or []):
+                    if _nm(s) == SEQ_NAME:
+                        found.append(("library " + _nm(lib) + " / " + _nm(reel), s))
+        for rg in (ws.desktop.reel_groups or []):
+            for reel in (rg.reels or []):
+                for s in (getattr(reel, "sequences", None) or []):
+                    if _nm(s) == SEQ_NAME:
+                        found.append(("desktop " + _nm(rg) + " / " + _nm(reel), s))
+        if not found:
+            out = {"error": "sequence not found: " + SEQ_NAME
+                   + " (searched every library reel and the desktop)"}
+        elif len(found) > 1:
+            out = {"error": "sequence name is ambiguous: " + SEQ_NAME,
+                   "locations": [loc for loc, _ in found]}
+        else:
+            loc, seq = found[0]
+            segs = []
+            for vi, ver in enumerate(seq.versions or []):
+                for ti, trk in enumerate(ver.tracks or []):
+                    for seg in (trk.segments or []):
+                        path = str(_val(seg, "file_path") or "")
+                        if not path:
+                            continue  # gap
+                        sin = seg.source_in
+                        rin = seg.record_in
+                        segs.append({
+                            "version": vi, "track": ti,
+                            "source": _nm(seg) or os.path.basename(path),
+                            "file_path": path,
+                            "record_in": int(_val(rin, "frame")),
+                            "source_in": int(_val(sin, "frame")),
+                            "source_in_tc": str(_val(sin, "timecode")),
+                            "start_frame": int(_val(seg, "start_frame")),
+                        })
+            out = {"sequence": SEQ_NAME, "location": loc, "segments": segs}
+    except Exception as _exc:
+        out = {"error": repr(_exc)}
+    try:
+        with open(_result_path, "w") as _fh:
+            json.dump(out, _fh)
+    except Exception:
+        pass
+
+flame.schedule_idle_event(_do_read)
+_deadline = time.monotonic() + 20
+while time.monotonic() < _deadline and not os.path.exists(_result_path):
+    time.sleep(0.25)
+if os.path.exists(_result_path):
+    with open(_result_path) as _fh:
+        print("ANCHORS_JSON " + _fh.read())
+    try:
+        os.remove(_result_path)
+    except OSError:
+        pass
+else:
+    print("SCHEDULED: anchor read queued on Flame's main thread; no result within 20s")
+"""
+
+
+_MEDIA_FRAME_RE = re.compile(r"\.(\d+)\.[A-Za-z0-9]+$")
+
+
+def _format_anchor_report(data: dict) -> str:
+    """Turn the bridge's anchor payload into the recipe's verdict text.
+
+    One ``ANCHORS:`` summary line first — the line the delivery report
+    relays — then one line per segment. The anchor is checked against the
+    FIRST FRAME OF THE MEDIA, read from the segment's ``file_path`` frame
+    number (``….1001.exr``): that is the recipe's definition. It is NOT
+    checked against ``start_frame``, which follows the clip's *current
+    version* and was measured in-vivo at 2002 on a segment whose media and
+    ``source_in`` both sit at 1001 (Chat 108). A ``start_frame`` that differs
+    from the media is reported as a WARNING instead — it is what *Update
+    Sources* re-anchors to, so it is a latent risk, not damage.
+
+    Verdicts: OK (``source_in`` == media first frame); DAMAGED (``source_in``
+    at 0, the known failure); MISMATCH (any other offset — a deliberately
+    trimmed segment also lands here).
+    """
+    if "error" in data:
+        extra = ""
+        if data.get("locations"):
+            extra = " Found in: " + "; ".join(data["locations"]) + "."
+        return f"ERROR: {data['error']}.{extra}"
+    segs = data.get("segments") or []
+    if not segs:
+        return (f"ANCHORS: sequence '{data.get('sequence')}' "
+                f"({data.get('location')}) has no source segments -> NOTHING TO CHECK")
+    lines = []
+    counts = {"OK": 0, "DAMAGED": 0, "MISMATCH": 0}
+    warnings = 0
+    for seg in segs:
+        m = _MEDIA_FRAME_RE.search(seg.get("file_path") or "")
+        first = int(m.group(1)) if m else seg["start_frame"]
+        if seg["source_in"] == first:
+            verdict = "OK"
+        elif seg["source_in"] == 0:
+            verdict = "DAMAGED"
+        else:
+            verdict = "MISMATCH"
+        counts[verdict] += 1
+        line = (
+            f"  v{seg['version']} t{seg['track']} rec {seg['record_in']:>6}  "
+            f"{seg['source']}: source_in {seg['source_in']} ({seg['source_in_tc']}) "
+            f"vs media first frame {first} -> {verdict}"
+        )
+        if m and seg["start_frame"] != first:
+            warnings += 1
+            line += (f"  [WARNING: current version start_frame {seg['start_frame']} "
+                     f"≠ media {first} — Update Sources may re-anchor to it; measured with 0 in Chat 99]")
+        lines.append(line)
+    overall = "OK" if counts["OK"] == len(segs) else "DAMAGED"
+    head = (f"ANCHORS: '{data.get('sequence')}' ({data.get('location')}) — "
+            f"{counts['OK']} OK, {counts['DAMAGED']} DAMAGED, "
+            f"{counts['MISMATCH']} MISMATCH of {len(segs)} -> {overall}"
+            + (f" ({warnings} WARNING)" if warnings else ""))
+    tail = ""
+    if overall != "OK":
+        tail = ("\nA damaged segment cannot be fixed with Update Sources: re-lay it "
+                "(import the clip, PySequence.overwrite(clip, PyTime(record_in + 1))).")
+    return "\n".join([head, *lines]) + tail
+
+
+def _verify_anchors_impl(sequence_name: str) -> str:
+    """READ-ONLY: report every segment's anchor of ``sequence_name``."""
+    _track_dedicated()
+    code = _VERIFY_ANCHORS_CODE.replace("__SEQ_NAME__", repr(sequence_name))
+    result = _call_flame(code, timeout=30, dedicated_tool=True)
+    if result.get("status") == "error":
+        return _fmt(result)
+    output = str(result.get("output", ""))
+    marker = "ANCHORS_JSON "
+    if marker not in output:
+        return _fmt(result)
+    payload = output.split(marker, 1)[1].strip().splitlines()[0]
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return f"ERROR: unreadable anchor payload: {payload[:200]}"
+    return _format_anchor_report(data)
+
+
 _plan.register_op(
     "setup_comp_batch",
     lambda args: _setup_comp_batch_impl(
         shot=args.shot, clip_path=args.clip_path, step=args.step,
         comp_dir=args.comp_dir, start_frame=args.start_frame,
     ),
+)
+_plan.register_op(
+    "verify_anchors",
+    lambda args: _verify_anchors_impl(sequence_name=args.sequence_name),
 )
 _plan.register_op(
     "prepare_comp_render",

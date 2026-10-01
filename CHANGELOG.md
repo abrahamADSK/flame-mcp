@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`execute_plan` op `verify_anchors` (READ-ONLY).** Reports every segment's
+  anchor of a sequence — library or desktop — as `source_in` against the
+  source's first frame, with an `ANCHORS: … -> OK | DAMAGED` verdict and the
+  repair hint. The delivery recipe's step (g) needed it: the conformed sequence
+  lives on the desktop, and an `execute_python` that walks the desktop is
+  redirected by the bridge with its output lost (Chat 101: 4 `execute_python`
+  + 4 searches). It compares FRAMES — `source_in.frame` against the media's
+  first frame read from the segment's `file_path` — so no frame-rate maths.
+  Not against `start_frame`: in-vivo it read 2002 on a segment whose media and
+  `source_in` both sit at 1001 (it follows the clip's current version), so a
+  differing `start_frame` is reported as a WARNING, not damage. Runs on Flame's
+  main thread through an idle event like every other desktop walk. 19 tests;
+  validated on a live Flame 2027.1 (`Master v1`: 6/6 OK, 1 WARNING).
+
 ### Changed
 - **Two of the three Chat 101 "blind spots" written into the comp recipe** —
   about half of a delivery run went into looking these up. The conformed clip
@@ -14,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not 4-5 calls derived from the light publish. And names read back QUOTED
   (`str(x.name)` → `"'CMP'"`), so an equality test fails silently — the rename
   step and `flame-batch-authoring` now say to compare `.get_value()`. The third
-  (reading segment anchors of the desktop sequence) needs a dedicated read tool:
-  an `execute_python` that walks the desktop is redirected and loses its output.
+  is the `verify_anchors` op below: an `execute_python` that walks the desktop
+  is redirected and loses its output, so no text could fix it.
 - **Delivery recipe step (d) links the Task with one call.** The comp recipe and
   `flame-delivery` now call fpt-mcp's `fpt_bulk(action="link_task")` instead of
   a hand-made `sg_find` + three `sg_update`. They also stop blaming a missing
