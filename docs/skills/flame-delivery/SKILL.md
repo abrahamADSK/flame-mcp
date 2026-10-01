@@ -120,10 +120,11 @@ True wherever the Toolkit engine is installed — not specific to one facility.
 - The engine does the publishing and creates the review Version itself. Do not
   hand-roll publishes or quicktimes alongside it; configure the Write File so its
   output matches the Toolkit templates and let the hook fire.
-- Context is resolved **from the `.batch` file path**. If the batch template carries
-  no `{Step}` token, Toolkit resolves a Shot and stops — the Version and publishes
-  arrive with **no Task**. An unlinked publish is invisible to every Task-based
-  query. Link it explicitly as part of the delivery.
+- Context is resolved **from the `.batch` file path**, and Toolkit only yields a
+  **Task** from a Task-typed folder in the schema. Without one, the Version and
+  publishes arrive with **no Task** — adding `{Step}` to the batch template gives a
+  Step, still no Task. An unlinked publish is invisible to every Task-based query.
+  Link it explicitly as part of the delivery.
 - Review-movie generation depends on a configured quicktime template. If the movie
   path comes back empty, the template is missing from the config. Say so — never
   invent a path to a movie that was written to a temp dir and deleted.
@@ -164,6 +165,10 @@ Local configuration. A reader at another site should ignore all of it.
 - `openclip_create` takes `steps=[...]` (list form — the singular drops the step
   prefix from the version uid), `extra_publish_types` when the publish type is not
   `Rendered Image`, and `keep_source_current=True` to preserve §3.
+- The Task link after a native delivery is one call:
+  `fpt_bulk(action="link_task", params={"version_id": …, "step": "CMP"})` — it
+  covers the Version, render, `.batch` and quicktime, and writes nothing if the
+  Task is ambiguous or a record already sits on another Task.
 - Our server cannot import an EDL into Flame. `cut_to_edl` writes one as a separate
   deliverable, on explicit request.
 
