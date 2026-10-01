@@ -439,6 +439,30 @@ def _stop_bridge():
     print("[FlameMCPBridge] Stopped.")
 
 
+# The bridge's OWN socket directory (dev tree: <repo>/run/). Only this one is
+# locked to 0700; any other directory belongs to someone else.
+_OWN_RUN_DIR = os.path.join(_PROJECT_ROOT, 'run')
+
+
+def _prepare_socket_dir(socket_path):
+    """Create the socket's directory if needed; lock it down only if it is ours.
+
+    A dev tree binds in ``<repo>/run/``, a directory this bridge owns, so it is
+    set ``0700``. The installed hook binds in ``/tmp`` (or wherever
+    ``FLAME_BRIDGE_SOCKET`` points) — a shared directory whose mode is not ours
+    to change. It used to ``chmod /tmp 0700`` unconditionally; that failed
+    silently only because ``/tmp`` belongs to root. There, the socket file's own
+    ``0600`` plus the peer-UID check are the control.
+    """
+    run_dir = os.path.dirname(socket_path)
+    try:
+        os.makedirs(run_dir, exist_ok=True)
+        if os.path.realpath(run_dir) == os.path.realpath(_OWN_RUN_DIR):
+            os.chmod(run_dir, 0o700)
+    except Exception:
+        pass
+
+
 def _run_server():
     """
     Main server loop. Accepts incoming connections.
@@ -469,12 +493,7 @@ def _run_server():
               "Flame to every local account.", file=sys.stderr)
         return
 
-    run_dir = os.path.dirname(_BRIDGE_SOCKET_PATH)
-    try:
-        os.makedirs(run_dir, exist_ok=True)
-        os.chmod(run_dir, 0o700)
-    except Exception:
-        pass
+    _prepare_socket_dir(_BRIDGE_SOCKET_PATH)
     # Remove a stale socket file left over from a previous Flame session
     if os.path.exists(_BRIDGE_SOCKET_PATH):
         try:
