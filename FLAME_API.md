@@ -3505,3 +3505,120 @@ print('Reel delete scheduled via idle event ->', result_file)
 # bridge until it exists. Validated in-vivo on Flame 2027: result in ~5s,
 # Flame healthy afterwards.
 ```
+
+
+# ── Auto-learned: Batch render fails — "Invalid process option" (Background Reactor) and "Export path does not exist" ──
+<!-- model:claude-opus-5-5 date:2026-10-02 promoted-from:rag/candidates.json ids:20260815_160137_3,20260815_224100_5,20260815_225607_6,20260815_234631_7 — re-measured in-vivo Chat 109 -->
+Two different failures, told apart only by the app log
+(`/opt/Autodesk/log/flame<ver>_<user>_app.log`):
+
+- `RuntimeError('Invalid process option.')` from `render(render_option="Background Reactor")`:
+  the workstation cannot run a Background Reactor job — it needs a reachable
+  Backburner Manager (the shell log shows `Cannot connect to Backburner Manager`
+  or Wiretap multicast `discarding '...-Backburner'`). Background Reactor exists
+  on macOS since 2025.2, so this is configuration, not platform. Use
+  `render_option="Foreground"` (blocks the UI for the render; still inside an
+  idle event). `Burn` needs a Burn node of the SAME Flame version.
+- `Render failed.` with `Node "..." had an error : Export path '...' does not exist`:
+  Flame never creates the Write File's `media_path`. It creates only the
+  `<name>_v<version>/` subfolder under it. Create the base folder first.
+
+```python
+import os
+os.makedirs(media_path, exist_ok=True)   # BEFORE rendering — Flame will not
+# then render through the render_batch tool (idle event), never flame.batch.render()
+```
+
+
+# ── Auto-learned: Write File versioning on Flame 2027 ──
+<!-- model:claude-opus-5-5 date:2026-10-02 promoted-from:rag/candidates.json ids:20260815_110419_1,20260815_163431_4,20260816_004921_8 — order re-measured in-vivo Chat 109 -->
+- The attribute is `version_mode` (there is NO `versioning`). Its `.values` list
+  is empty and an invalid label is SILENTLY ignored — always read it back.
+  Labels: `"No Versioning"`, `"Follow Iteration"`, `"Custom Version"`. The
+  `<version>` token in `media_path_pattern` only expands when it is not
+  `"No Versioning"`; otherwise frames land in a literal `..._v<version>/` folder.
+- ORDER: set `version_padding` BEFORE `version_mode = "Follow Iteration"` —
+  once following the iteration, `version_padding` raises `RuntimeError("The
+  version cannot be modified when it's set to follow the batch iteration.")`.
+  Under `"Custom Version"` padding is settable and DEFAULTS TO 2.
+- `iterate()` on a batch with no saved iteration saves `<batch>_001` and the
+  Follow-Iteration version stays 1; each further `iterate()` gives 2, 3…
+  Deleting saved iterations in the UI resets the counter; `iterate(1)` does
+  not move it back. A Custom Version auto-increments after every render.
+- Before ANY re-render, compute the target folder and refuse if it already
+  holds frames — a stale version number overwrites a published version:
+
+```python
+def _gv(a):
+    try: return a.get_value()
+    except Exception: return str(a).strip("'")
+n = int(_gv(bg.current_iteration_number))
+wf = next(x for x in bg.nodes if _gv(x.type) == "Write File")
+target = os.path.join(_gv(wf.media_path), "%s_v%0*d" % (_gv(wf.name), int(_gv(wf.version_padding)), n))
+if os.path.isdir(target) and any(f.endswith(".exr") for f in os.listdir(target)):
+    print("STOP: render would overwrite", target)
+```
+
+
+# ── Auto-learned: Comp node — sockets, matte inversion, node lookup ──
+<!-- model:claude-opus-5-5 date:2026-10-02 promoted-from:rag/candidates.json ids:20260815_002207_0,20260815_111702_2,20260816_174407_11 -->
+- Comp inputs `['Front', 'Back', 'Matte', 'Back Matte']`, outputs
+  `['Result', 'OutMatte']`. `node.input_sockets` / `node.output_sockets` are
+  PROPERTIES (lists) — calling them raises `TypeError`. `node.sockets` returns
+  `{'input': {socket: [connected node names]}, 'output': {...}}`.
+- There is no attribute NAMED "invert": inversion is a VALUE of the enum
+  attributes `front_matte` / `back_matte` — `('Matte Off', 'Matte On',
+  'Matte Invert')` (enum options via `PyAttribute.values`). A `Negative` node
+  (`Front` → `Result`) in front of the matte input also works.
+- Blend mode: `comp.flame_blend_mode = "Multiply" | "Screen" | "Add" | "Normal"`.
+- `batch.get_node(name)` RAISES `RuntimeError('Could not find a node with given
+  name.')` when absent — it never returns None. Look up via
+  `{n.name.get_value(): n for n in batch.nodes}` instead.
+- `pos_x` / `pos_y` are PyAttributes (`.get_value()` for arithmetic); schematic
+  Y points UP.
+
+```python
+comp = bg.create_node("Comp")
+comp.flame_blend_mode = "Multiply"
+comp.back_matte = "Matte Invert"                 # read back: invalid labels are ignored
+bg.connect_nodes(src, "charmatte", comp, "Back Matte")
+```
+
+
+# ── Auto-learned: Working on a batch group that is NOT the open one ──
+<!-- model:claude-opus-5-5 date:2026-10-02 promoted-from:rag/candidates.json ids:20260816_010307_9 — extended with Chat 109 in-vivo measurements -->
+The open batch group cannot be switched from Python (`bg.open()` is a silent
+no-op), but most work does not need it. Fetch the group by name from
+`flame.projects.current_project.current_workspace.desktop.batch_groups`, inside
+an idle event:
+
+- WORKS off the open group: setting Write File attributes, `start_frame`, timecode,
+  reading `current_iteration_number`, creating and connecting nodes, and
+  `render()` — the target's own Write File renders; the open group is untouched.
+- Re-assigning a node the name it already has works. A NEW name is validated
+  against the OPEN group's names; it was rejected for a Comp node (Chat 101) and
+  accepted for a Write File (Chat 109) — read the name back.
+- `bg.save()` on a non-open group is a silent no-op; on the open group it also
+  copies the whole group into a library. `PyBatch.commit` is `None`. The
+  render's setup write (`include_setup`) and switching the open group are what
+  persist the setup.
+- Creating a batch group with `flame.batch.create_batch_group()` makes it the
+  OPEN group.
+
+```python
+desk = flame.projects.current_project.current_workspace.desktop
+hits = [g for g in desk.batch_groups if g.name.get_value() == target_name]
+if len(hits) != 1:
+    raise RuntimeError("batch group %r matched %d groups" % (target_name, len(hits)))
+tgt = hits[0]
+tgt.start_frame = 1001
+tgt.render(render_option="Foreground")          # inside schedule_idle_event
+```
+
+
+# ── Auto-learned: PyAttribute names stringify WITH quotes ──
+<!-- model:claude-opus-5-5 date:2026-10-02 promoted-from:rag/candidates.json ids:20260816_170053_10 -->
+`str(flame.batch.name)` returns `"'SEQ003_SH001_comp'"` — quotes included. The
+same holds for clip, reel and node names and for timecode values
+(`"'00:00:40:01'"`). An equality guard on `str(...)` therefore never matches
+and the code silently skips. Compare `.get_value()`, or `str(x).strip("'")`.
