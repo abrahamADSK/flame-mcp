@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`prepare_comp_render` takes `batch_group`** and configures a comp group
+  that is not open, without switching (execute_plan op). Measured in-vivo
+  (Flame 2027.0.1, throwaway groups): attributes, timecode, `start_frame` and
+  the read-back all work off the open group; then
+  `render_batch(batch_group=...)` rendered `CMP_v001/<shot>_CMP_v001.1001-1003`
+  plus its clip. With both, a comp delivery needs no double-click. The Write
+  File is renamed only when its name differs; a refused rename reports
+  `NOT renamed` with the fix (open the group once).
+
+### Fixed
+- **`shot_name` and `version_padding` were silently skipped** by both
+  `setup_comp_batch` and `prepare_comp_render`. Flame rejects `shot_name`
+  until `basic_metadata` is `Custom Values`, and `version_padding` once
+  `version_mode` follows the iteration — the old order hit both (measured on
+  the open and on a non-open group alike). Fixed order: Custom Values before
+  `shot_name`, padding before mode.
+
+### Docs
+- `prepare_comp_render`'s docstring, its plan schema and the delivery recipe
+  claimed it SAVES the batch; there is no save call (never was, per git
+  history). They now say so, and the recipe says to render right after it.
+
 ## [1.27.0] — 2026-10-02
 
 ### Added

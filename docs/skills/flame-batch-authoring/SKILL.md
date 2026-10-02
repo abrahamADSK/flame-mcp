@@ -75,9 +75,14 @@ be made safe while the active group is both unswitchable and the validation scop
 - **Rendering is the exception to §2.** `render_batch(batch_group="<name>")`
   renders that group's Write File nodes while another group stays open — no
   double-click (measured Chat 109: target folder got the frames, the open
-  group's stayed empty, the open group did not change). Setting Write File
-  attributes on a non-open group works too; RENAMING nodes there does not
-  (§3), which is why `prepare_comp_render` still needs the group open.
+  group's stayed empty, the open group did not change).
+  `prepare_comp_render(batch_group=...)` configures a non-open group the same
+  way: attributes, timecode, `start_frame` and the read-back all work there,
+  and a node that already carries the step name is not renamed. Only a FIRST
+  rename can collide with a name the open group uses (§3) — the op then
+  reports `NOT renamed`; open that group once. (Chat 109: a Write File rename
+  to a name the open group used was ACCEPTED, unlike the Comp-node case of
+  Chat 101 — §3 is not uniform across node types.)
 - **Flame does not create the Write File's destination folder.** A missing
   `media_path` aborts with `Export path '...' does not exist` in the app log;
   Python only sees `Render failed.`

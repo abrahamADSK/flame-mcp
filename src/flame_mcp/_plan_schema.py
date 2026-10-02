@@ -287,18 +287,19 @@ class PrepareCompRenderArgs(BaseModel):
     for a batch someone broke: it runs on every shot, every time, and is
     idempotent. It sets the batch start frame, names the Write File after
     the Step, points it at the Toolkit-template paths, stamps the timecode
-    the media must declare, pulls the render range onto the source range,
-    and SAVES the batch (attribute changes live in memory only). It then
-    reads everything back and prints one ``ALIGNMENT:`` verdict — which is
+    the media must declare and pulls the render range onto the source range
+    (it does NOT save — no save call exists; Flame's autosave persists the
+    group). It then reads everything back and prints one ``ALIGNMENT:`` verdict — which is
     the gate the recipe decides to render on, and the most important thing
     this op produces.
 
     ``create_clip_path`` must be passed WITHOUT the ``.clip`` extension —
     Flame appends its own, which sent the first comp version into
     ``<Shot>.clip.clip`` instead of the conformed clip — and the media
-    pattern must carry the version token. Operates on the currently open
-    batch only (the active batch cannot be switched from Python); the
-    wired comp graph is untouched.
+    pattern must carry the version token. Operates on the open batch, or on
+    ``batch_group`` by exact name without switching (Chat 109); only the
+    FIRST rename of a fresh Write File needs the group open. The wired comp
+    graph is untouched.
     """
 
     model_config = _STRICT
@@ -329,6 +330,14 @@ class PrepareCompRenderArgs(BaseModel):
         "(in-vivo Chat 99: an omitted start_frame left the batch at 1 and "
         "the comp rendered 0001-0100 against a 1001-1100 source: 'no media' "
         "on the COMP flip).",
+    )
+    batch_group: str = Field(
+        default="",
+        description="Exact name of the comp Batch Group to configure; empty = "
+        "the open group. A non-open group is configured without switching "
+        "(Chat 109); if its Write File still needs its FIRST rename and the "
+        "open group already uses that name, the op reports 'NOT renamed' — "
+        "open that group once and re-run.",
     )
 
 
@@ -489,10 +498,11 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "args_model": PrepareCompRenderArgs,
         "handler": None,
         "description": "DESTRUCTIVE — MANDATORY before every comp render, on "
-        "every shot: configure the ACTIVE batch's Write File (name "
-        "'<Shot>_<step>', versioned media-only pattern, timecode, batch start "
-        "frame and render range derived from the source clip), save the batch, "
-        "and print the read-back ALIGNMENT verdict the render is gated on. "
+        "every shot: configure the open batch's Write File — or batch_group's, "
+        "by exact name, without switching — (named after the step, versioned "
+        "media-only pattern, timecode, batch start frame and render range "
+        "derived from the source clip) and print the read-back ALIGNMENT "
+        "verdict the render is gated on. "
         "Idempotent — not a repair for a broken batch.",
         "tool": "execute_plan",
     },

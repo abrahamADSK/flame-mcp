@@ -2235,12 +2235,13 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
         create a shot's comp batch group wired source Clip → Write File
         named '<shot>_<step>' (media-only, versioned; one op per shot,
         batchable in one plan; step = the comp Step's short_name from SG).
-      - prepare_comp_render (clip_path, step, comp_dir?) — DESTRUCTIVE:
-        MANDATORY before every comp render, on every shot. Configures the
-        ACTIVE batch's Write File (rename to '<Shot>_<step>', versioned
-        media-only pattern, timecode, batch start frame and render range
-        derived from the source clip), saves the batch, and prints the
-        read-back ALIGNMENT verdict the render is gated on. Idempotent.
+      - prepare_comp_render (clip_path, step, comp_dir?, batch_group?) —
+        DESTRUCTIVE: MANDATORY before every comp render, on every shot.
+        Configures the open batch's Write File — or batch_group's, by exact
+        name, without switching (Chat 109) — (named after the step,
+        versioned media-only pattern, timecode, batch start frame and render
+        range derived from the source clip) and prints the read-back
+        ALIGNMENT verdict the render is gated on. Idempotent.
       - verify_anchors (sequence_name) — READ-ONLY: every segment's
         source_in vs its source's first frame (library or desktop
         sequence), with an ANCHORS verdict. Recipe step (g).
@@ -3044,6 +3045,11 @@ def _do_setup():
                 # STEP because the Toolkit template's segment-name key builds
                 # the media folder from it; the shot comes from <shot name>.
                 ("name", {step!r}),
+                # ORDER (Chat 109, in-vivo): shot_name is rejected until
+                # basic_metadata is 'Custom Values', and version_padding once
+                # version_mode follows the iteration — both were silently
+                # skipped on every fresh node.
+                ("basic_metadata", "Custom Values"),
                 ("shot_name", {shot!r}),
                 ("media_path", {comp_dir!r}),
                 ("media_path_pattern",
@@ -3058,8 +3064,8 @@ def _do_setup():
                 # verified): the enum silently ignores invalid strings —
                 # no exception, value unchanged — which is how the
                 # <version> token once rendered as a LITERAL folder name.
-                ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
+                ("version_mode", "Follow Iteration"),
                 # create_clip ON is the third gate: without it Flame 2027
                 # omits versionNumber from the hook payload and tk-flame
                 # dies with KeyError before publishing anything. It points
@@ -3137,8 +3143,9 @@ else:
     return _fmt(result)
 
 
-def _prepare_comp_render_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0) -> str:
-    """Configure the ACTIVE batch for a comp render, then PROVE it is aligned.
+def _prepare_comp_render_impl(clip_path: str, step: str, comp_dir: str = "", start_frame: int = 0,
+                               batch_group: str = "") -> str:
+    """Configure a batch for a comp render, then PROVE it is aligned.
 
     MANDATORY first step of every comp delivery — it runs on every shot,
     every time, and is idempotent. It was NOT named for what it does until
@@ -3151,7 +3158,7 @@ def _prepare_comp_render_impl(clip_path: str, step: str, comp_dir: str = "", sta
     What it actually does: sets ``flame.batch.start_frame``, renames the
     Write File to ``<Shot>_<step>``, points it at the Toolkit-template
     paths, stamps the timecode the media must declare, pulls the render
-    range onto the source range, SAVES the batch — and then reads it all
+    range onto the source range — and then reads it all
     back and prints one ``ALIGNMENT:`` verdict, which is the gate the recipe
     decides to render on. The wired comp graph is never touched.
 
@@ -3159,9 +3166,17 @@ def _prepare_comp_render_impl(clip_path: str, step: str, comp_dir: str = "", sta
     was passed WITH the ``.clip`` extension — Flame appends its own, so the
     comp version registered into ``<Shot>.clip.clip`` instead of the
     conformed clip — and no ``media_path_pattern`` was set, so frames landed
-    flat and unversioned. Operates on the CURRENTLY OPEN batch only (the
-    active batch cannot be switched from Python; the operator opens each
-    group and runs this once).
+    flat and unversioned.
+
+    TARGET GROUP (Chat 109, measured in-vivo): by default the OPEN batch;
+    with ``batch_group`` the group of that exact name, even when it is not
+    open — attributes, timecode, ``start_frame`` and the read-back all work
+    there. The one step that needs the group OPEN is the FIRST rename of a
+    fresh Write File to ``step`` when the open group already has a node of
+    that name (Flame validates names against the open group, Chat 101). A
+    node that already carries the name is left alone, so every later
+    delivery runs without a double-click. Nothing is SAVED here — there is
+    no save call (earlier docs claimed one); Flame's autosave persists it.
 
     NAME (Chat 99): the Write File is RENAMED to ``<Shot>_<step>`` (Shot =
     the clip filename stem, ``step`` = the comp Step's short_name from SG)
@@ -3220,13 +3235,23 @@ def _do_fix():
     _old_stdout = sys.stdout
     sys.stdout = _buf
     try:
-        bg_name = str(flame.batch.name).strip("'")
+        _want = {batch_group!r}
+        if _want:
+            _desk = flame.projects.current_project.current_workspace.desktop
+            _hits = [g for g in _desk.batch_groups if _gv(g.name) == _want]
+            if len(_hits) != 1:
+                raise RuntimeError("batch group %r matched %d groups - nothing changed"
+                                   % (_want, len(_hits)))
+            _bg = _hits[0]
+        else:
+            _bg = flame.batch
+        bg_name = str(_bg.name).strip("'")
         _sf = {start_frame}
         _dur = {duration}
         print("start_frame " + str(_sf) + " (" + {sf_source!r} + ")")
         if _sf > 0:
             try:
-                flame.batch.start_frame = _sf
+                _bg.start_frame = _sf
                 print("start_frame set to " + str(_sf))
             except Exception as _sfe:
                 print("start_frame NOT set (" + type(_sfe).__name__ + ") — "
@@ -3234,17 +3259,30 @@ def _do_fix():
         else:
             print("WARNING: batch start frame left untouched — pass start_frame "
                   "explicitly (source's first frame) before rendering")
-        wfs = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Write File"]
+        wfs = [n for n in _bg.nodes if str(n.type).strip("'") == "Write File"]
         if not wfs:
-            print("ERROR: no Write File node in the active batch " + bg_name)
+            print("ERROR: no Write File node in the batch " + bg_name)
         else:
             wf = wfs[0]
             _old_name = _gv(wf.name)
+            # NAME only when it differs. Re-assigning the same name works on a
+            # non-open group; a NEW name is validated against the OPEN group
+            # and rejected when that group already uses it (Chat 101/109).
+            _name_note = "already " + {wf_name!r}
+            if _gv(wf.name) != {wf_name!r}:
+                try:
+                    wf.name = {wf_name!r}
+                    _name_note = "renamed"
+                except Exception as _ne:
+                    _name_note = ("NOT renamed (" + type(_ne).__name__ + ": " + str(_ne)[:80]
+                                  + ") - open " + bg_name + " in the UI and re-run once")
             _settings = [
                 # Same native contract as setup_comp_batch — the two MUST
                 # agree, or repairing a batch silently undoes the template
                 # match the tk-flame publish gate depends on (Chat 99).
-                ("name", {wf_name!r}),
+                # ORDER (Chat 109, in-vivo): Custom Values before shot_name,
+                # version_padding before version_mode.
+                ("basic_metadata", "Custom Values"),
                 ("shot_name", {shot!r}),
                 ("media_path", {comp_dir!r}),
                 # frame_padding defaults to 6 on a fresh node; the source is
@@ -3258,8 +3296,8 @@ def _do_fix():
                 # verified): the enum silently ignores invalid strings —
                 # no exception, value unchanged — which is how the
                 # <version> token once rendered as a LITERAL folder name.
-                ("version_mode", "Follow Iteration"),
                 ("version_padding", 3),
+                ("version_mode", "Follow Iteration"),
                 # create_clip ON (third gate): without it Flame 2027 omits
                 # versionNumber and tk-flame's publish dies. It points at the
                 # node's OWN clip, never the conformed one (Chat 98).
@@ -3274,7 +3312,7 @@ def _do_fix():
                 except Exception as _ae:
                     _skipped.append(_attr + " (" + type(_ae).__name__ + ")")
             print("OK: Write File fixed in " + bg_name)
-            print("  name: " + str(_old_name) + " -> " + str(_gv(wf.name)))
+            print("  name: " + str(_old_name) + " -> " + str(_gv(wf.name)) + " (" + _name_note + ")")
             print("  set: " + (", ".join(_set) or "none"))
             if _skipped:
                 print("  skipped: " + ", ".join(_skipped))
@@ -3329,7 +3367,7 @@ def _do_fix():
             # then print ONE verdict line the recipe gates the render on.
             _bs = None
             try:
-                _bs = int(_gv(flame.batch.start_frame))
+                _bs = int(_gv(_bg.start_frame))
             except Exception:
                 pass
             _rs = _re = None
@@ -3383,7 +3421,7 @@ def _do_fix():
             # Source Clip node timing (diagnostic): whether the imported
             # source shifted with the batch start is answered in-vivo, here.
             try:
-                _clips = [n for n in flame.batch.nodes if str(n.type).strip("'") == "Clip"]
+                _clips = [n for n in _bg.nodes if str(n.type).strip("'") == "Clip"]
                 if _clips:
                     _c = _clips[0]
                     _keys = [a for a in list(_c.attributes)
@@ -3409,7 +3447,7 @@ def _do_fix():
                 pass
             # Overwrite guard (info only): Follow Iteration writes v<current_iteration_number>.
             try:
-                _n = int(_gv(flame.batch.current_iteration_number))
+                _n = int(_gv(_bg.current_iteration_number))
                 _pad = 3
                 try:
                     _pad = int(_gv(wf.version_padding))
@@ -3451,7 +3489,7 @@ else:
     code = code_template.format(
         clip_target=clip_target, comp_dir=comp_dir, wf_name=wf_name, shot=shot,
         start_frame=int(start_frame), duration=int(duration),
-        padding=int(padding) or 4, sf_source=sf_source,
+        padding=int(padding) or 4, sf_source=sf_source, batch_group=batch_group,
     )
     result = _call_flame(code, timeout=30, dedicated_tool=True)
     _journal_record(code, result)
@@ -3644,7 +3682,7 @@ _plan.register_op(
     "prepare_comp_render",
     lambda args: _prepare_comp_render_impl(
         clip_path=args.clip_path, step=args.step, comp_dir=args.comp_dir,
-        start_frame=args.start_frame,
+        start_frame=args.start_frame, batch_group=args.batch_group,
     ),
 )
 _plan.register_op(

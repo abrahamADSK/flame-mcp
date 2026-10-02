@@ -409,12 +409,28 @@ class TestWriteFileClipTarget:
         for code in (setup, fix):
             assert "<name>_v<version>/<shot name>_<name>_v<version>.<frame>" in code
 
-    def test_fix_op_operates_on_the_active_batch_only(self):
-        """The active batch cannot be switched from Python — the fix op
-        reads flame.batch and never tries to open a group."""
+    def test_fix_op_defaults_to_the_open_batch_and_never_switches(self):
+        """The active batch cannot be switched from Python — without
+        batch_group the fix op works on flame.batch and never opens a group."""
         _, fix = self._codes()
-        assert "flame.batch.nodes" in fix
+        assert "_bg = flame.batch" in fix and "_bg.nodes" in fix
+        assert "_want = ''" in fix
         assert "bg.open(" not in fix and "go_to(" not in fix
+
+    def test_fix_op_targets_a_named_group_without_switching(self):
+        """Chat 109 (in-vivo): attributes, timecode, start_frame and reads all
+        work on a non-open group, so batch_group is looked up by exact name."""
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._prepare_comp_render_impl("/r/x/clip/S.clip", step="CMP",
+                                             start_frame=1001, batch_group="S_comp")
+            code = m.call_args[0][0]
+        assert "_want = 'S_comp'" in code
+        assert "_desk.batch_groups" in code and "nothing changed" in code
+        assert "bg.open(" not in code and "go_to(" not in code
+        compile(code, "fix", "exec")
 
     def test_fix_op_registered_plan_native(self):
         import flame_mcp._plan_schema as ps
@@ -448,7 +464,7 @@ class TestFrameAlignment:
             m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
             server._prepare_comp_render_impl("/r/x/clip/S.clip", step="CMP", start_frame=1001)
             code = m.call_args[0][0]
-        assert "flame.batch.start_frame = _sf" in code
+        assert "_bg.start_frame = _sf" in code
         assert "_sf = 1001" in code
 
     # ---- Chat 99: the alignment must not depend on the console passing
@@ -716,9 +732,30 @@ class TestWriteFileNameFollowsTheStep:
         """setup and fix must agree, or repairing a batch would rename the
         node and silently break the template match the native hook gates on."""
         code = self._fix(step="CMP")
-        assert '("name", \'CMP\')' in code
+        # Renamed only when it differs (Chat 109): re-assigning a name works
+        # off the open group, a NEW one is validated against the open group.
+        assert "if _gv(wf.name) != 'CMP':" in code
+        assert "wf.name = 'CMP'" in code
+        assert "NOT renamed" in code
         assert 'print("  name: " + str(_old_name)' in code
         compile(code, "fix", "exec")
+
+    def test_attribute_order_lets_flame_accept_every_value(self):
+        """Chat 109 (in-vivo, open AND non-open group): Flame rejects
+        shot_name until basic_metadata is 'Custom Values', and
+        version_padding once version_mode follows the iteration. Both
+        setup and fix must set them in the accepting order."""
+        from unittest.mock import patch
+        import flame_mcp.server as server
+        with patch.object(server, "_call_flame") as m:
+            m.return_value = {"output": "OK\n", "error": "", "_bridge_ms": 5}
+            server._setup_comp_batch_impl(
+                "S", "/r/sequences/Q/S/finishing/clip/S.clip", step="CMP")
+            setup = m.call_args[0][0]
+        fix = self._fix(step="CMP")
+        for code in (setup, fix):
+            assert code.index('("basic_metadata", "Custom Values")') < code.index('("shot_name",')
+            assert code.index('("version_padding", 3)') < code.index('("version_mode", "Follow Iteration")')
 
     def test_step_is_required_and_validated(self):
         import pytest as _pytest
