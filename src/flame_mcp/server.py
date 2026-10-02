@@ -70,8 +70,8 @@ WRITE_ALLOWED_MODELS = {
     "claude-opus",
     "claude-fable",
     # Explicit current releases (canonical source: ~/Projects/.external_versions.yml).
-    "claude-opus-4-8",
-    "claude-fable-5",
+    "claude-opus-5-5",
+    "claude-fable-5-1",
 }
 
 
@@ -101,9 +101,14 @@ def _rag_threshold() -> int:
 
 
 def _fallback_model_name() -> str:
-    """B5 — Suggested write-capable model from config (default 'Sonnet')."""
+    """B5 — Suggested write-capable model from config (default 'Opus').
+
+    The default must name a tier that passes ``_model_can_write``: Sonnet
+    left the write gate on 2026-06-10, so suggesting it would point the
+    user at another read-only model.
+    """
     name = _get_config().get("fallback_model", "")
-    return name if name else "Sonnet"
+    return name if name else "Opus"
 
 
 def _model_can_write() -> bool:
