@@ -184,7 +184,8 @@ Do NOT communicate with the bridge socket directly — the MCP tool handles that
     operation is NOT yet in the registry.
 
     Note: `render_batch` is DESTRUCTIVE — it schedules a Background
-    Reactor render of the current Batch Group via `schedule_idle_event`
+    Reactor render of the open Batch Group (or `batch_group` by exact
+    name, without switching — Chat 109) via `schedule_idle_event`
     (the documented-safe form of the `flame.batch.render()` call the
     execute_python guard blocks). Because a plan can now trigger it,
     `execute_plan` is annotated destructive.

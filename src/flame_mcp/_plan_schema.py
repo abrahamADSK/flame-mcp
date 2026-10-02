@@ -154,7 +154,8 @@ class ExportClipArgs(BaseModel):
 
 
 class RenderBatchArgs(BaseModel):
-    """Render the current Batch Group's active Render/Write File nodes.
+    """Render a Batch Group's active Render/Write File nodes (the open one, or
+    ``batch_group`` by exact name).
 
     DESTRUCTIVE op: schedules a render inside Flame (default Background
     Reactor). Mirrors the render_batch dedicated tool 1:1.
@@ -173,6 +174,13 @@ class RenderBatchArgs(BaseModel):
     )
     include_history: bool = Field(
         default=False, description="Create History with the rendering."
+    )
+    batch_group: str = Field(
+        default="",
+        description=(
+            "Exact name of the Batch Group to render; empty renders the open "
+            "group. A non-open group renders without switching (Chat 109)."
+        ),
     )
 
 
@@ -418,8 +426,9 @@ _OP_REGISTRY: dict[str, dict[str, Any]] = {
         "args_model": RenderBatchArgs,
         "handler": None,
         "description": (
-            "DESTRUCTIVE — schedule a render of the current Batch Group "
-            "(Background Reactor by default; scheduled via idle event)."
+            "DESTRUCTIVE — schedule a render of the open Batch Group, or of "
+            "batch_group by exact name without switching (Background Reactor "
+            "by default; scheduled via idle event)."
         ),
         "tool": "render_batch",
     },
