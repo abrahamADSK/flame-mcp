@@ -88,6 +88,23 @@ be made safe while the active group is both unswitchable and the validation scop
   Python only sees `Render failed.`
 - `Invalid process option.` = no Background Reactor on this workstation; use
   `Foreground`.
+
+## Saving a batch group — don't
+
+Measured Chat 109 (Flame 2027.0.1), and why no op saves after configuring:
+
+- `bg.save()` on a group that is **not open** does nothing: returns `None`,
+  no "Saving Batch setup" line in the app log.
+- `bg.save()` on the **open** group saves its setup **and copies the whole
+  group into a library** (`PyDesktop.destination`, "Saving '<group>' to
+  library 'Default Library'"). Every call leaves another copy behind — the two
+  `SEQ003_*_comp` copies in the AU2026 project's Default Library came from
+  this in Chat 99.
+- `PyBatch.commit` exists but is `None` — not callable.
+- What persists a delivery is the render itself: the Write File writes the
+  setup to disk (`include_setup` → `../batch/<shot name>.v<version>`). Flame
+  also saves the setups when the open group changes. So configure, then
+  render right away.
 - `render_batch` has reported success in Foreground while the work had only
   *started*. Do not hand control back on "started".
 - **Wait for the full frame count.** A verdict that inspects only the first frame
