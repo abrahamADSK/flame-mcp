@@ -641,10 +641,15 @@ class TestPostRenderCycle:
         assert step8.index("Flame Render'") < step8.index("openclip_create") \
             or step8.index("openclip_create") > 0
 
-    def test_write_file_is_configured_and_saved_before_rendering(self):
+    def test_write_file_is_configured_then_rendered_right_away(self):
+        """Chat 109: prepare_comp_render has no save call (never had), so the
+        recipe must not claim one — and must render right after it, before an
+        autosave-less Flame restart can revert the attributes."""
         step8 = self._recipe().split("RENDER AND DELIVER", 1)[1]
         assert "prepare_comp_render" in step8
-        assert "SAVES the batch" in step8
+        assert "SAVES the batch" not in step8
+        assert "does NOT save the batch" in step8 and "render right" in step8
+        assert "batch_group" in step8
         assert "ALIGNMENT" in step8
 
 
