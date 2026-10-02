@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.0] — 2026-10-02
+
 ### Changed
 - **Console models moved to the Claude 5.x family.** The selector now offers
   Claude Opus 5.5 (`claude-opus-5-5`, default), Claude Fable 5.1
