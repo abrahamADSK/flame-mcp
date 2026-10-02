@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Conform recipe placed shots one frame late on 1-based Cuts.** It told the
+  model to pass `edit_in + 1` as the sequence frame, which assumes a 0-based
+  `edit_in`. fpt-mcp's `editorial` now writes Autodesk's 1-based, inclusive
+  convention (as does Autodesk's own Cut importer), so the recipe now derives
+  the frame relative to the first CutItem: `edit_in - first_edit_in + 1`,
+  correct for both the new Cuts and legacy 0-based ones such as Cut 897.
+
 ## [1.26.0] — 2026-10-02
 
 ### Changed
