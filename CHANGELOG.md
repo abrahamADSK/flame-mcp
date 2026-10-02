@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.1] — 2026-10-02
+
 ### Fixed
 - **Conform recipe placed shots one frame late on 1-based Cuts.** It told the
   model to pass `edit_in + 1` as the sequence frame, which assumes a 0-based
