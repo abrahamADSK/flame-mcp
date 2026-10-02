@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+- **RAG: 13 staged candidates curated into 5 corpus entries** (`FLAME_API.md`
+  → Auto-learned). Read-only models had staged them since August; four of them
+  were exactly what Chat 109 re-discovered by measurement (Background Reactor's
+  `Invalid process option`, the missing export folder). Merged and checked
+  against in-vivo evidence: render failures, Write File versioning (incl. the
+  padding-before-mode order), the Comp node (inversion is a `back_matte` /
+  `front_matte` enum value, not a separate attribute), work on non-open batch
+  groups, quoted PyAttribute names. **Rejected** `20260817_122203_12`: it
+  claimed `prepare_comp_render` saves the batch and that the Write File has no
+  `version_mode` — both false. Index rebuilt; all five entries retrieve first
+  for their natural queries.
+
 ## [1.28.0] — 2026-10-02
 
 ### Docs
