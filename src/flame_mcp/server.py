@@ -2218,9 +2218,11 @@ async def execute_plan(plan: dict, ctx: Context | None = None) -> str:
       - get_project_info (no args)
       - get_clip_metadata (library_name, reel_name, clip_name)
       - ping (no args)
-      - render_batch (render_option?, generate_proxies?, include_history?) —
-        DESTRUCTIVE: schedules a Background Reactor render of the current Batch
-        Group (this is why execute_plan is annotated destructive).
+      - render_batch (render_option?, generate_proxies?, include_history?,
+        batch_group?) —
+        DESTRUCTIVE: schedules a Background Reactor render of the open Batch
+        Group, or of batch_group by exact name without switching (this is why
+        execute_plan is annotated destructive).
       - export_clip (library_name, reel_name, clip_name, preset_path,
         output_directory) — DESTRUCTIVE: schedules a PyExporter export of a clip.
       - create_library (library_name) — DESTRUCTIVE: create a library.
@@ -2572,10 +2574,13 @@ async def render_batch(
     render_option: Literal["Background Reactor", "Foreground", "Burn"] = "Background Reactor",
     generate_proxies: bool = False,
     include_history: bool = False,
+    batch_group: str = "",
     ctx: Context | None = None,
 ) -> str:
     """
-    Render the CURRENT Batch Group — all its active Render and Write File nodes.
+    Render a Batch Group — all its active Render and Write File nodes. By
+    default the CURRENT (open) group; with ``batch_group`` the group of that
+    exact name, even when it is NOT the open one.
 
     IMPORTANT: calling flame.batch.render() synchronously CRASHES Flame, so this
     tool schedules the render via flame.schedule_idle_event and writes the
@@ -2593,8 +2598,17 @@ async def render_batch(
 
     Either way, poll DISK and the result file — never poll Flame.
 
-    Ensure the intended Batch Group is the current/open one before calling
-    (the API renders flame.batch, i.e. the open Batch Group).
+    TARGET GROUP (Chat 109, measured in-vivo): ``batch_group="<name>"`` renders
+    THAT group's Write File nodes while another group stays open — no operator
+    double-click needed. The open group is not changed. Without it, the open
+    group (flame.batch) renders. A name that matches no group, or more than
+    one, aborts without rendering.
+
+    FAILURES that only show as "Render failed." in Python — read the app log:
+      * Flame does NOT create the Write File's destination folder: a missing
+        media_path aborts with "Export path '...' does not exist".
+      * "Invalid process option." means this workstation has no Background
+        Reactor — use "Foreground".
 
     Args:
         render_option: Rendering method. "Background Reactor" (default — runs off
@@ -2603,9 +2617,12 @@ async def render_batch(
             returns an error (captured in the result file).
         generate_proxies: Render at proxy resolution. Default False.
         include_history: Create History with the rendering. Default False.
+        batch_group: Exact name of the Batch Group to render. Empty (default)
+            renders the open group.
     """
     return await _to_thread_with_heartbeat(
-        lambda: _render_batch_impl(render_option, generate_proxies, include_history), ctx, "render_batch",
+        lambda: _render_batch_impl(render_option, generate_proxies, include_history, batch_group),
+        ctx, "render_batch",
     )
 
 
@@ -2613,6 +2630,7 @@ def _render_batch_impl(
     render_option: Literal["Background Reactor", "Foreground", "Burn"] = "Background Reactor",
     generate_proxies: bool = False,
     include_history: bool = False,
+    batch_group: str = "",
 ) -> str:
     """Sync body of render_batch — called by the execute_plan registry and
     tests; the async MCP tool above wraps it with progress heartbeats."""
@@ -2641,7 +2659,16 @@ def _render_batch_impl(
         "else:\n"
         "    def _do_render():\n"
         "        try:\n"
-        f"            flame.batch.render(render_option={render_option!r}, "
+        f"            _want = {batch_group!r}\n"
+        "            if _want:\n"
+        "                _desk = flame.projects.current_project.current_workspace.desktop\n"
+        "                _hits = [g for g in _desk.batch_groups if g.name.get_value() == _want]\n"
+        "                if len(_hits) != 1:\n"
+        "                    raise RuntimeError('batch group %r matched %d groups - nothing rendered' % (_want, len(_hits)))\n"
+        "                _bg = _hits[0]\n"
+        "            else:\n"
+        "                _bg = flame.batch\n"
+        f"            _bg.render(render_option={render_option!r}, "
         f"generate_proxies={generate_proxies!r}, include_history={include_history!r})\n"
         f"            msg = {_done_msg!r}\n"
         "        except Exception as e:\n"
@@ -2669,7 +2696,9 @@ def _render_batch_impl(
             f"no zero-byte files, AND {result_file} exists reading "
             f"'{_done_msg}'. Only then continue the delivery cycle.\n"
             "'ERROR: ...' in that file means the render aborted — read the app log "
-            "(read_flame_log) for the cause instead of retrying blind."
+            "(read_flame_log) for the cause instead of retrying blind ('Render "
+            "failed.' with \"Export path ... does not exist\" in the log = create "
+            "the Write File's destination folder first)."
         )
     return (
         f"{out}\n"
@@ -2677,7 +2706,9 @@ def _render_batch_impl(
         "and the render continues off Flame's main thread; this call does not wait "
         "for completion.\n"
         f"Outcome is written to: {result_file} — deleted before scheduling, so its "
-        f"reappearance is the signal (expect '{_done_msg}').\n"
+        f"reappearance is the signal (expect '{_done_msg}'). 'ERROR: Invalid process "
+        "option.' means this workstation has no Background Reactor — retry with "
+        "render_option='Foreground'.\n"
         "NOTE: the comp delivery cycle must use Foreground instead — tk-flame's "
         "publish chain fires when a background job is SENT and would transcode "
         "frames that do not exist yet."
@@ -2690,6 +2721,7 @@ _plan.register_op(
         render_option=args.render_option,
         generate_proxies=args.generate_proxies,
         include_history=args.include_history,
+        batch_group=args.batch_group,
     ),
 )
 

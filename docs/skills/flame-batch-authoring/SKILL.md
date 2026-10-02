@@ -72,6 +72,17 @@ be made safe while the active group is both unswitchable and the validation scop
 ## Rendering
 
 - Render through the **`render_batch` tool**, never `flame.batch.render()`.
+- **Rendering is the exception to §2.** `render_batch(batch_group="<name>")`
+  renders that group's Write File nodes while another group stays open — no
+  double-click (measured Chat 109: target folder got the frames, the open
+  group's stayed empty, the open group did not change). Setting Write File
+  attributes on a non-open group works too; RENAMING nodes there does not
+  (§3), which is why `prepare_comp_render` still needs the group open.
+- **Flame does not create the Write File's destination folder.** A missing
+  `media_path` aborts with `Export path '...' does not exist` in the app log;
+  Python only sees `Render failed.`
+- `Invalid process option.` = no Background Reactor on this workstation; use
+  `Foreground`.
 - `render_batch` has reported success in Foreground while the work had only
   *started*. Do not hand control back on "started".
 - **Wait for the full frame count.** A verdict that inspects only the first frame

@@ -249,7 +249,7 @@ Then talk naturally:
 | `list_flame_logs` | List all log files available in /opt/Autodesk/logs |
 | `read_flame_log` | Read a Flame log file with optional tail/grep filtering |
 | `create_sequence` | Create a new empty sequence in a Flame library/reel (optional duration in frames) |
-| `render_batch` | Render the current Batch Group (Background Reactor by default; scheduled via idle event — never blocks Flame) |
+| `render_batch` | Render the open Batch Group — or any group by exact name (batch_group argument), without switching the open one (measured Chat 109). Background Reactor by default (`Foreground` where the workstation has no Reactor); scheduled via idle event |
 | `export_clip` | Export a clip to disk via a Flame export preset (PyExporter, scheduled via idle event — never deadlocks Flame) |
 | `create_library` | Create a new library in the active project workspace |
 | `create_reel` | Create a new reel inside a library |

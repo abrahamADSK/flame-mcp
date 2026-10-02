@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`render_batch(batch_group="<name>")` renders a Batch Group that is not the
+  open one**, without switching it. Measured in-vivo first (Flame 2027.0.1,
+  two throwaway groups writing outside the project): with group B open,
+  rendering A wrote A's frames, left B's folder empty and kept B open. The
+  target is looked up by exact name inside the idle event; zero or several
+  matches abort without rendering. Also in `execute_plan`.
+
+### Docs
+- `render_batch` and the `flame-batch-authoring` skill now name the two
+  failures that Python reports only as `Render failed.`: Flame does not create
+  the Write File's destination folder (`Export path ... does not exist` in the
+  app log), and `Invalid process option.` means the workstation has no
+  Background Reactor (use `Foreground`). `prepare_comp_render` still needs the
+  group open: it renames the Write File, and renaming outside the open group
+  is rejected (Chat 101).
+
 ## [1.26.1] — 2026-10-02
 
 ### Fixed

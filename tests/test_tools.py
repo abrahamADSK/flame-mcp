@@ -311,6 +311,91 @@ class TestRenderBatch:
 
         assert "ERROR" in result
 
+    # ── batch_group targeting (Chat 109, measured in-vivo) ────────────────
+    @staticmethod
+    def _run_generated(code, groups, open_name):
+        """Execute the generated bridge code against a fake flame module.
+
+        Returns (rendered_group_names, scheduled_fn_ran). The idle event is
+        run synchronously; the result file goes wherever the code points.
+        """
+        import sys
+        import types
+
+        rendered = []
+
+        class _Attr:
+            def __init__(self, v):
+                self._v = v
+
+            def get_value(self):
+                return self._v
+
+        class _Group:
+            def __init__(self, name):
+                self.name = _Attr(name)
+
+            def render(self, **kwargs):
+                rendered.append(self.name.get_value())
+                return True
+
+        objs = {n: _Group(n) for n in groups}
+        fake = types.ModuleType("flame")
+        fake.batch = objs[open_name]
+        desk = types.SimpleNamespace(batch_groups=list(objs.values()))
+        fake.projects = types.SimpleNamespace(
+            current_project=types.SimpleNamespace(
+                current_workspace=types.SimpleNamespace(desktop=desk)))
+        fake.schedule_idle_event = lambda fn: fn()
+        saved = sys.modules.get("flame")
+        sys.modules["flame"] = fake
+        try:
+            exec(compile(code, "<render_batch>", "exec"), {})
+        finally:
+            if saved is None:
+                sys.modules.pop("flame", None)
+            else:
+                sys.modules["flame"] = saved
+        return rendered
+
+    def _code_for(self, mock_bridge, monkeypatch, tmp_path, **kwargs):
+        import os
+        monkeypatch.setattr(os.path, "expanduser",
+                            lambda p: str(tmp_path / os.path.basename(p)))
+        mock_bridge.return_value = {
+            "output": "Render scheduled via idle event.\n", "error": "", "_bridge_ms": 7,
+        }
+        render_batch(**kwargs)
+        return mock_bridge.call_args[0][0]
+
+    def test_batch_group_renders_target_not_open_group(self, mock_bridge, monkeypatch, tmp_path):
+        code = self._code_for(mock_bridge, monkeypatch, tmp_path,
+                              render_option="Foreground", batch_group="SEQ002_SH001_comp")
+        rendered = self._run_generated(
+            code, ["SEQ001_SH001_comp", "SEQ002_SH001_comp"], "SEQ001_SH001_comp")
+        assert rendered == ["SEQ002_SH001_comp"]
+        assert (tmp_path / "flame_render_result.txt").read_text() == "OK: render finished"
+
+    def test_default_renders_open_group(self, mock_bridge, monkeypatch, tmp_path):
+        code = self._code_for(mock_bridge, monkeypatch, tmp_path, render_option="Foreground")
+        rendered = self._run_generated(
+            code, ["SEQ001_SH001_comp", "SEQ002_SH001_comp"], "SEQ001_SH001_comp")
+        assert rendered == ["SEQ001_SH001_comp"]
+
+    def test_unknown_batch_group_renders_nothing(self, mock_bridge, monkeypatch, tmp_path):
+        code = self._code_for(mock_bridge, monkeypatch, tmp_path, batch_group="nope")
+        rendered = self._run_generated(code, ["SEQ001_SH001_comp"], "SEQ001_SH001_comp")
+        assert rendered == []
+        out = (tmp_path / "flame_render_result.txt").read_text()
+        assert out.startswith("ERROR:") and "matched 0 groups" in out
+
+    def test_background_hint_names_foreground_fallback(self, mock_bridge):
+        mock_bridge.return_value = {
+            "output": "Render scheduled via idle event.\n", "error": "", "_bridge_ms": 7,
+        }
+        result = render_batch()
+        assert "Invalid process" in result and "Foreground" in result
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TestExportClip
