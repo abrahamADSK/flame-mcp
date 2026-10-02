@@ -341,6 +341,14 @@ class TestPipelineRecipes:
     def _entry(self, concept):
         return next(e for e in CONCEPT_MAP if e["concept"] == concept)
 
+    def test_conform_record_frame_is_relative_to_first_item(self):
+        """Chat 109: CutItem edit_in is 1-based on new Cuts, 0-based on legacy
+        ones. A fixed `edit_in + 1` is a frame late on the new ones; the
+        recipe must derive the frame from the first CutItem instead."""
+        recipe = self._entry("conform cut")["recipe"]
+        assert "edit_in - (first CutItem's edit_in) + 1" in recipe
+        assert "pass edit_in + 1" not in recipe
+
     def test_conform_resolves_from_a_bare_verb(self):
         """The word the user actually types must reach the recipe."""
         for query in ("conform", "conform the main cut", "conform this cut"):
