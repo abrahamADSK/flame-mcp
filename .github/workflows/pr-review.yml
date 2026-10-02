@@ -48,7 +48,7 @@ jobs:
           # a 401 "Invalid bearer token" against those credentials (see
           # anthropics/claude-code-action#584). Pinning to Sonnet is
           # mandatory with OAuth auth.
-          claude_args: --model claude-sonnet-4-6
+          claude_args: --model claude-sonnet-5-5
           prompt: |
             You are reviewing a pull request against the MCP-ecosystem
             `main` branch. The repo declares cross-cutting invariants in

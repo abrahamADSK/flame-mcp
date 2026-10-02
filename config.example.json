@@ -1,11 +1,11 @@
 {
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-5-5",
   "backend": "anthropic",
   "ollama_url": "http://gpu-host.lan:11434",
   "ollama_mac_url": "http://localhost:11434",
 
   "rag_fallback_threshold": 60,
-  "fallback_model": "claude-sonnet-4-6",
+  "fallback_model": "claude-opus-5-5",
   "write_allowed_models": ["claude-opus", "claude-fable"],
 
   "stats_footer_mode": "minimal",

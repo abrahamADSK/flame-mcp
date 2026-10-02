@@ -179,7 +179,7 @@ In addition to natural language, the chat input accepts these special commands:
 <!-- concept:llm_backend_table start -->
 | Backend | Models available (model IDs in backticks) | Requires | Works offline? |
 |---------|-------------------------------------------|----------|----------------|
-| anthropic | Claude Fable 5 (`claude-fable-5`), Claude Opus 4.8 (`claude-opus-4-8`), Claude Sonnet 4.6 (`claude-sonnet-4-6`) | Anthropic API key | ✗ |
+| anthropic | Claude Opus 5.5 (`claude-opus-5-5`, default), Claude Fable 5.1 (`claude-fable-5-1`), Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Anthropic API key | ✗ |
 | ollama | Qwen3.5 9B (`qwen3.5-mcp`), GLM-4.7 Flash (`glm-4.7-flash`) ⚠ not recommended — tool-calling broken in Ollama as of June 2026 (issues #13820/#13840) | gpu-server on LAN + GPU, LAN reachable at `config.json → ollama_url` | ✗ |
 | ollama_mac 🍎 | Qwen3.5 9B (`qwen3.5-mcp`), Qwen3.5 4B (`qwen3.5:4b`) | Ollama on Mac (`brew install ollama`), models pulled locally | ✓ |
 <!-- concept:llm_backend_table end -->

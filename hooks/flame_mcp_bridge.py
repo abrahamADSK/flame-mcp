@@ -137,9 +137,9 @@ MODEL_CONFIG_FILE   = os.path.join(_PROJECT_ROOT, 'config.json')
 # Add new entries here; install.sh configures ollama_url during setup.
 AVAILABLE_MODELS = [
     # ── Anthropic cloud (default — needs internet + API key) ─────────
-    ("Claude Opus 4.8",       "claude-opus-4-8",           "anthropic"),
-    ("Claude Fable 5",        "claude-fable-5",            "anthropic"),
-    ("Claude Sonnet 4.6",     "claude-sonnet-4-6",         "anthropic"),
+    ("Claude Opus 5.5",       "claude-opus-5-5",           "anthropic"),
+    ("Claude Fable 5.1",      "claude-fable-5-1",          "anthropic"),
+    ("Claude Sonnet 5.5",     "claude-sonnet-5-5",         "anthropic"),
     # ── Self-hosted Ollama (LAN GPU host, RTX 3090) ──────────────────
     ("Qwen3.5 9B 🖥",         "qwen3.5-mcp",               "ollama"),
     ("GLM-4.7 Flash 🖥",      "glm-4.7-flash",             "ollama"),
@@ -147,7 +147,7 @@ AVAILABLE_MODELS = [
     ("Qwen3.5 9B 🍎",         "qwen3.5-mcp",               "ollama_mac"),
     ("Qwen3.5 4B 🍎",         "qwen3.5:4b",                "ollama_mac"),
 ]
-DEFAULT_MODEL    = "claude-opus-4-8"
+DEFAULT_MODEL    = "claude-opus-5-5"
 DEFAULT_BACKEND  = "anthropic"
 
 # Each entry: (display_label, effort_value). "auto" re-enables adaptive

@@ -152,7 +152,7 @@ No circular imports.
 
 - **`AVAILABLE_MODELS`** (`hooks/flame_mcp_bridge.py`) is a list of
   `(display_name, model_id, backend)` tuples. Current entries:
-  `claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-4-6` (anthropic); `qwen3.5-mcp`,
+  `claude-opus-5-5` (default), `claude-fable-5-1`, `claude-sonnet-5-5` (anthropic); `qwen3.5-mcp`,
   `glm-4.7-flash` (ollama, LAN GPU — glm-4.7-flash is NOT recommended, tool-calling
   broken in Ollama as of June 2026, issues #13820/#13840); `qwen3.5-mcp`, `qwen3.5:4b`
   (ollama_mac, local CPU/MPS).
@@ -192,12 +192,12 @@ MCP server (`server.py::_get_config`):
 2. Silent empty dict on read error (graceful degradation).
 
 Keys: `rag_fallback_threshold` (default 60), `fallback_model`
-(default `"Sonnet"`), `write_allowed_models` (overrides
+(default `"Opus"`, a write-capable tier), `write_allowed_models` (overrides
 `WRITE_ALLOWED_MODELS` when non-empty).
 
 Bridge (`flame_mcp_bridge.py::_load_model_config`):
 1. Same `config.json`.
-2. Hardcoded defaults: `DEFAULT_MODEL = "claude-sonnet-4-6"`,
+2. Hardcoded defaults: `DEFAULT_MODEL = "claude-opus-5-5"`,
    `DEFAULT_BACKEND = "anthropic"`,
    `DEFAULT_OLLAMA_URL = "http://localhost:11434"`.
 
