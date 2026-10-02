@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+- `flame-batch-authoring` skill: why no op saves a batch group. Measured
+  in-vivo: `bg.save()` is a silent no-op on a non-open group and, on the open
+  one, also copies the group into a library each time; `PyBatch.commit` is
+  `None`. The render's own setup write is what persists a delivery.
+
 ### Added
 - **`prepare_comp_render` takes `batch_group`** and configures a comp group
   that is not open, without switching (execute_plan op). Measured in-vivo
