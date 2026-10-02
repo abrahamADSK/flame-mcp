@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.0] — 2026-10-02
+
 ### Docs
 - `flame-batch-authoring` skill: why no op saves a batch group. Measured
   in-vivo: `bg.save()` is a silent no-op on a non-open group and, on the open
