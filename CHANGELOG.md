@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.1] — 2026-10-02
+
 ### Docs
 - **RAG: 13 staged candidates curated into 5 corpus entries** (`FLAME_API.md`
   → Auto-learned). Read-only models had staged them since August; four of them
