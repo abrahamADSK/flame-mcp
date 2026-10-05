@@ -895,6 +895,59 @@ class TestListBatchGroups:
         assert isinstance(result, str)
         assert "batch" in result.lower() or "comp_SH010" in result
 
+    def test_generated_code_marks_open_group_and_lists_clips(self, mock_bridge):
+        """Execute the generated code against a fake flame: the OPEN group is
+        flagged and every schematic/shelf reel lists its clip names (Chat 109)."""
+        import contextlib
+        import io as _io
+        import sys
+        import types
+
+        from flame_mcp._workspace_snapshot import invalidate
+        invalidate()                       # the tool is cached: force a bridge call
+        mock_bridge.return_value = {"output": "", "error": "", "_bridge_ms": 1}
+        list_batch_groups.fn() if hasattr(list_batch_groups, "fn") else list_batch_groups()
+        code = mock_bridge.call_args[0][0]
+
+        class _A:
+            def __init__(self, v):
+                self._v = v
+
+            def get_value(self):
+                return self._v
+
+        def _obj(name, **kw):
+            return types.SimpleNamespace(name=_A(name), **kw)
+
+        clips = [_obj("c%02d" % i) for i in range(23)]
+        g1 = _obj("SH010_comp", nodes=[1, 2, 3],
+                  reels=[_obj("sources", clips=[_obj("SH010_LGT_v003")])],
+                  shelf_reels=[_obj("Batch Renders", clips=clips)])
+        g2 = _obj("SH020_comp", nodes=[], reels=[_obj("sources", clips=[])], shelf_reels=[])
+        fake = types.ModuleType("flame")
+        fake.batch = _obj("SH010_comp")
+        fake.projects = types.SimpleNamespace(current_project=types.SimpleNamespace(
+            name="P", current_workspace=types.SimpleNamespace(
+                desktop=types.SimpleNamespace(batch_groups=[g1, g2]))))
+        fake.schedule_idle_event = lambda fn: fn()
+        saved = sys.modules.get("flame")
+        sys.modules["flame"] = fake
+        buf = _io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                exec(compile(code, "<list_batch_groups>", "exec"), {})
+        finally:
+            if saved is None:
+                sys.modules.pop("flame", None)
+            else:
+                sys.modules["flame"] = saved
+        out = buf.getvalue()
+        assert "'SH010_comp'  (3 node(s))  [OPEN]" in out
+        assert "'SH020_comp'  (0 node(s))" in out and "SH020_comp'  (0 node(s))  [OPEN]" not in out
+        assert "reel 'sources': SH010_LGT_v003" in out
+        assert "shelf 'Batch Renders': c00" in out and "(+3 more)" in out
+        assert "reel 'sources': empty" in out
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TestGetClipMetadata

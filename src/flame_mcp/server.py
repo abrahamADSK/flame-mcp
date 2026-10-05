@@ -1381,9 +1381,13 @@ for rg in desktop.reel_groups:
 @_cache_workspace_read()
 def list_batch_groups() -> str:
     """
-    List all batch groups in the active desktop with their reel counts.
-    Use this instead of execute_python for any 'show batch groups' request.
-    Batch groups live on the desktop alongside regular reel groups.
+    List all batch groups on the active desktop: which one is OPEN, node count,
+    and every schematic and shelf reel with the clips it holds (first 20 per
+    reel, then a count). Use this instead of execute_python for any 'show
+    batch groups' / 'what is in the batch reels' request. Batch groups live on
+    the desktop alongside regular reel groups. The OPEN group matters because
+    render_batch / prepare_comp_render default to it unless batch_group names
+    another (Chat 109).
 
     Runs on Flame's MAIN thread (Chat 98): drilling batch-group node lists
     from the bridge worker thread killed Flame mid-``getNodeList`` on
@@ -1410,22 +1414,37 @@ def _do_list():
         if not batch_groups:
             print("No batch groups found on the desktop.")
         else:
+            def _nm(x):
+                try:
+                    return x.name.get_value()
+                except Exception:
+                    return str(getattr(x, "name", x)).strip("'")
+            try:
+                open_name = _nm(flame.batch)
+            except Exception:
+                open_name = None
             print(f"{len(batch_groups)} batch group(s):")
             for bg in batch_groups:
-                name = str(bg.name)
-                try:
-                    reels = len(bg.reels)
-                except Exception:
-                    reels = 0
+                name = _nm(bg)
                 try:
                     nodes = len(bg.nodes) if hasattr(bg, 'nodes') else 0
                 except Exception:
                     nodes = 0
-                parts = []
-                if reels: parts.append(f"{reels} reel(s)")
-                if nodes: parts.append(f"{nodes} node(s)")
-                summary = ", ".join(parts) if parts else "empty"
-                print(f"  {name}  ({summary})")
+                flag = "  [OPEN]" if name == open_name else ""
+                print(f"  '{name}'  ({nodes} node(s)){flag}")
+                for kind, attr in (("reel", "reels"), ("shelf", "shelf_reels")):
+                    try:
+                        reels = list(getattr(bg, attr) or [])
+                    except Exception:
+                        reels = []
+                    for r in reels:
+                        try:
+                            clips = [_nm(c) for c in (r.clips or [])]
+                        except Exception:
+                            clips = []
+                        shown = ", ".join(clips[:20]) if clips else "empty"
+                        more = f" (+{len(clips) - 20} more)" if len(clips) > 20 else ""
+                        print(f"      {kind} '{_nm(r)}': {shown}{more}")
     except Exception as _exc:
         print("ERROR: " + repr(_exc))
     finally:
