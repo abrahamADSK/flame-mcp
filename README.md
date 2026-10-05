@@ -156,7 +156,7 @@ The status indicator updates every time you open the menu:
 
 **Claude Chat (embedded)** opens a native Qt window directly inside Flame — no terminal required. Type natural language requests and Claude responds, controlling Flame in real time.
 
-- Reads `ANTHROPIC_API_KEY` from environment or `~/flame-mcp/.env`
+- Runs the `claude` CLI with your Claude Code session; `CLAUDE_PATH` (environment or `~/flame-mcp/.env`) optionally overrides its location
 - Executes Flame code via the Unix socket bridge (thread-safe, non-blocking)
 - Uses the local RAG index to look up API patterns before every call
 - Requires PySide6 (bundled with Flame 2026+)
@@ -192,7 +192,7 @@ Two different policies apply depending on what you are configuring:
 
 - **Socket transport** (`FLAME_BRIDGE_SOCKET`) — env var wins over any `config.json` default. Useful for overriding the bridge path in a dev sandbox without touching the committed config.
 - **Model + backend + `ollama_url`** — `config.json` wins; there is no env var override. The Flame panel writes the user's choice back to `config.json` so selection is sticky across restarts.
-- **Anthropic credentials** (`ANTHROPIC_API_KEY`) — env var / `.env`, not `config.json`.
+- **`claude` binary path** (`CLAUDE_PATH`) — env var / `.env`, not `config.json`. Optional: without it the bridge searches the usual install locations.
 
 The full precedence table (including fallback chains, defaults, and the
 asymmetry between transport and model settings) lives in
@@ -564,7 +564,7 @@ This project uses `/opt/Autodesk/shared/python/` so the bridge works across all 
 
 **Claude Chat (embedded) doesn't open**
 - Check `logs/flame_mcp_bridge.log` for error details
-- Ensure `ANTHROPIC_API_KEY` is set in your environment or in `~/flame-mcp/.env`
+- Ensure the `claude` CLI is installed and signed in; if it is not found, set `CLAUDE_PATH` in your environment or in `~/flame-mcp/.env`
 - Flame 2026+ uses PySide6; older versions use PySide2 (both supported)
 
 **Ollama model runs on CPU instead of GPU**
