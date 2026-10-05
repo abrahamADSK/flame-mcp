@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`list_batch_groups` shows the OPEN group and each reel's clips.** Every
+  group is listed with its node count, an `[OPEN]` flag on the group
+  `render_batch` / `prepare_comp_render` default to, and every schematic and
+  shelf reel with its clip names (first 20, then a count). Batch drills through
+  `execute_python` stay allowed for deeper (attribute-level) questions.
+
 ## [1.28.1] — 2026-10-02
 
 ### Docs

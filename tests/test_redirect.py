@@ -232,9 +232,9 @@ class TestModificationIntentSuppression:
 class TestBatchDrillSuppression:
     """Reading INSIDE a batch group must stay reachable via execute_python.
 
-    list_reels/list_clips are library-scoped and list_batch_groups returns
-    only node/reel counts, so no dedicated tool can answer "which clips are
-    in this batch group?".  In-vivo the `.reels` soft pattern matched
+    list_reels/list_clips are library-scoped and list_batch_groups lists clip
+    NAMES only (Chat 109), so no dedicated tool answers deeper questions about
+    the clips in a batch group.  In-vivo the `.reels` soft pattern matched
     `flame.batch.reels` and redirected to list_reels(library_name) — a
     dead end.  Soft redirects are suppressed when batch context AND content
     drill co-occur; pure listings and library traversal are unaffected.

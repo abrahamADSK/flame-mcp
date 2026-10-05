@@ -236,7 +236,7 @@ _REDIRECT_PATTERNS = [
     (r'reel_groups|getReelGroups|desktop.*reel',
      "Use list_desktop_reels() \u2014 returns the full desktop hierarchy with clip names."),
     (r'batch_groups|getBatchGroups|\.batch_group',
-     "Use list_batch_groups() \u2014 returns batch groups with node and reel counts."),
+     "Use list_batch_groups() \u2014 returns batch groups (the OPEN one marked), node counts, and each reel's clips."),
     (r'flame\.selection',
      "flame.selection does not exist. "
      "Use get_selected_clips() \u2014 it uses flame.media_panel.selected_entries correctly."),
@@ -286,10 +286,11 @@ _CREATION_INTENT_RE = re.compile(
 
 # Batch-group / desktop drill-down. The library-scoped read tools cannot see
 # inside a batch group (list_reels/list_clips take a library_name;
-# list_batch_groups returns only node/reel counts) and the desktop listing
-# shows clips, not sequence positions — so traversing those containers'
-# contents (bg.reels / bg.shelf_reels / reel.clips / desktop reel sequences)
-# via execute_python is the ONLY way to answer content questions there.
+# list_batch_groups lists each reel's clip NAMES but no clip attributes) and
+# the desktop listing shows clips, not sequence positions — so traversing
+# those containers' contents (bg.reels / bg.shelf_reels / reel.clips /
+# desktop reel sequences) via execute_python stays the way to answer deeper
+# content questions there.
 # Observed in-vivo (Chat 92, twice): the `.reels` soft pattern matched
 # `flame.batch.reels` and dead-ended the model on list_reels(library_name);
 # the `desktop.*reel` pattern then dead-ended a desktop-sequence lookup on
