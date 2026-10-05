@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`install.sh --doctor` treats `.env` as optional.** A missing `.env` is now a
+  SKIP instead of a FAIL: the bridge only reads `CLAUDE_PATH` from it (an optional
+  override of the `claude` binary location), so it no longer reports the install
+  as incomplete.
+
 ## [1.29.0] — 2026-10-05
 
 ### Changed
