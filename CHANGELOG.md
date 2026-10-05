@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.29.0] — 2026-10-05
+
 ### Changed
 - **`list_batch_groups` shows the OPEN group and each reel's clips.** Every
   group is listed with its node count, an `[OPEN]` flag on the group
