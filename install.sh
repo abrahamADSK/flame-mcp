@@ -48,7 +48,7 @@ info "Project directory: $SCRIPT_DIR"
 # visual format as maya-mcp and fpt-mcp:
 #   1. MCP registration in claude.json
 #   2. Bridge symlink to /opt/Autodesk/shared/python/
-#   3. .env file with real values
+#   3. .env file (OPTIONAL: SKIP when absent; nothing in src/ or hooks/ reads it)
 #   4. Venv importability (import flame_mcp)
 #   5. RAG index presence
 #
@@ -178,10 +178,13 @@ def check_bridge_symlink() -> tuple[str, str]:
 def check_env_file() -> tuple[str, str]:
     env_file = REPO_ROOT / ".env"
     if not env_file.is_file():
+        # Optional: the server and bridge never load .env (config.json holds the
+        # settings, and the backend uses the Claude Code session). Only
+        # scripts/extract_patterns.py needs ANTHROPIC_API_KEY, from the shell env.
         return (
-            "FAIL",
-            f".env not found at {env_file}. "
-            f"Copy .env.example to .env and fill in your keys.",
+            "SKIP",
+            f".env not found at {env_file} (optional — only needed to keep "
+            f"API keys out of the shell environment). Copy .env.example if wanted.",
         )
     content = env_file.read_text(errors="replace")
     placeholder_patterns = [
@@ -198,7 +201,7 @@ def check_env_file() -> tuple[str, str]:
                 f".env exists but contains placeholder values. "
                 f"Edit {env_file} and set real values.",
             )
-    return ("PASS", f".env present with values configured")
+    return ("PASS", ".env present with values configured")
 
 
 # ── Check 4: Venv importability ──────────────────────────────────────────────

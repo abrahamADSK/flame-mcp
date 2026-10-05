@@ -100,7 +100,7 @@ After installing, run the health check to confirm everything is in place:
 ./install.sh --doctor
 ```
 
-This runs a 5-check sweep (MCP registration, bridge symlink, `.env` file, venv importability, RAG index) and prints PASS/FAIL/WARN/SKIP with remediation hints for each check. The bridge-symlink check now sha256-compares the deployed hook against `hooks/flame_mcp_bridge.py` and FAILs on a stale regular-file copy. Recommended before first use.
+This runs a 5-check sweep (MCP registration, bridge symlink, optional `.env` file, venv importability, RAG index) and prints PASS/FAIL/WARN/SKIP with remediation hints for each check. The bridge-symlink check now sha256-compares the deployed hook against `hooks/flame_mcp_bridge.py` and FAILs on a stale regular-file copy. Recommended before first use.
 
 ### Manual
 
