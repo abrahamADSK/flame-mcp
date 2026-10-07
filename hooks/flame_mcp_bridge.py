@@ -30,6 +30,7 @@ import io
 import time
 import subprocess
 import datetime
+import re as _re_bridge
 
 # ── Shared helper import bootstrap ────────────────────────────────────────────
 # The bridge runs inside Flame's embedded Python (installed at
@@ -202,7 +203,6 @@ _EXEC_TIMEOUT = 30
 # send JSON directly to this socket (documented protocol enabled the bypass).
 # Adding the same redirect table HERE catches ALL execution attempts regardless
 # of how they arrive — MCP tool call OR raw socket payload.
-import re as _re_bridge
 _BRIDGE_REDIRECT_PATTERNS = [
     (r'get_project_info|current_project.*\.(name|description|workspaces)',
      "Use get_project_info() MCP tool — accesses resolution/fps/bit_depth via Wiretap."),
@@ -989,7 +989,7 @@ def _import_qt():
     for fn in (_try_pyside2, _try_pyside6):
         try:
             result = fn()
-            _log(f"Qt search: import succeeded after path search")
+            _log("Qt search: import succeeded after path search")
             return result
         except ImportError:
             pass
@@ -2165,12 +2165,6 @@ class _FlameChat:
             host = parsed.hostname or self._ollama_url
         except Exception:
             host = self._ollama_url
-
-        key = self._ollama_cloud_key
-        if key:
-            masked = key[:8] + "…" if len(key) > 8 else key[:4] + "…"
-        else:
-            masked = None
 
         for i, (label, _model_id, backend) in enumerate(AVAILABLE_MODELS):
             if backend == "ollama":

@@ -482,7 +482,7 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
    - dir(flame...)                                    → use search_flame_docs instead
    To list all Flame projects: use list_all_projects() or os.listdir("/opt/Autodesk/project")
 
-10. DEBUGGING — when execute_python returns an error or Flame crashes:
+11. DEBUGGING — when execute_python returns an error or Flame crashes:
    - Call read_flame_log("flame.log", lines=50, grep="Error|Traceback|Python")
      to get the actual crash trace from the application log.
    - For Wiretap/IFFFS errors: read_flame_log("wiretap.log", grep="ERROR|FAIL")
@@ -496,7 +496,7 @@ You are controlling Autodesk Flame 2026 via a local bridge (Unix socket).
      "not in .cfg" means Wiretap is DOWN — every export will fail with
      "No route to host". Check this before diagnosing anything else.
 
-11. SELF-IMPROVEMENT — after execute_python succeeds:
+12. SELF-IMPROVEMENT — after execute_python succeeds:
    - If the preceding search_flame_docs showed max relevance < 60%, the pattern
      was NOT in the docs. Call learn_pattern(description, code) immediately after
      the successful execute_python.

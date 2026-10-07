@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Server `instructions` numbering.** Two rules were both numbered `10.`; the
+  debugging rule is now `11.` and self-improvement `12.`.
+- **Bridge lint (`hooks/`).** Cleared the 3 ruff findings: `re` import moved to the
+  top of the module (E402), an f-string without placeholders (F541) and an unused
+  `masked` key preview (F841).
+
 ### Changed
 - **`install.sh --doctor` treats `.env` as optional.** A missing `.env` is now a
   SKIP instead of a FAIL: the bridge only reads `CLAUDE_PATH` from it (an optional
