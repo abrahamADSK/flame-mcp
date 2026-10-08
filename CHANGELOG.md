@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `masked` key preview (F841).
 
 ### Changed
+- **CI lints `hooks/`.** The ruff job now runs on `src/ tests/ hooks/`, so findings in
+  the Flame bridge can no longer slip in unseen.
 - **`install.sh --doctor` treats `.env` as optional.** A missing `.env` is now a
   SKIP instead of a FAIL: the bridge only reads `CLAUDE_PATH` from it (an optional
   override of the `claude` binary location), so it no longer reports the install
